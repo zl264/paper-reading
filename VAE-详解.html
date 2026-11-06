@@ -1,0 +1,1402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VAE 变分自编码器：从原理到代码全面详解</title>
+<style>
+:root{
+  --bg:#f7f7fa; --fg:#24292f; --muted:#5a6070;
+  --accent:#5845e6; --accent-2:#7c6cf0; --accent-soft:#eeecfc; --accent-deep:#4636c4;
+  --border:#e3e4ec; --card:#ffffff;
+  --code-bg:#0d1117; --code-head:#161b22; --code-fg:#e6edf3;
+  --tk-c:#8b949e; --tk-k:#ff7b72; --tk-s:#a5d6ff; --tk-n:#79c0ff; --tk-d:#d2a8ff; --tk-f:#d2a8ff; --tk-b:#ffa657;
+  --note-bg:#eff6ff; --note-bd:#3b82f6;
+  --warn-bg:#fffbeb; --warn-bd:#d97706;
+  --tip-bg:#ecfdf5; --tip-bd:#10b981;
+  --danger-bg:#fef2f2; --danger-bd:#ef4444;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth; scroll-padding-top:24px;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+}
+/* ---------- 布局 ---------- */
+.layout{display:flex; min-height:100vh;}
+.toc{
+  position:fixed; top:0; left:0; bottom:0; width:284px;
+  background:#ffffff; border-right:1px solid var(--border);
+  overflow-y:auto; padding:28px 18px 40px; z-index:10;
+}
+.toc-title{font-size:15px; font-weight:700; color:var(--accent-deep); padding:0 10px 14px; letter-spacing:.5px;}
+.toc a{
+  display:block; padding:5px 10px; margin:1px 0; border-radius:7px;
+  color:var(--muted); text-decoration:none; font-size:13.5px; line-height:1.45;
+  border-left:3px solid transparent; transition:all .15s ease;
+}
+.toc a:hover{color:var(--accent); background:var(--accent-soft);}
+.toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
+.content{
+  margin-left:284px; width:calc(100% - 284px);
+  max-width:960px; padding:56px 56px 80px;
+}
+@media (max-width:1180px){
+  .toc{display:none;}
+  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+}
+/* ---------- 标题 ---------- */
+.doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
+.doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
+h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+.doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
+.doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
+.doc-meta span{
+  font-size:12.5px; color:var(--accent-deep); background:var(--accent-soft);
+  border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
+}
+h2{
+  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  display:flex; align-items:baseline; gap:14px;
+}
+h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
+h2::after{content:""; display:block;}
+.ch-intro{color:var(--muted); font-size:15.5px; margin:8px 0 24px; border-left:3px solid var(--accent-2); padding-left:14px;}
+h3{
+  font-size:20px; font-weight:700; margin:40px 0 14px; padding-left:12px;
+  border-left:4px solid var(--accent); line-height:1.4;
+}
+h4{font-size:16.5px; font-weight:700; margin:28px 0 10px; color:#383e4c;}
+p{margin:14px 0;}
+strong{font-weight:700; color:#1a1f2b;}
+em{font-style:normal; background:linear-gradient(transparent 62%, #e8e2ff 62%); font-weight:600;}
+ul,ol{padding-left:26px; margin:12px 0;}
+li{margin:7px 0;}
+hr{border:none; border-top:1px solid var(--border); margin:36px 0;}
+a{color:var(--accent); text-decoration:none;}
+a:hover{text-decoration:underline;}
+/* ---------- 行内代码 ---------- */
+code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Cascadia Code",Menlo,monospace;
+  font-size:.86em; background:var(--accent-soft); color:var(--accent-deep);
+  padding:2px 6px; border-radius:5px; white-space:nowrap;
+}
+/* ---------- 代码块 ---------- */
+.codeblock{margin:20px 0; border-radius:11px; overflow:hidden; border:1px solid #262b36; box-shadow:0 6px 24px rgba(15,17,32,.10);}
+.codehead{
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232833;
+}
+.codehead .fname{color:#9aa4b2; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;}
+.codehead .lang{color:#6e7681; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;}
+pre{
+  background:var(--code-bg); color:var(--code-fg); overflow-x:auto;
+  padding:16px 18px; font-size:13.5px; line-height:1.65; tab-size:4;
+}
+pre code{background:none; color:inherit; padding:0; font-size:inherit; white-space:pre; border-radius:0;}
+.tk-c{color:var(--tk-c); font-style:italic;}
+.tk-k{color:var(--tk-k);}
+.tk-s{color:var(--tk-s);}
+.tk-n{color:var(--tk-n);}
+.tk-d{color:var(--tk-d);}
+.tk-f{color:var(--tk-f);}
+.tk-b{color:var(--tk-b);}
+/* ---------- 表格 ---------- */
+.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(20,22,40,.06);}
+.tbl th{
+  background:#f0eefb; color:#3b3480; text-align:left; padding:10px 14px;
+  font-weight:700; border-bottom:2px solid #ddd6f5; font-size:13.5px; white-space:nowrap;
+}
+.tbl td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:#faf9ff;}
+.tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
+.tbl .hl td{background:var(--accent-soft);}
+/* ---------- 提示框 ---------- */
+.callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
+.callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
+.callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
+.callout.note .co-title{color:#1d4ed8;}
+.callout.warn{background:var(--warn-bg); border-color:var(--warn-bd); color:#713f12;}
+.callout.warn .co-title{color:#b45309;}
+.callout.tip{background:var(--tip-bg); border-color:var(--tip-bd); color:#064e3b;}
+.callout.tip .co-title{color:#047857;}
+.callout p{margin:6px 0;}
+/* ---------- 公式 ---------- */
+.formula{
+  background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
+  text-align:center; padding:18px 20px; margin:22px 0;
+  font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
+}
+.formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
+/* ---------- 张量形状流 ---------- */
+.flow{
+  background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+  margin:20px 0; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:2.1;
+  overflow-x:auto; white-space:nowrap;
+}
+.flow b{color:var(--accent-deep); font-weight:700;}
+.flow .arr{color:#b08c00; font-weight:700; margin:0 6px;}
+.flow .tag{color:var(--muted); font-size:11.5px; margin-left:8px;}
+/* ---------- 图 ---------- */
+.figure{margin:26px 0; text-align:center;}
+.figure svg{max-width:100%; height:auto; display:block; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:12px;}
+.figcap{margin-top:10px; font-size:13.5px; color:var(--muted); line-height:1.6;}
+.figcap b{color:var(--fg);}
+footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">VAE 详解</div>
+  <a href="#ch1">1. VAE 是什么</a>
+  <a href="#ch2">2. 从自编码器说起：AE 为什么不能生成</a>
+  <a href="#ch3">3. 数学原理：变分推断与 ELBO</a>
+  <a href="#ch4">4. 重参数化技巧：让梯度穿过随机性</a>
+  <a href="#ch5">5. 网络结构详解：Encoder、隐空间与 Decoder</a>
+  <a href="#ch6">6. 损失函数：重构项与 KL 项完整推导</a>
+  <a href="#ch7">7. PyTorch 完整实现与训练</a>
+  <a href="#ch8">8. 进阶话题：模糊、坍缩与 Stable Diffusion</a>
+  <a href="#ch9">9. 总结与速查表</a>
+</nav>
+
+<main class="content">
+
+<header class="doc-header">
+  <div class="doc-kicker">Variational Autoencoder Deep Dive</div>
+  <h1>VAE 变分自编码器：从原理到代码全面详解</h1>
+  <p class="doc-sub">从「为什么会有它」讲到「公式怎么推、网络怎么搭、代码怎么写」——覆盖概率图模型的直觉、ELBO 两种完整推导、重参数化技巧、逐层结构拆解与一份可直接运行的 PyTorch 实现，最后讲到 Stable Diffusion 里那个真正的 VAE。适合零基础入门，也可作为面试与复习速查。</p>
+  <div class="doc-meta">
+    <span>基于 Kingma 与 Welling 2013 年论文《Auto-Encoding Variational Bayes》</span>
+    <span>含完整可运行的 PyTorch 实现</span>
+    <span>公式逐行推导，无跳步</span>
+    <span>2026-11 整理</span>
+  </div>
+</header>
+
+<!-- ==================== 第 1 章 ==================== -->
+<section id="ch1">
+<h2><span class="ch-no">01</span>VAE 是什么</h2>
+<p class="ch-intro">一句话：VAE（变分自编码器，Variational Autoencoder）是一种「生成模型」——它学习的不是把输入分类成什么，而是数据本身的分布长什么样，学完后可以从这个分布里采样新样本。它由一个概率化的 Encoder、一个隐变量空间和一个 Decoder 组成，用「变分推断」来训练。</p>
+
+<h3>1.1 生成模型 vs 判别模型</h3>
+<p>先用一个最粗的对比建立位置感。常见的神经网络大多属于<strong>判别模型</strong>：给定输入 x，预测标签 y（猫还是狗？下一个词是什么？）。而<strong>生成模型</strong>反过来，它要建模数据本身的分布 p(x)，然后<strong>从分布里「无中生有」地采样出新样本</strong>。</p>
+<table class="tbl">
+  <tr><th>视角</th><th>判别模型</th><th>生成模型</th></tr>
+  <tr><td>学什么</td><td>p(y | x)：条件分布</td><td>p(x)（可能带隐变量 z）</td></tr>
+  <tr><td>能干什么</td><td>分类、回归、打标签</td><td>采样新数据、算似然、补全、去噪</td></tr>
+  <tr><td>典型代表</td><td>ResNet、BERT、GPT（判别式用法）</td><td>VAE、GAN、Diffusion、PixelRNN</td></tr>
+  <tr><td>难度</td><td>「照葫芦画瓢」相对容易</td><td>「造一个新葫芦」难得多</td></tr>
+</table>
+<p>VAE 就是生成模型家族的一员，而且是其中<strong>数学结构最优雅、训练最稳定</strong>的一支——这也是它至今仍被大量使用的原因。</p>
+
+<h3>1.2 历史与出处</h3>
+<ul>
+  <li><strong>2013 年</strong>，Diederik Kingma 与 Max Welling 发表《Auto-Encoding Variational Bayes》（arXiv:1312.6114），首次提出 VAE 并给出可扩展到神经网络规模的训练方法；同期 Danilo Rezende 等人也独立提出了几乎相同的思路（"Stochastic Backpropagation and Approximate Inference in Deep Generative Models"）。两篇论文共同开启了深度生成模型的「变分」时代。</li>
+  <li><strong>名字拆解</strong>：<em>Autoencoder</em> 指它的结构形态——一个 Encoder 压缩、一个 Decoder 还原，长得像经典自编码器；<em>Variational</em> 指它的训练方法——用<strong>变分推断</strong>（用简单分布近似复杂后验分布）来解决不可解的积分。</li>
+  <li><strong>后续影响</strong>：GAN（2014）、Diffusion（2020）相继出现后，三大生成范式并立；而 <strong>Stable Diffusion（2022）这个名字里的 "Latent"，指的正是把扩散搬进 VAE 的潜空间</strong>——VAE 至今仍是主流文生图模型不可或缺的组件（第 8 章详述）。</li>
+</ul>
+
+<h3>1.3 三大生成范式一眼对比</h3>
+<table class="tbl">
+  <tr><th>范式</th><th>核心思想</th><th>训练稳定性</th><th>样本质量</th><th>典型短板</th></tr>
+  <tr class="hl"><td>VAE</td><td>最大化似然下界（ELBO）</td><td>非常稳定，损失单调可监控</td><td>偏模糊</td><td>生成图像平均化、偏糊</td></tr>
+  <tr><td>GAN</td><td>生成器与判别器对抗博弈</td><td>不稳定，易模式坍缩</td><td>锐利逼真</td><td>训练难调、多样性差</td></tr>
+  <tr><td>Diffusion</td><td>逐步加噪再学会逐步去噪</td><td>稳定</td><td>最好</td><td>推理慢（需多步迭代）</td></tr>
+</table>
+<div class="callout note">
+  <span class="co-title">有趣的联系</span>
+  <p>从数学上看，Diffusion 可以被写成一种特殊的、隐变量逐步加噪的 VAE（这是论文《Understanding Diffusion Models: A Unified Perspective》的观点）。理解 VAE 的 ELBO，也是理解扩散模型损失的敲门砖。</p>
+</div>
+
+<h3>1.4 VAE 都用在哪</h3>
+<ul>
+  <li><strong>图像生成与隐空间可视化</strong>：在 MNIST / 人脸数据集上训练后，可以采样生成新图像，还能把 2 维隐空间画成一张「连续地图」（第 7 章实战）；</li>
+  <li><strong>潜空间压缩器</strong>：Stable Diffusion 用 VAE 把 512×512×3 的图像压到 64×64×4，让扩散模型的计算量降到约 1/48——这是 VAE 在今天最重要、最广泛的应用；</li>
+  <li><strong>表示学习</strong>：隐变量 z 是数据的低维语义压缩，可直接用于分类、检索、聚类；</li>
+  <li><strong>异常检测</strong>：用正常数据训练后，异常样本的重构误差会显著偏高；</li>
+  <li><strong>科学领域</strong>：药物分子生成（图 VAE）、蛋白质结构、语音合成（如早期 Tacotron 系的变分组件）等。</li>
+</ul>
+
+<div class="callout note">
+  <span class="co-title">阅读路线建议</span>
+  <p>完全零基础：按顺序读第 2~4 章建立直觉和数学骨架（第 3 章公式多，但每步都有解释）；想直接写代码：先看第 5、6、7 章；已了解 VAE、想搞懂 Stable Diffusion 里的 VAE：直接跳第 8 章。</p>
+</div>
+</section>
+
+<!-- ==================== 第 2 章 ==================== -->
+<section id="ch2">
+<h2><span class="ch-no">02</span>从自编码器说起：AE 为什么不能生成</h2>
+<p class="ch-intro">VAE 的「A」是 Autoencoder。要理解 VAE 每一处设计，最好的路径是先看普通自编码器（AE）卡在了哪一步——VAE 的所有「怪异」设计（编码分布、KL 正则、重参数化），都是在给 AE 的死穴打补丁。</p>
+
+<h3>2.1 自编码器：把压缩学进网络里</h3>
+<p>自编码器由三段组成：<strong>Encoder</strong> 把输入 x 压缩成一个低维向量 z（也叫 latent code），<strong>Decoder</strong> 再从 z 尽量还原出 x̂。训练目标只有一个：让 x̂ 尽量等于 x。</p>
+<div class="flow">
+  图像 <b>x [784]</b> <span class="arr">→</span> Encoder <span class="arr">→</span> 隐码 <b>z [20]</b> <span class="arr">→</span> Decoder <span class="arr">→</span> 重构 <b>x̂ [784]</b>
+  <span class="tag">损失：MSE(x̂, x)，784 维压到 20 维，压掉 97%</span>
+</div>
+<p>因为没有标签，重构目标就是输入本身，所以它属于<strong>自监督学习</strong>。学到的 z 是数据的一种有损压缩表示，广泛用于降维、去噪、预训练。</p>
+<p>看起来一切正常。那如果想让 AE「生成」一张新图像呢？直觉上似乎可行：随便挑一个 20 维向量 z 喂给 Decoder 不就行了？</p>
+
+<h3>2.2 悲剧发生：在隐空间里随便挑一个 z</h3>
+<p>把 MNIST 的 6 万张数字图喂给 AE 训练，encoder 会把每张图映射到 z 空间里的<strong>一个点</strong>。6 万个训练样本，在 z 空间里留下 6 万个点。问题来了——z 空间是 20 维的连续空间，里面的点有无穷多个，而我们只在 6 万个点的<strong>极小邻域</strong>训练过 Decoder：</p>
+<ul>
+  <li>训练时从未见过的 z（哪怕离训练点只有一点点距离），Decoder 的输出完全不可控——多数情况下是一团噪点状的「乱码」；</li>
+  <li>z 空间没有「密度」概念：encoder 只负责把图映射到点，<strong>没有任何机制约束这些点在空间里如何分布</strong>。哪里是「训练过的区域」、哪里是「空白地带」，模型自己都不知道；</li>
+  <li>不同类别的编码点在空间里的排布是随机且不规则的，甚至互相纠缠——第 8 类数字的点和第 3 类的点可能交错分布，中间没有任何平滑过渡。</li>
+</ul>
+<p>结论：<strong>AE 学会了压缩，但没有学会「分布」</strong>。它是一个合格的压缩器，却是一个不能用的生成器。</p>
+
+<div class="figure">
+<svg viewBox="0 0 960 430" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="a1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="a2" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ef4444"/></marker>
+    <marker id="a3" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#10b981"/></marker>
+  </defs>
+  <text x="70" y="32" font-size="16" font-weight="700" fill="#24292f">AE：每个图编码成一个「点」</text>
+  <!-- AE pipeline -->
+  <rect x="24" y="56" width="66" height="46" rx="9" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="57" y="84" font-size="12" text-anchor="middle" fill="#4636c4" font-weight="700">图像 x</text>
+  <line x1="92" y1="79" x2="124" y2="79" stroke="#5845e6" stroke-width="2" marker-end="url(#a1)"/>
+  <rect x="128" y="56" width="96" height="46" rx="9" fill="#ffffff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="176" y="84" font-size="13" text-anchor="middle" fill="#4636c4" font-weight="700">Encoder</text>
+  <line x1="226" y1="79" x2="262" y2="79" stroke="#5845e6" stroke-width="2" marker-end="url(#a1)"/>
+  <circle cx="288" cy="79" r="12" fill="#5845e6"/>
+  <text x="288" y="83" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">z</text>
+  <line x1="302" y1="79" x2="336" y2="79" stroke="#5845e6" stroke-width="2" marker-end="url(#a1)"/>
+  <rect x="340" y="56" width="96" height="46" rx="9" fill="#ffffff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="388" y="84" font-size="13" text-anchor="middle" fill="#4636c4" font-weight="700">Decoder</text>
+  <line x1="438" y1="79" x2="466" y2="79" stroke="#5845e6" stroke-width="2" marker-end="url(#a1)"/>
+  <rect x="24" y="126" width="66" height="40" rx="9" fill="#f7f7fa" stroke="#e3e4ec"/>
+  <text x="57" y="151" font-size="12" text-anchor="middle" fill="#5a6070">28×28</text>
+  <!-- AE latent space -->
+  <rect x="28" y="200" width="440" height="200" rx="12" fill="#fbfbff" stroke="#e3e4ec"/>
+  <text x="48" y="228" font-size="13" font-weight="700" fill="#383e4c">z 空间（20 维，示意画成平面）</text>
+  <g fill="#5845e6">
+    <circle cx="90" cy="290" r="4"/><circle cx="110" cy="310" r="4"/><circle cx="98" cy="330" r="4"/>
+    <circle cx="130" cy="282" r="4"/><circle cx="150" cy="330" r="4"/><circle cx="140" cy="355" r="4"/>
+    <circle cx="170" cy="300" r="4"/><circle cx="200" cy="330" r="4"/><circle cx="190" cy="358" r="4"/>
+    <circle cx="330" cy="270" r="4"/><circle cx="360" cy="300" r="4"/><circle cx="345" cy="330" r="4"/>
+    <circle cx="385" cy="275" r="4"/><circle cx="375" cy="340" r="4"/><circle cx="405" cy="310" r="4"/>
+  </g>
+  <text x="128" y="270" font-size="11.5" fill="#5a6070">训练样本的编码点：零散、无规律</text>
+  <circle cx="268" cy="300" r="9" fill="none" stroke="#ef4444" stroke-width="2" stroke-dasharray="3 3"/>
+  <line x1="268" y1="300" x2="352" y2="218" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#a2)"/>
+  <text x="248" y="386" font-size="11.5" fill="#ef4444" font-weight="600">随便取个 z？落在空白区 → 解码出乱码</text>
+  <!-- divider -->
+  <line x1="492" y1="20" x2="492" y2="410" stroke="#e3e4ec" stroke-width="1.5"/>
+  <text x="542" y="32" font-size="16" font-weight="700" fill="#24292f">VAE：每张图编码成一个「分布」</text>
+  <!-- VAE pipeline -->
+  <rect x="496" y="56" width="66" height="46" rx="9" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="529" y="84" font-size="12" text-anchor="middle" fill="#047857" font-weight="700">图像 x</text>
+  <line x1="564" y1="79" x2="596" y2="79" stroke="#10b981" stroke-width="2" marker-end="url(#a3)"/>
+  <rect x="600" y="56" width="96" height="46" rx="9" fill="#ffffff" stroke="#10b981" stroke-width="1.6"/>
+  <text x="648" y="84" font-size="13" text-anchor="middle" fill="#047857" font-weight="700">Encoder</text>
+  <line x1="698" y1="79" x2="732" y2="79" stroke="#10b981" stroke-width="2" marker-end="url(#a3)"/>
+  <ellipse cx="758" cy="79" rx="26" ry="17" fill="#10b981" opacity=".18"/>
+  <ellipse cx="758" cy="79" rx="12" ry="8" fill="#10b981" opacity=".45"/>
+  <text x="758" y="48" font-size="12" text-anchor="middle" fill="#047857" font-weight="700">q(z|x)=N(μ, σ²)</text>
+  <line x1="786" y1="79" x2="820" y2="79" stroke="#10b981" stroke-width="2" marker-end="url(#a3)"/>
+  <rect x="824" y="56" width="96" height="46" rx="9" fill="#ffffff" stroke="#10b981" stroke-width="1.6"/>
+  <text x="872" y="84" font-size="13" text-anchor="middle" fill="#047857" font-weight="700">Decoder</text>
+  <!-- VAE latent space -->
+  <rect x="500" y="200" width="440" height="200" rx="12" fill="#f7fdf9" stroke="#e3e4ec"/>
+  <text x="520" y="228" font-size="13" font-weight="700" fill="#383e4c">z 空间：被整体拉向标准正态 N(0, I)</text>
+  <circle cx="720" cy="300" r="82" fill="#10b981" opacity=".06"/>
+  <circle cx="720" cy="300" r="56" fill="#10b981" opacity=".10"/>
+  <circle cx="720" cy="300" r="32" fill="#10b981" opacity=".16"/>
+  <text x="720" y="306" font-size="12" text-anchor="middle" fill="#047857" font-weight="700">N(0, I)</text>
+  <g fill="#10b981">
+    <circle cx="680" cy="278" r="4"/><circle cx="665" cy="315" r="4"/><circle cx="700" cy="250" r="4"/>
+    <circle cx="760" cy="265" r="4"/><circle cx="782" cy="300" r="4"/><circle cx="748" cy="340" r="4"/>
+    <circle cx="690" cy="348" r="4"/><circle cx="735" cy="245" r="4"/><circle cx="712" cy="358" r="4"/>
+  </g>
+  <line x1="608" y1="300" x2="628" y2="300" stroke="#10b981" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#a3)"/>
+  <text x="536" y="378" font-size="11.5" fill="#047857" font-weight="600">处处都能采样，处处解码都有意义</text>
+</svg>
+<p class="figcap"><b>图 2-1</b> AE 与 VAE 的本质区别。左：AE 把每张图压成一个孤立点，z 空间大片区域从未被训练覆盖，在这些区域解码等于赌博；右：VAE 把每张图编码成一个分布（图中绿色椭圆），并把所有分布都往标准正态 N(0, I) 上拉，整个空间被「填满」，任意采样都是有效输入。</p>
+</div>
+
+<h3>2.3 修法的直觉：从「点」到「分布」</h3>
+<p>VAE 的解法分两步，直觉非常朴素：</p>
+<ol>
+  <li><strong>把「点」升级成「分布」</strong>。让 encoder 不再输出一个确定的 z，而是输出一个分布 q(z|x) = N(μ, σ²)——一组均值和方差。这样每个训练样本不再只照亮 z 空间的一个点，而是照亮一小片<strong>区域</strong>（越「典型」的样本 σ 越大，照亮的范围越大）；</li>
+  <li><strong>把所有分布都往同一个「标准形状」上拉</strong>。给它们加一条正则：让 q(z|x) 尽量接近标准正态 N(0, I)。于是所有样本的「照明区」互相重叠、铺满整个 z 空间，而且整体呈现出规整的、可采样的高斯形状。</li>
+</ol>
+<p>这一改，生成问题就解决了：想生成新图，只要从 N(0, I) 里随机采一个 z，交给 Decoder，出来的就是一张「没见过但合理」的图。</p>
+<div class="callout warn">
+  <span class="co-title">天下没有免费的午餐</span>
+  <p>「编码一个分布」让训练目标变得完全陌生：重构损失怎么对「一个分布」计算？「拉近两个分布」的距离怎么衡量、怎么可微？这些都必须用概率的语言严格回答，而且里面藏着一个不可解的积分。这就是第 3 章要推的数学——也是 VAE 精髓所在。</p>
+</div>
+</section>
+
+<!-- ==================== 第 3 章 ==================== -->
+<section id="ch3">
+<h2><span class="ch-no">03</span>数学原理：变分推断与 ELBO</h2>
+<p class="ch-intro">这一章是 VAE 的核心。我们会从「生成模型想优化什么」出发，遇到那个不可解的积分，然后请出变分推断，一步步推导出 ELBO（证据下界）——VAE 训练损失的真正来源。两种推导都给出，每一步都不跳。</p>
+
+<h3>3.1 生成模型想优化什么：对数似然</h3>
+<p>我们手头有一批数据 x（比如 6 万张手写数字）。生成模型的目标是：找一个带参数 θ 的分布 p<sub>θ</sub>(x)，让它尽量贴合这批数据的真实分布。衡量「贴合」的标准方法叫<strong>最大似然</strong>——找一组参数 θ，让已观测到的这批数据出现的概率最大：</p>
+<div class="formula">
+  θ* = argmax<sub>θ</sub> &nbsp;log p<sub>θ</sub>(x)
+  <span class="note-below">log 把连乘变成连加，数值更稳定，也让后面的推导成为可能</span>
+</div>
+<p>接下来的问题是：p<sub>θ</sub>(x) 这个分布具体怎么设计？直接用神经网络「一步到位」输出 p(x) 很难——图像是上万维的向量，直接对这么高维的空间建模分布，写不出合适的归一化形式。VAE 采用的是<strong>隐变量模型</strong>的两段式结构：</p>
+<ul>
+  <li>先取一个简单、已知、好采样的<strong>先验</strong>：z ~ N(0, I)，z 是低维向量（比如 20 维）；</li>
+  <li>再用神经网络（这就是未来的 Decoder）建模<strong>似然</strong> p<sub>θ</sub>(x|z)：给定一个 z，输出一个「以 z 为条件」的 x 的分布。</li>
+</ul>
+<p>于是整个数据分布由两者复合而成（边缘似然）：</p>
+<div class="formula">
+  p<sub>θ</sub>(x) = ∫ p<sub>θ</sub>(x|z) · p(z) dz
+  <span class="note-below">对所有可能的 z 求积分；「从模型生成一张图」= 先采 z，再按 p(x|z) 采样 x</span>
+</div>
+<p>这个形式很漂亮，但正是它埋下了本章最大的麻烦——</p>
+
+<h3>3.2 死结：积分不可解，后验也不可解</h3>
+<p>想把 log p<sub>θ</sub>(x) 优化起来，必须先把它<strong>算出来</strong>。但上面这个积分是灾难性的：</p>
+<ul>
+  <li><strong>没有闭式解</strong>：p<sub>θ</sub>(x|z) 是个神经网络，积分 ∫p(x|z)p(z)dz 对任意非平凡的神经网络都算不出解析形式；</li>
+  <li><strong>数值积分不可行</strong>：20 维的 z，每维哪怕只取 10 个格点，也要算 10²⁰ 次网络前向——宇宙尺度。</li>
+</ul>
+<p>再看那条看似「绕开积分」的路——贝叶斯公式算后验：</p>
+<div class="formula">
+  p<sub>θ</sub>(z|x) = p<sub>θ</sub>(x|z) · p(z) / p<sub>θ</sub>(x)
+  <span class="note-below">分母正是那个算不出来的边缘似然——后验同样不可解</span>
+</div>
+<div class="callout warn">
+  <span class="co-title">这不是 VAE 独有的困境</span>
+  <p>「边缘似然算不出、后验算不出」是概率建模的经典死结，统计学里已经研究了几十年。传统变分推断的做法是：既然真实后验算不出，那就<strong>用一个简单的、可参数化的分布去近似它</strong>，再把这个「近似」本身优化到尽量贴近。VAE 的天才之处在于：让「近似分布」由一个神经网络（Encoder）来输出，使这套方法第一次能扩展到深度网络与大数据。</p>
+</div>
+
+<h3>3.3 请出主角：用 Encoder 近似后验</h3>
+<p>引入一个由参数 φ 参数化的分布 q<sub>φ</sub>(z|x)——给定输入 x，输出一个关于 z 的分布。用一个神经网络来实现它，这个网络就是 <strong>Encoder</strong>：</p>
+<div class="formula">
+  q<sub>φ</sub>(z|x) = N( μ<sub>φ</sub>(x),&nbsp; diag(σ<sub>φ</sub>(x)²) )
+  <span class="note-below">encoder 对每张图输出一对 (μ, σ)，即第 2 章说的「把点变成分布」的严格版本</span>
+</div>
+<p>现在的局面是：θ（Decoder）想最大化 log p<sub>θ</sub>(x)，φ（Encoder）想逼近 p<sub>θ</sub>(z|x)。这两个目标纠缠在一起——而连接它们的桥梁，就是 ELBO。</p>
+
+<h3>3.4 ELBO 推导一：从 KL 分解开刀（最推荐掌握的推导）</h3>
+<p>技巧只有一个：在 log p<sub>θ</sub>(x) 里<strong>硬塞一个 q</strong>，再除掉它。从「对联合分布取期望」开始：</p>
+<div class="formula">
+  log p<sub>θ</sub>(x) = E<sub>z~q<sub>φ</sub>(z|x)</sub>[ log p<sub>θ</sub>(x) ]
+  <span class="note-below">p 与 z 无关，取期望后不变——这一步只是换个视角</span>
+</div>
+<p>用联合分布 p<sub>θ</sub>(x, z) = p<sub>θ</sub>(x|z)·p(z) 与贝叶斯公式 p<sub>θ</sub>(x) = p<sub>θ</sub>(x, z) / p<sub>θ</sub>(z|x) 改写 log 内部：</p>
+<div class="formula">
+  log p<sub>θ</sub>(x) = E<sub>q</sub>[ log p<sub>θ</sub>(x, z) − log p<sub>θ</sub>(z|x) ]
+</div>
+<p>再插入 −log q + log q（等于加零），并把式子劈成两项：</p>
+<div class="formula">
+  log p<sub>θ</sub>(x) = E<sub>q</sub>[ log p<sub>θ</sub>(x, z) − log q<sub>φ</sub>(z|x) ]
+  &nbsp;+&nbsp; E<sub>q</sub>[ log q<sub>φ</sub>(z|x) − log p<sub>θ</sub>(z|x) ]
+</div>
+<p>第二项正是 KL 散度的定义式！于是：</p>
+<div class="formula">
+  log p<sub>θ</sub>(x) = <strong>ELBO</strong>(x; θ, φ) &nbsp;+&nbsp; D<sub>KL</sub>( q<sub>φ</sub>(z|x) ‖ p<sub>θ</sub>(z|x) )
+  <span class="note-below">第一项取名 Evidence Lower BOund（证据下界）；第二项是 encoder 近似与真后验的差距</span>
+</div>
+<div class="callout tip">
+  <span class="co-title">这一行是整个 VAE 的心脏，值得反复品味</span>
+  <p>KL 散度恒非负，所以 <strong>ELBO ≤ log p<sub>θ</sub>(x)</strong>——它名副其实地是似然的下界。而 KL 项恰是「encoder 的近似误差」。于是<strong>最大化 ELBO 一石二鸟</strong>：既直接抬高了似然本身，又压小了 encoder 与真后验的差距（因为 log p 是被近似误差「垫」在下方的，抬下界必然压 gap）。</p>
+</div>
+
+<h3>3.5 ELBO 推导二：Jensen 不等式路线</h3>
+<p>第二条路从边缘似然出发，把积分改写成对 q 的期望（重要性采样技巧：对任意 q，只要 q 的支撑覆盖 p 即可）：</p>
+<div class="formula">
+  p<sub>θ</sub>(x) = ∫ p<sub>θ</sub>(x|z) p(z) dz
+  = E<sub>z~q<sub>φ</sub>(z|x)</sub>[ p<sub>θ</sub>(x|z) · p(z) / q<sub>φ</sub>(z|x) ]
+</div>
+<p>两边取 log，再用 Jensen 不等式（log 是凹函数，期望的 log ≥ log 的期望——注意方向，取负后变成 ≤）：</p>
+<div class="formula">
+  log p<sub>θ</sub>(x) = log E<sub>q</sub>[ p<sub>θ</sub>(x|z) p(z) / q<sub>φ</sub>(z|x) ]
+  &nbsp;≥&nbsp; E<sub>q</sub>[ log p<sub>θ</sub>(x|z) + log p(z) − log q<sub>φ</sub>(z|x) ] = ELBO
+</div>
+<p>两条路殊途同归。展开后得到 ELBO 最常用的<strong>两项式</strong>：</p>
+<div class="formula">
+  ELBO(x; θ, φ) = E<sub>z~q<sub>φ</sub>(z|x)</sub>[ log p<sub>θ</sub>(x|z) ] &nbsp;−&nbsp; D<sub>KL</sub>( q<sub>φ</sub>(z|x) ‖ p(z) )
+  <span class="note-below">第一项：重构项；第二项：先验正则项。训练损失 = 负 ELBO</span>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 960 300" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="b1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+  </defs>
+  <!-- 数轴 -->
+  <line x1="200" y1="40" x2="200" y2="260" stroke="#c9c3ee" stroke-width="2" marker-end="url(#b1)"/>
+  <g font-size="12" fill="#8a8799">
+    <text x="190" y="62" text-anchor="end">对数似然</text>
+    <text x="190" y="240" text-anchor="end">0</text>
+  </g>
+  <!-- log p bar -->
+  <line x1="200" y1="70" x2="560" y2="70" stroke="#5845e6" stroke-width="3"/>
+  <text x="572" y="75" font-size="14" font-weight="700" fill="#4636c4">log p(x) —— 想要的，但算不出来</text>
+  <!-- ELBO bar -->
+  <line x1="200" y1="200" x2="430" y2="200" stroke="#10b981" stroke-width="3"/>
+  <text x="442" y="205" font-size="14" font-weight="700" fill="#047857">ELBO —— 能算、能优化的下界</text>
+  <!-- gap -->
+  <line x1="312" y1="78" x2="312" y2="192" stroke="#ef4444" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#b1)"/>
+  <text x="325" y="130" font-size="13" font-weight="700" fill="#ef4444">gap = D(q(z|x) ‖ p(z|x)) ≥ 0</text>
+  <text x="325" y="150" font-size="11.5" fill="#b91c1c">encoder 与「真后验」的差距</text>
+  <!-- explanation right -->
+  <text x="640" y="120" font-size="13" fill="#383e4c" font-weight="700">训练在做什么：</text>
+  <text x="640" y="146" font-size="12.5" fill="#5a6070">① 推高绿线（ELBO）本身</text>
+  <text x="640" y="168" font-size="12.5" fill="#5a6070">   —— Decoder 越来越会生成；</text>
+  <text x="640" y="196" font-size="12.5" fill="#5a6070">② 绿线与紫线的 gap 被迫收窄</text>
+  <text x="640" y="218" font-size="12.5" fill="#5a6070">   —— Encoder 越来越准地近似后验。</text>
+  <text x="640" y="246" font-size="12.5" fill="#4636c4" font-weight="600">两件事只用一个损失同时完成。</text>
+</svg>
+<p class="figcap"><b>图 3-1</b> log p 与 ELBO 的关系。KL 项把两者隔开；训练时无法直接触碰紫线（真似然），但抬升绿线（ELBO）时，紫线被 gap「顶」着一起上升。这正是「下界」策略的精妙之处。</p>
+</div>
+
+<h3>3.6 两项式 ELBO 的直观读法</h3>
+<table class="tbl">
+  <tr><th>项</th><th>公式</th><th>大白话</th><th>负责的网络</th></tr>
+  <tr class="hl"><td>重构项</td><td class="num">E<sub>z~q</sub>[ log p(x|z) ]</td><td>从 q 里采个 z，解码出来要像原图——<strong>保真压力</strong></td><td>Encoder + Decoder</td></tr>
+  <tr><td>正则项</td><td class="num">−D<sub>KL</sub>(q(z|x) ‖ N(0, I))</td><td>编码出的分布要靠近标准正态——<strong>规整压力</strong></td><td>Encoder</td></tr>
+</table>
+<p>两股力量天然<strong>互相制衡</strong>：正则项相当于给 z 通道限流——KL 越小，q 携带的「关于 x 的信息量」越少（极端情形 q 完全无视 x、恒等于 N(0, I)，KL 为 0，但什么都重构不出来）；重构项则逼着 q 往 z 里塞信息以还原 x。最终平衡点决定了隐空间「多有用、多规整」的折中。这个制衡关系是理解第 8 章「后验坍缩」「β-VAE」全部现象的钥匙。</p>
+<div class="callout note">
+  <span class="co-title">为什么叫「证据」下界？</span>
+  <p>贝叶斯统计里，观测到的数据 x 被称为 evidence（证据）。ELBO 是这份数据对数似然的 lower bound（下界），因此得名 Evidence Lower BOund。</p>
+</div>
+</section>
+
+<!-- ==================== 第 4 章 ==================== -->
+<section id="ch4">
+<h2><span class="ch-no">04</span>重参数化技巧：让梯度穿过随机性</h2>
+<p class="ch-intro">第 3 章推出了漂亮的损失：−ELBO = −E<sub>z~q</sub>[log p(x|z)] + KL。但注意那个期望——训练时需要对 z 从 q<sub>φ</sub>(z|x) 里<strong>采样</strong>，而「采样」这个操作本身不可导，梯度传不回 φ。重参数化（reparameterization）就是为此而生的工程魔法，也是 VAE 论文标题里 "Stochastic Backpropagation" 的含义。</p>
+
+<h3>4.1 问题：采样节点会掐断梯度</h3>
+<p>把重构项的计算画成数据流图：</p>
+<div class="flow">
+  x <span class="arr">→</span> [fc_mu / fc_logvar] <span class="arr">→</span> μ, σ &nbsp; <span class="arr">→ 采样 z ~ N(μ, σ²) →</span> &nbsp;z <span class="arr">→</span> [Decoder] <span class="arr">→</span> x̂ <span class="arr">→</span> loss
+  <span class="tag">采样是一个「随机节点」：ε 从分布里凭空抽出，与 φ 没有可导关系</span>
+</div>
+<p>自动微分依赖「每个中间变量都是输入的确定函数」。而 z ~ N(μ, σ²) 这个操作：同样输入 (μ, σ)，每次输出的 z 却不同——它不是确定函数，<strong>反向传播在「采样」这一步就断了</strong>。损失对 μ、σ 的梯度全部丢失。</p>
+<p>朴素的补救是用蒙特卡洛梯度估计（REINFORCE / score function estimator）：∇E[f(z)] = E[f(z)·∇log q(z)]。它能算，但方差极大，训练慢且不稳。VAE 论文给出了一个又简单又漂亮的替代方案。</p>
+
+<h3>4.2 解法：把随机性挪到旁边去</h3>
+<p>关键观察：高斯分布的采样总能写成「<strong>确定性变换 + 独立噪声</strong>」的形式。先从一个与参数完全无关的标准正态里采 ε，再用 μ、σ 做一次普通的可导运算：</p>
+<div class="formula">
+  z = μ + σ ⊙ ε,&nbsp;&nbsp;&nbsp; ε ~ N(0, I)
+  <span class="note-below">⊙ 表示逐元素相乘；μ = μ(x)，σ = σ(x) 由 encoder 输出</span>
+</div>
+<p>分布完全不变（ε 平移缩放后仍是高斯）：若 ε ~ N(0, I)，则 μ + σ⊙ε ~ N(μ, diag(σ²))，与直接采 z 同分布。但计算图上发生了质变：</p>
+<ul>
+  <li>随机性被「旁路」进了 ε——一个与网络参数无关的外部输入，就像数据噪声一样，不需要求导；</li>
+  <li>z 成为 (μ, σ, ε) 的<strong>确定函数</strong>：∂z/∂μ = 1，∂z/∂σ = ε，梯度畅通无阻地穿过 z 流回 encoder 的所有参数。</li>
+</ul>
+
+<div class="figure">
+<svg viewBox="0 0 960 330" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="c1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="c2" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#10b981"/></marker>
+  </defs>
+  <!-- 上：直接采样 -->
+  <text x="40" y="34" font-size="15.5" font-weight="700" fill="#24292f">直接采样：梯度在随机节点处断裂</text>
+  <rect x="40" y="58" width="90" height="44" rx="9" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="85" y="85" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="700">x</text>
+  <line x1="132" y1="80" x2="164" y2="80" stroke="#5845e6" stroke-width="2" marker-end="url(#c1)"/>
+  <rect x="168" y="58" width="130" height="44" rx="9" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="233" y="85" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="700">fc_mu / fc_logvar</text>
+  <line x1="300" y1="80" x2="332" y2="80" stroke="#5845e6" stroke-width="2" marker-end="url(#c1)"/>
+  <!-- 采样节点 -->
+  <rect x="336" y="54" width="170" height="52" rx="26" fill="#fef2f2" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="5 3"/>
+  <text x="421" y="77" font-size="13" text-anchor="middle" fill="#b91c1c" font-weight="700">⚡ 采样</text>
+  <text x="421" y="95" font-size="11" text-anchor="middle" fill="#b91c1c">z ~ N(μ, σ²)</text>
+  <line x1="508" y1="80" x2="540" y2="80" stroke="#5845e6" stroke-width="2" marker-end="url(#c1)"/>
+  <rect x="544" y="58" width="110" height="44" rx="9" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="599" y="85" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="700">Decoder</text>
+  <line x1="656" y1="80" x2="688" y2="80" stroke="#5845e6" stroke-width="2" marker-end="url(#c1)"/>
+  <rect x="692" y="58" width="76" height="44" rx="9" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="730" y="85" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="700">x̂ / loss</text>
+  <!-- 断裂标记 -->
+  <line x1="421" y1="112" x2="421" y2="132" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="421" y="150" font-size="12" text-anchor="middle" fill="#ef4444" font-weight="700">✗ 反向梯度到此为止</text>
+  <text x="560" y="150" font-size="11.5" fill="#b91c1c">随机节点不是确定函数，autograd 无法穿过</text>
+  <!-- 分隔 -->
+  <line x1="40" y1="175" x2="920" y2="175" stroke="#e3e4ec" stroke-width="1.5"/>
+  <!-- 下：重参数化 -->
+  <text x="40" y="205" font-size="15.5" font-weight="700" fill="#24292f">重参数化：随机性旁路注入，梯度全程可导</text>
+  <rect x="40" y="232" width="90" height="44" rx="9" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="85" y="259" font-size="12.5" text-anchor="middle" fill="#047857" font-weight="700">x</text>
+  <line x1="132" y1="254" x2="164" y2="254" stroke="#10b981" stroke-width="2" marker-end="url(#c2)"/>
+  <rect x="168" y="232" width="130" height="44" rx="9" fill="#fff" stroke="#10b981" stroke-width="1.6"/>
+  <text x="233" y="259" font-size="12.5" text-anchor="middle" fill="#047857" font-weight="700">fc_mu / fc_logvar</text>
+  <line x1="300" y1="254" x2="332" y2="254" stroke="#10b981" stroke-width="2" marker-end="url(#c2)"/>
+  <!-- 重参数化节点 -->
+  <rect x="336" y="226" width="170" height="56" rx="12" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8"/>
+  <text x="421" y="250" font-size="13" text-anchor="middle" fill="#047857" font-weight="700">z = μ + σ ⊙ ε</text>
+  <text x="421" y="270" font-size="11" text-anchor="middle" fill="#047857">普通可导运算</text>
+  <!-- ε 旁路 -->
+  <rect x="352" y="300" width="140" height="24" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.2"/>
+  <text x="422" y="317" font-size="11.5" text-anchor="middle" fill="#b45309" font-weight="700">ε ~ N(0, I)（外部噪声）</text>
+  <line x1="421" y1="300" x2="421" y2="284" stroke="#d97706" stroke-width="2" marker-end="url(#c2)"/>
+  <line x1="508" y1="254" x2="540" y2="254" stroke="#10b981" stroke-width="2" marker-end="url(#c2)"/>
+  <rect x="544" y="232" width="110" height="44" rx="9" fill="#fff" stroke="#10b981" stroke-width="1.6"/>
+  <text x="599" y="259" font-size="12.5" text-anchor="middle" fill="#047857" font-weight="700">Decoder</text>
+  <line x1="656" y1="254" x2="688" y2="254" stroke="#10b981" stroke-width="2" marker-end="url(#c2)"/>
+  <rect x="692" y="232" width="76" height="44" rx="9" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="730" y="259" font-size="12.5" text-anchor="middle" fill="#047857" font-weight="700">x̂ / loss</text>
+  <text x="790" y="250" font-size="12.5" fill="#047857" font-weight="700">✓ 梯度直达 encoder：</text>
+  <text x="790" y="270" font-size="11.5" fill="#047857" font-family="Cambria Math,Georgia,serif">∂z/∂μ = 1，∂z/∂σ = ε</text>
+</svg>
+<p class="figcap"><b>图 4-1</b> 重参数化前后的计算图对比。上：直接在分布上采样，随机节点掐断反向传播；下：噪声 ε 改由旁路注入，z 变成确定函数，梯度（绿线方向）可以一路流回 encoder 参数。</p>
+</div>
+
+<h3>4.3 期望的蒙特卡洛估计</h3>
+<p>有了可导的 z，重构项的期望用采样近似（蒙特卡洛估计）即可：</p>
+<div class="formula">
+  E<sub>z~q<sub>φ</sub>(z|x)</sub>[ log p<sub>θ</sub>(x|z) ] &nbsp;≈&nbsp; (1/L) Σ<sub>l=1…L</sub> log p<sub>θ</sub>(x | μ + σ ⊙ ε<sub>l</sub>),&nbsp;&nbsp; ε<sub>l</sub> ~ N(0, I)
+  <span class="note-below">实践中几乎总取 L = 1：每个 minibatch 的每个样本各采一次噪声，噪声之间的平均已经提供了积分的方差缩减</span>
+</div>
+<div class="callout tip">
+  <span class="co-title">一个帮助记忆的类比</span>
+  <p>把 encoder 想成「工厂」：以前的做法是工厂内部摇骰子直接出货，货出了厂就查不到骰子的影响；重参数化相当于让骰子在厂外由第三方摇好，作为「原材料」送进工厂——工厂内的每道工序（加 μ、乘 σ）都可追溯、可审计（可求导）。分布没变，可导性变了。</p>
+</div>
+</section>
+
+<!-- ==================== 第 5 章 ==================== -->
+<section id="ch5">
+<h2><span class="ch-no">05</span>网络结构详解：Encoder、隐空间与 Decoder</h2>
+<p class="ch-intro">数学铺垫完毕，现在把它翻译成具体的网络。VAE 的结构出奇地简单：一个 Encoder、两个线性头（fc_mu 与 fc_logvar）、一次重参数化、一个 Decoder。本章逐层拆解每一件「为什么」，最后给出 CNN 版结构。</p>
+
+<h3>5.1 全景图：一次前向的完整数据流</h3>
+
+<div class="figure">
+<svg viewBox="0 0 1100 560" width="1100" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="d1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="d2" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d97706"/></marker>
+    <marker id="d3" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#ef4444"/></marker>
+  </defs>
+  <!-- KL 损失（顶部） -->
+  <rect x="690" y="18" width="360" height="52" rx="10" fill="#fef2f2" stroke="#ef4444" stroke-width="1.6"/>
+  <text x="870" y="40" font-size="13.5" text-anchor="middle" fill="#b91c1c" font-weight="800">损失② KL 正则项</text>
+  <text x="870" y="59" font-size="12" text-anchor="middle" fill="#b91c1c" font-family="Cambria Math,Georgia,serif">D( q(z|x) ‖ N(0, I) ) —— 只用 μ 和 logvar 计算，闭式解</text>
+  <path d="M659,97 C 690,80 700,60 730,52" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#d3)"/>
+  <path d="M659,207 C 700,190 730,110 760,72" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#d3)"/>
+  <!-- 主流程 -->
+  <rect x="20" y="125" width="90" height="52" rx="10" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="65" y="147" font-size="14" text-anchor="middle" fill="#4636c4" font-weight="800">x</text>
+  <text x="65" y="167" font-size="11" text-anchor="middle" fill="#7c6cf0" font-family="Consolas,monospace">[B, 784]</text>
+  <line x1="112" y1="151" x2="144" y2="151" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="148" y="118" width="205" height="66" rx="10" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="250" y="143" font-size="13.5" text-anchor="middle" fill="#4636c4" font-weight="800">Encoder 主干 enc_fc</text>
+  <text x="250" y="163" font-size="11.5" text-anchor="middle" fill="#7c6cf0" font-family="Consolas,monospace">Linear 784→400 + ReLU</text>
+  <line x1="355" y1="151" x2="392" y2="151" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <circle cx="415" cy="151" r="21" fill="#5845e6" opacity=".14"/>
+  <circle cx="415" cy="151" r="12" fill="#5845e6"/>
+  <text x="415" y="155" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">h</text>
+  <text x="415" y="190" font-size="11" text-anchor="middle" fill="#7c6cf0" font-family="Consolas,monospace">[B, 400]</text>
+  <!-- 分叉到双头 -->
+  <path d="M433,143 C 460,120 450,97 478,97" fill="none" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <path d="M433,159 C 460,183 450,207 478,207" fill="none" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="482" y="75" width="160" height="44" rx="9" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="562" y="101" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="800">fc_mu（均值头）</text>
+  <rect x="482" y="185" width="160" height="44" rx="9" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="562" y="211" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="800">fc_logvar（方差头）</text>
+  <line x1="644" y1="97" x2="682" y2="97" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <line x1="644" y1="207" x2="682" y2="207" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="686" y="75" width="86" height="44" rx="9" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="729" y="101" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="800">μ [B,20]</text>
+  <rect x="686" y="185" width="86" height="44" rx="9" fill="#eeecfc" stroke="#c9c3ee"/>
+  <text x="729" y="206" font-size="12.5" text-anchor="middle" fill="#4636c4" font-weight="800">log σ² [B,20]</text>
+  <text x="729" y="223" font-size="10" text-anchor="middle" fill="#7c6cf0">（logvar）</text>
+  <!-- 重参数化 -->
+  <line x1="774" y1="110" x2="838" y2="135" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <line x1="774" y1="196" x2="838" y2="172" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="842" y="125" width="210" height="60" rx="12" fill="#ecfdf5" stroke="#10b981" stroke-width="1.8"/>
+  <text x="947" y="150" font-size="13.5" text-anchor="middle" fill="#047857" font-weight="800">重参数化</text>
+  <text x="947" y="171" font-size="12.5" text-anchor="middle" fill="#047857" font-family="Cambria Math,Georgia,serif">z = μ + σ ⊙ ε,&nbsp; σ = exp(½ logvar)</text>
+  <rect x="890" y="255" width="118" height="30" rx="15" fill="#fffbeb" stroke="#d97706" stroke-width="1.4"/>
+  <text x="949" y="275" font-size="12" text-anchor="middle" fill="#b45309" font-weight="700">ε ~ N(0, I)</text>
+  <line x1="947" y1="255" x2="947" y2="189" stroke="#d97706" stroke-width="2" marker-end="url(#d2)"/>
+  <!-- 下排：decoder -->
+  <line x1="947" y1="185" x2="947" y2="330" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="680" y="334" width="372" height="64" rx="10" fill="#fff" stroke="#5845e6" stroke-width="1.6"/>
+  <text x="866" y="359" font-size="13.5" text-anchor="middle" fill="#4636c4" font-weight="800">Decoder 主干 dec_fc</text>
+  <text x="866" y="379" font-size="11.5" text-anchor="middle" fill="#7c6cf0" font-family="Consolas,monospace">Linear 20→400 + ReLU → Linear 400→784 + Sigmoid</text>
+  <line x1="678" y1="366" x2="510" y2="366" stroke="#5845e6" stroke-width="2" marker-end="url(#d1)"/>
+  <rect x="414" y="336" width="94" height="60" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="461" y="359" font-size="14" text-anchor="middle" fill="#047857" font-weight="800">x̂</text>
+  <text x="461" y="379" font-size="11" text-anchor="middle" fill="#10b981" font-family="Consolas,monospace">[B, 784]</text>
+  <line x1="412" y1="366" x2="330" y2="366" stroke="#ef4444" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#d3)"/>
+  <line x1="65" y1="180" x2="65" y2="352" stroke="#b08c00" stroke-width="1.6" stroke-dasharray="4 4"/>
+  <line x1="65" y1="352" x2="140" y2="366" stroke="#b08c00" stroke-width="1.6" stroke-dasharray="4 4" marker-end="url(#d2)"/>
+  <rect x="150" y="336" width="176" height="60" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+  <text x="238" y="360" font-size="13.5" text-anchor="middle" fill="#b45309" font-weight="800">损失① 重构项</text>
+  <text x="238" y="380" font-size="12" text-anchor="middle" fill="#b45309" font-family="Cambria Math,Georgia,serif">BCE(x̂, x) 或 MSE</text>
+  <text x="20" y="460" font-size="13" fill="#5a6070">训练时返回三元组 (x̂, μ, logvar)，两个损失在 loss_function 里分别计算、相加；</text>
+  <text x="20" y="484" font-size="13" fill="#5a6070">生成时（第 7 章）只需右半边：直接从 N(0, I) 采 z 喂给 Decoder。</text>
+  <text x="20" y="522" font-size="12.5" fill="#8a8799" font-family="Consolas,monospace">forward(x) → x̂ = dec(reparam(enc(x)))，中间产出 μ、logvar 供损失计算</text>
+</svg>
+<p class="figcap"><b>图 5-1</b> MLP 版 VAE 完整数据流（MNIST，B 为 batch size）。紫线为前向计算，橙线为噪声注入，红虚线为损失来源：重构项对比 x̂ 与 x，KL 项由 (μ, logvar) 与先验 N(0, I) 的闭式距离构成。</p>
+</div>
+
+<h3>5.2 Encoder：一个主干，两个头</h3>
+<p>Encoder 要输出的是<strong>一个分布</strong> q(z|x) = N(μ, diag(σ²))，所以它必须吐出两组数：均值 μ 和（对数）方差。工程上不搞两个独立网络，而是<strong>共享主干、只在最后一层分叉</strong>：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">encoder 部分（PyTorch）</span><span class="lang">Python</span></div>
+<pre><code class="language-python"># Encoder：共享主干 + 两个投影头
+self.enc_fc = nn.Sequential(
+    nn.Linear(784, 400),   # 把 784 维图像压到 400 维特征
+    nn.ReLU(),
+)
+self.fc_mu     = nn.Linear(400, z_dim)  # 均值头：输出 μ
+self.fc_logvar = nn.Linear(400, z_dim)  # 对数方差头：输出 log σ²
+
+def encode(self, x):
+    h = self.enc_fc(x)
+    return self.fc_mu(h), self.fc_logvar(h)   # 一图 → 一个分布 (μ, σ)</code></pre>
+</div>
+<ul>
+  <li><strong>为什么共享主干</strong>：提取「图像有什么内容」的特征对 μ 和 σ 是同一件事，没有必要训练两遍；分叉只发生在最后的线性投影——主干只需对一个 400 维特征做两种不同的「读出」。</li>
+  <li><strong>两个头只是普通线性层</strong>：没有任何激活约束（μ 可以是任意实数，logvar 同样），约束靠损失里的 KL 项「软」地拉出来。</li>
+  <li><strong>协方差为什么取对角</strong>：完整协方差矩阵有 d(d+1)/2 个参数且要求正定，对 20 维的 z 也不小；对角假设（各维独立）让每个样本只需输出 2d 个数，实践中完全够用。</li>
+</ul>
+
+<h3>5.3 Decoder：从 z 还原图像</h3>
+<p>Decoder 是普通的生成网络：输入 20 维的 z，输出 784 维的图像。它的输出被解释为「分布的参数」而不是图像本身——这是初学者最容易忽略的一点：</p>
+<ul>
+  <li>若用<strong>伯努利似然</strong>（配合 BCE 损失）：输出层的每个值是像素为 1（前景）的概率，所以最后接 <code>Sigmoid</code> 压到 (0, 1)；</li>
+  <li>若用<strong>高斯似然</strong>（配合 MSE 损失）：输出是高斯分布的均值，即「最可能的图像」，Sigmoid 可加可不加。</li>
+</ul>
+<div class="codeblock">
+<div class="codehead"><span class="fname">decoder 部分（PyTorch）</span><span class="lang">Python</span></div>
+<pre><code class="language-python"># Decoder：从 z 还原 x
+self.dec_fc = nn.Sequential(
+    nn.Linear(z_dim, 400),
+    nn.ReLU(),
+    nn.Linear(400, 784),
+    nn.Sigmoid(),   # 伯努利似然：输出像素为 1 的概率，配合 BCE 使用
+)
+
+def decode(self, z):
+    return self.dec_fc(z)   # 生成阶段直接调用这一段即可</code></pre>
+</div>
+
+<h3>5.4 重参数化节点</h3>
+<p>第 4 章的公式落在代码里只有三行，但每一行都有讲究：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">reparameterize（PyTorch）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">def reparameterize(self, mu, logvar):
+    std = torch.exp(0.5 * logvar)   # logvar = log σ²，先还原 σ = exp(½ · logvar)
+    eps = torch.randn_like(std)     # 与 std 同形状的标准正态噪声（外部随机性）
+    return mu + eps * std           # z 是 (μ, σ, ε) 的确定函数，梯度可穿过</code></pre>
+</div>
+
+<h3>5.5 为什么预测 logvar 而不是直接预测 σ</h3>
+<p>细心的读者会发现：网络输出的叫 logvar（log σ²）而不是 σ 本身。这不是随意命名，而是<strong>数值稳定性</strong>的成熟做法：</p>
+<table class="tbl">
+  <tr><th>方案</th><th>做法</th><th>问题</th></tr>
+  <tr><td>直接输出 σ</td><td>σ = fc(x)，必须再 clamp 到正数</td><td>σ 必须大于 0；若用 <code>clamp</code> 硬截断，边界处梯度为零，网络容易被「卡死」在边界上</td></tr>
+  <tr class="hl"><td>输出 logvar（推荐）</td><td>logvar = fc(x) 无约束，σ = exp(½ logvar)</td><td>exp 天然保证 σ 为正；网络可在整个实数轴上自由调整方差，logvar = 0 对应 σ = 1，移动一格就翻倍/减半，尺度跨度友好</td></tr>
+</table>
+<p>另一个好处：KL 闭式解里恰好出现 log σ² 项（第 6 章推导），直接用 logvar 代入，一行搞定，无需再取对数。</p>
+<div class="callout warn">
+  <span class="co-title">最常见的实现 bug</span>
+  <p>把 logvar 直接当 σ 用（漏掉 <code>exp(0.5 * ...)</code>）。症状是训练几乎不收敛或输出全糊。记住输出的名字叫 logvar——它是方差的<strong>对数</strong>。</p>
+</div>
+
+<h3>5.6 隐空间维度怎么选</h3>
+<ul>
+  <li><strong>z_dim = 2</strong>：专为可视化——可以直接画在平面直角坐标系上，观察类簇分布与插值（第 7 章实战）；</li>
+  <li><strong>z_dim = 20</strong>：MNIST 的经典配置（原论文同款），重构与规整的平衡点；</li>
+  <li><strong>更大（64~512）</strong>：真实图像、更复杂的语义。维度越大重构越清晰，但 KL 要正则的参数也越多，隐空间越难保持规整——通常靠加大 β 或更深的结构（如 NVAE）来平衡。</li>
+</ul>
+
+<h3>5.7 升级：CNN 版结构（真实图像用）</h3>
+<p>MLP 对 28×28 的 MNIST 够用；处理 64×64 以上的自然图像时，Encoder/Decoder 换成卷积网络，其余思想一字不改：</p>
+<table class="tbl">
+  <tr><th>层</th><th>配置</th><th>输出形状（64×64 输入）</th><th>说明</th></tr>
+  <tr><td>Conv1</td><td class="num">3→32, 4×4, stride 2</td><td class="num">32 × 32 × 32</td><td>分辨率减半</td></tr>
+  <tr><td>Conv2</td><td class="num">32→64, 4×4, stride 2</td><td class="num">64 × 16 × 16</td><td>分辨率再减半</td></tr>
+  <tr><td>Conv3</td><td class="num">64→128, 4×4, stride 2</td><td class="num">128 × 8 × 8</td><td>通道翻倍</td></tr>
+  <tr><td>Conv4</td><td class="num">128→256, 4×4, stride 2</td><td class="num">256 × 4 × 4</td><td>到达隐层特征</td></tr>
+  <tr class="hl"><td>双头</td><td class="num">两个 1×1 卷积（或分离卷积）</td><td class="num">μ / logvar 各 256×4×4</td><td>逐位置输出分布参数</td></tr>
+  <tr><td>Decoder</td><td>ConvTranspose 逐级上采样</td><td class="num">… → 3 × 64 × 64</td><td>镜像还原</td></tr>
+</table>
+<p>注意 CNN 版的 z 不再是一个 20 维向量，而是一张 <strong>空间化的特征图</strong>（比如 256 通道、4×4 分辨率）——每个空间位置一个分布。这个设计一路进化，最终成为 Stable Diffusion 里 64×64×4 潜空间的雏形（第 8 章）。</p>
+</section>
+
+<!-- ==================== 第 6 章 ==================== -->
+<section id="ch6">
+<h2><span class="ch-no">06</span>损失函数：重构项与 KL 项完整推导</h2>
+<p class="ch-intro">训练损失 = 负 ELBO。这一章把它的两个组成部分分别推到底：KL 项为什么有闭式解（四步推导）、重构项为什么长得像 BCE 或 MSE（从似然函数推出来），以及工程上最容易踩的 reduction 配比大坑。</p>
+
+<h3>6.1 总损失一览</h3>
+<p>综合第 3~5 章，单个样本的损失为（训练时对 batch 取平均）：</p>
+<div class="formula">
+  L(x; θ, φ) = −ELBO = <strong>重构项</strong> + <strong>KL 项</strong> = −log p<sub>θ</sub>(x|z) &nbsp;+&nbsp; D<sub>KL</sub>( q<sub>φ</sub>(z|x) ‖ N(0, I) )
+  <span class="note-below">z = μ + σ ⊙ ε 由重参数化采样得到；重构项展开见 6.3，KL 项闭式解见 6.2</span>
+</div>
+<div class="formula">
+  L(x; θ, φ) ≈ BCE(x̂, x) &nbsp;+&nbsp; ½ Σ<sub>j=1…d</sub>( μ<sub>j</sub>² + σ<sub>j</sub>² − log σ<sub>j</sub>² − 1 )
+  <span class="note-below">BCE 版（MNIST 系）；若用高斯似然，第一项换成 ‖x − x̂‖²（MSE 版）</span>
+</div>
+
+<h3>6.2 KL 项闭式解：四步推导</h3>
+<p>两个分布都很简单：q(z|x) = N(μ, σ²I)（对角），先验 p(z) = N(0, I)。KL 定义为 E_q[log q − log p]，逐步展开：</p>
+<h4>第①步：写出两个对数密度</h4>
+<div class="formula">
+  log q(z|x) = −(d/2)·log 2π − Σ<sub>j</sub> log σ<sub>j</sub> − ½ Σ<sub>j</sub> (z<sub>j</sub> − μ<sub>j</sub>)² / σ<sub>j</sub>²
+  <br>log p(z) = −(d/2)·log 2π − ½ Σ<sub>j</sub> z<sub>j</sub>²
+  <span class="note-below">d 为 z 的维度；高斯密度的标准形式取对数</span>
+</div>
+<h4>第②步：相减（log 2π 项直接抵消）</h4>
+<div class="formula">
+  log q − log p = Σ<sub>j</sub> [ −log σ<sub>j</sub> − ½ (z<sub>j</sub> − μ<sub>j</sub>)²/σ<sub>j</sub>² + ½ z<sub>j</sub>² ]
+</div>
+<h4>第③步：在 q 下取期望（用两个基本事实）</h4>
+<div class="formula">
+  E<sub>q</sub>[(z<sub>j</sub> − μ<sub>j</sub>)²] = σ<sub>j</sub>²（方差的定义），&nbsp;&nbsp;&nbsp; E<sub>q</sub>[z<sub>j</sub>²] = μ<sub>j</sub>² + σ<sub>j</sub>²（二阶矩 = 均值² + 方差）
+</div>
+<p>代入第②步，每一维得到：</p>
+<div class="formula">
+  E<sub>q</sub>[·] = −log σ<sub>j</sub> − ½ + ½ μ<sub>j</sub>² + ½ σ<sub>j</sub>²
+</div>
+<h4>第④步：整理成标准形式</h4>
+<div class="formula">
+  D<sub>KL</sub>( q(z|x) ‖ N(0, I) ) = ½ Σ<sub>j=1…d</sub>( μ<sub>j</sub>² + σ<sub>j</sub>² − log σ<sub>j</sub>² − 1 )
+  <span class="note-below">自检：当 q 恰好等于 N(0, I)（μ=0, σ=1）时，每项 = ½(0+1−0−1) = 0，KL 为零 ✓</span>
+</div>
+<p>用网络输出的 logvar 表示（log σ² = logvar，σ² = exp(logvar)），就是代码里那行著名的公式：</p>
+<div class="formula">
+  KL = −½ Σ<sub>j</sub>( 1 + logvar<sub>j</sub> − μ<sub>j</sub>² − exp(logvar<sub>j</sub>) )
+</div>
+<div class="callout tip">
+  <span class="co-title">这个公式的「物理读法」</span>
+  <p>μ² 项惩罚「均值离 0 太远」——把编码中心拉回原点；σ² − log σ² − 1 项惩罚「方差偏离 1」（在 σ=1 处取最小值 0，过小或过大都吃亏）——把编码范围拉成标准宽度。两项合起来正是第 2 章「把所有分布拉向 N(0, I)」的数学实现。</p>
+</div>
+
+<h3>6.3 重构项：BCE 和 MSE 都是「选了个分布」的结果</h3>
+<p>重构项 −log p<sub>θ</sub>(x|z) 的形状取决于我们为 decoder 的输出<strong>指定哪种分布族</strong>。两种主流选择：</p>
+<h4>选择一：伯努利似然 → BCE 损失</h4>
+<p>把每个像素看作一次独立的抛硬币（取值为 1 的概率是 x̂<sub>i</sub>）：</p>
+<div class="formula">
+  p(x|z) = Π<sub>i=1…D</sub> x̂<sub>i</sub><sup>x<sub>i</sub></sup> (1 − x̂<sub>i</sub>)<sup>1−x<sub>i</sub></sup>
+  <span class="note-below">D 是像素总数（MNIST 为 784）；decoder 输出经 Sigmoid，恰是合法的概率</span>
+</div>
+<p>取负对数：</p>
+<div class="formula">
+  −log p(x|z) = −Σ<sub>i</sub>[ x<sub>i</sub> log x̂<sub>i</sub> + (1 − x<sub>i</sub>) log(1 − x̂<sub>i</sub>) ] = <strong>BCE(x̂, x)</strong>
+</div>
+<p>这正是 PyTorch 的 <code>binary_cross_entropy</code>。黑底白字、前景背景近乎二值的 MNIST 是它的主场。</p>
+<h4>选择二：固定方差的高斯似然 → MSE 损失</h4>
+<p>把 decoder 输出解释为高斯分布的均值，方差固定为常数 σ²（常取 1 或 1/2）：</p>
+<div class="formula">
+  log p(x|z) = −‖x − x̂‖² / (2σ²) − D·log σ − (D/2)·log 2π
+  <span class="note-below">后两项与 θ 无关是常数，优化时可以扔掉</span>
+</div>
+<p>于是最大化对数似然等价于最小化 <strong>‖x − x̂‖²（MSE）</strong>，只差一个随 σ 变化的系数——这个系数在实践中常被吸收进重构/KL 的权重配比。自然图像（连续色彩）用这路更合适。</p>
+<table class="tbl">
+  <tr><th>似然选择</th><th>损失形式</th><th>Decoder 末端</th><th>适用数据</th></tr>
+  <tr class="hl"><td>伯努利</td><td class="num">BCE（逐像素求和）</td><td>Sigmoid</td><td>MNIST、二值图、笔画类</td></tr>
+  <tr><td>高斯（固定 σ）</td><td class="num">MSE（差一个系数）</td><td>恒等或 Sigmoid</td><td>自然图像、连续灰度/彩色</td></tr>
+</table>
+
+<h3>6.4 工程大坑：reduction 的配比</h3>
+<p>两个数值口径必须<strong>对齐</strong>，这是新手 VAE「训出来一团糊」的头号原因：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">loss_function（正确示范）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">def loss_function(x_hat, x, mu, logvar):
+    # ① 重构项：BCE 逐像素求和（batch 内稍后统一除以 batch size）
+    recon = F.binary_cross_entropy(x_hat, x, reduction="sum")
+    # ② KL 闭式解：−½ Σ (1 + logvar − μ² − exp(logvar))，同样是全量求和
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    # 两项同口径后按 batch 平均，保证学习率稳定
+    return recon / x.size(0), kl / x.size(0)</code></pre>
+</div>
+<div class="codeblock">
+<div class="codehead"><span class="fname">错误示范：口径不一致</span><span class="lang">Python</span></div>
+<pre><code class="language-python"># 错误：重构项用 mean（被像素总数 784 摊薄），KL 却是全量求和
+recon = F.binary_cross_entropy(x_hat, x, reduction="mean")
+kl    = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+total = recon + kl
+# 后果：KL 的相对权重凭空放大约 784 倍 —— 正则压倒保真，
+# encoder 输出被强行拉平，所有图像的编码挤成一团，输出糊成灰雾</code></pre>
+</div>
+<table class="tbl">
+  <tr><th>配比方式</th><th>重构项</th><th>KL 项</th><th>效果</th></tr>
+  <tr class="hl"><td>sum / sum（推荐）</td><td class="num">sum（像素）÷ batch</td><td class="num">sum（维度）÷ batch</td><td>两项天然同量级，无需调权</td></tr>
+  <tr><td>mean / sum（错误）</td><td class="num">mean（像素）÷ batch</td><td class="num">sum（维度）÷ batch</td><td>KL 相对过强，过度正则，输出模糊</td></tr>
+  <tr><td>mean + β（可选）</td><td class="num">mean（像素）</td><td class="num">mean（维度）× β</td><td>两项都被归一到 O(1)，用 β 手动控制权衡（β-VAE 的做法）</td></tr>
+</table>
+<div class="callout note">
+  <span class="co-title">调参直觉</span>
+  <p>训练日志里同时打印两项。健康的状态是：重构项稳步下降，KL 从 0 先升后回落到某个不为 0 的平衡值（通常几到几十 nats）。若 KL 一路掉到接近 0：发生了「后验坍缩」（第 8 章）；若重构项始终不动：正则太强，检查 reduction 配比或降低 β。</p>
+</div>
+</section>
+
+<!-- ==================== 第 7 章 ==================== -->
+<section id="ch7">
+<h2><span class="ch-no">07</span>PyTorch 完整实现与训练</h2>
+<p class="ch-intro">把第 4~6 章的所有零件装配成一份完整、可直接运行的代码：模型定义、损失、MNIST 训练循环、从先验采样生成，以及训练 VAE 的「必修课」——2 维隐空间地图可视化。全部代码合计不到 100 行。</p>
+
+<h3>7.1 完整的 VAE 模型类</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">model.py —— VAE 模型定义</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class VAE(nn.Module):
+    def __init__(self, x_dim=784, h_dim=400, z_dim=20):
+        super().__init__()
+        # ---------- Encoder：共享主干 + 双头（第 5.2 节） ----------
+        self.enc_fc = nn.Sequential(
+            nn.Linear(x_dim, h_dim),
+            nn.ReLU(),
+        )
+        self.fc_mu     = nn.Linear(h_dim, z_dim)   # 均值头：输出 μ
+        self.fc_logvar = nn.Linear(h_dim, z_dim)   # 对数方差头：输出 log σ²
+
+        # ---------- Decoder（第 5.3 节） ----------
+        self.dec_fc = nn.Sequential(
+            nn.Linear(z_dim, h_dim),
+            nn.ReLU(),
+            nn.Linear(h_dim, x_dim),
+            nn.Sigmoid(),   # 伯努利似然：输出 [0,1]，配合 BCE
+        )
+
+    def encode(self, x):
+        h = self.enc_fc(x)
+        return self.fc_mu(h), self.fc_logvar(h)
+
+    @staticmethod
+    def reparameterize(mu, logvar):
+        std = torch.exp(0.5 * logvar)   # logvar 是 log σ²，先还原 σ（第 5.5 节）
+        eps = torch.randn_like(std)     # 外部噪声，与参数无关（第 4 章）
+        return mu + eps * std           # 可导的采样
+
+    def decode(self, z):
+        return self.dec_fc(z)
+
+    def forward(self, x):
+        mu, logvar = self.encode(x)
+        z = self.reparameterize(mu, logvar)
+        x_hat = self.decode(z)
+        return x_hat, mu, logvar   # 损失需要的三元组
+
+
+def loss_function(x_hat, x, mu, logvar):
+    # ① 重构项：BCE 逐像素求和（第 6.3 节）
+    recon = F.binary_cross_entropy(x_hat, x, reduction="sum")
+    # ② KL 闭式解：−½ Σ (1 + logvar − μ² − exp(logvar))（第 6.2 节）
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    # 同口径后按 batch 平均
+    return recon / x.size(0), kl / x.size(0)</code></pre>
+</div>
+<p>结构对照第 5 章图 5-1 逐行可查：enc_fc 是 Encoder 主干，fc_mu / fc_logvar 是分叉的双头，reparameterize 是噪声旁路，dec_fc 是 Decoder。整个模型的参数量约 52 万，CPU 也能在几分钟内训完 MNIST。</p>
+
+<h3>7.2 MNIST 训练脚本</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">train.py —— 完整训练循环</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from torchvision import datasets, transforms
+from torch.utils.data import DataLoader
+from model import VAE, loss_function
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = VAE().to(device)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+tfm = transforms.Compose([transforms.ToTensor()])  # 28×28 图 → [0,1] 张量
+ds = datasets.MNIST("./data", train=True, download=True, transform=tfm)
+loader = DataLoader(ds, batch_size=128, shuffle=True)
+
+for epoch in range(1, 21):
+    model.train()
+    tot_rec = tot_kl = tot_n = 0
+    for x, _ in loader:
+        x = x.view(x.size(0), -1).to(device)   # [B,1,28,28] → [B,784]
+        optimizer.zero_grad()
+        x_hat, mu, logvar = model(x)
+        recon, kl = loss_function(x_hat, x, mu, logvar)
+        (recon + kl).backward()
+        optimizer.step()
+        bs = x.size(0)
+        tot_rec += recon.item() * bs
+        tot_kl  += kl.item() * bs
+        tot_n   += bs
+    print(f"epoch {epoch:2d}  recon {tot_rec/tot_n:8.2f}  kl {tot_kl/tot_n:6.2f}")
+
+torch.save(model.state_dict(), "vae_mnist.pt")</code></pre>
+</div>
+<div class="codeblock">
+<div class="codehead"><span class="fname">环境准备与运行</span><span class="lang">Bash</span></div>
+<pre><code class="language-bash">pip install torch torchvision   # 已装可跳过
+python train.py                 # CPU 几分钟 / GPU 一两分钟</code></pre>
+</div>
+<p>量级参考：训练 10~20 个 epoch 后，每样本重构项降到 <strong>90 左右</strong>、KL 稳定在 <strong>15~25</strong> 之间（随随机种子浮动）。此时重构的数字已经基本可读，采样出的图像「像手写数字但不重复任何一张训练图」——这正是生成模型的意义。</p>
+
+<h3>7.3 生成：从先验采样新图像</h3>
+<p>生成时完全不需要 Encoder——直接从 N(0, I) 采 z，喂给 Decoder：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">sample.py —— 从先验采样 64 张图</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from torchvision.utils import save_image
+from model import VAE
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = VAE().to(device)
+model.load_state_dict(torch.load("vae_mnist.pt", map_location=device))
+model.eval()
+
+with torch.no_grad():
+    z = torch.randn(64, 20, device=device)   # z ~ N(0, I)，与训练时同维度
+    gen = model.decode(z).view(-1, 1, 28, 28)
+    save_image(gen, "samples.png", nrow=8, pad_value=1.0)  # 8×8 拼图</code></pre>
+</div>
+<div class="callout tip">
+  <span class="co-title">对比 AE 的「生成」</span>
+  <p>把同样的代码跑在普通 AE 上（z 取自 randn），输出基本是噪声碎片；跑在 VAE 上则是可辨认的数字——第 2 章图 2-1 右侧「处处可采样」的承诺，在这里兑现。</p>
+</div>
+
+<h3>7.4 必修课：把 2 维隐空间画成一张「地图」</h3>
+<p>令 z_dim = 2，隐空间就是一张平面。训练后在平面上均匀打网格，把每个格点的 z 解码成图像贴进对应格子，就能看到 VAE 隐空间的<strong>连续结构</strong>：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">latent_map.py —— 隐空间网格可视化</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import numpy as np
+import torch
+from model import VAE
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+model = VAE(z_dim=2).to(device)   # z 只有 2 维；需要单独重新训练
+model.load_state_dict(torch.load("vae_mnist_z2.pt", map_location=device))
+model.eval()
+
+n = 15                            # 15×15 网格
+axis = np.linspace(-3.0, 3.0, n)
+canvas = np.zeros((n * 28, n * 28), dtype=np.float32)
+
+with torch.no_grad():
+    for i, yi in enumerate(axis):          # 行：z₂ 从上(+3)到下(−3)
+        for j, xj in enumerate(axis):      # 列：z₁ 从左(−3)到右(+3)
+            z = torch.tensor([[float(xj), float(yi)]]).to(device)
+            img = model.decode(z).view(28, 28).cpu().numpy()
+            canvas[(n-1-i)*28:(n-i)*28, j*28:(j+1)*28] = img
+
+# 用 PIL 把 canvas 保存为灰度图即可（乘 255 转 uint8）</code></pre>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 960 470" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="e1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8a8799"/></marker>
+  </defs>
+  <!-- 坐标轴 -->
+  <line x1="118" y1="425" x2="470" y2="425" stroke="#c9c3ee" stroke-width="1.6" marker-end="url(#e1)"/>
+  <line x1="118" y1="425" x2="118" y2="70" stroke="#c9c3ee" stroke-width="1.6" marker-end="url(#e1)"/>
+  <text x="475" y="430" font-size="13" fill="#5a6070" font-family="Cambria Math,Georgia,serif">z₁</text>
+  <text x="100" y="62" font-size="13" fill="#5a6070" font-family="Cambria Math,Georgia,serif">z₂</text>
+  <!-- 网格外框与格线 -->
+  <rect x="150" y="90" width="308" height="308" fill="#fbfbff" stroke="#e3e4ec"/>
+  <g stroke="#efedf8" stroke-width="1">
+    <line x1="194" y1="90" x2="194" y2="398"/><line x1="238" y1="90" x2="238" y2="398"/>
+    <line x1="282" y1="90" x2="282" y2="398"/><line x1="326" y1="90" x2="326" y2="398"/>
+    <line x1="370" y1="90" x2="370" y2="398"/><line x1="414" y1="90" x2="414" y2="398"/>
+    <line x1="150" y1="134" x2="458" y2="134"/><line x1="150" y1="178" x2="458" y2="178"/>
+    <line x1="150" y1="222" x2="458" y2="222"/><line x1="150" y1="266" x2="458" y2="266"/>
+    <line x1="150" y1="310" x2="458" y2="310"/><line x1="150" y1="354" x2="458" y2="354"/>
+  </g>
+  <!-- 刻度 -->
+  <g font-size="10.5" fill="#8a8799" font-family="Consolas,monospace">
+    <text x="150" y="443" text-anchor="middle">−3</text>
+    <text x="304" y="443" text-anchor="middle">0</text>
+    <text x="458" y="443" text-anchor="middle">3</text>
+    <text x="106" y="394" text-anchor="end">−3</text>
+    <text x="106" y="248" text-anchor="end">0</text>
+    <text x="106" y="102" text-anchor="end">3</text>
+  </g>
+  <!-- 数字格（7×7，每格 44px，颜色深=纯类，浅=过渡区） -->
+  <g font-size="26" text-anchor="middle" font-weight="600" font-family="Consolas,monospace">
+    <g fill="#4636c4">
+      <text x="172" y="122">7</text><text x="216" y="122">7</text><text x="260" y="122">7</text>
+      <text x="348" y="122">9</text><text x="392" y="122">9</text><text x="436" y="122">9</text>
+      <text x="172" y="166">7</text><text x="216" y="166">7</text>
+      <text x="392" y="166">9</text><text x="436" y="166">9</text>
+      <text x="172" y="210">7</text><text x="216" y="210">1</text><text x="348" y="210">3</text><text x="392" y="210">3</text>
+      <text x="216" y="254">1</text><text x="260" y="254">1</text><text x="304" y="254">3</text><text x="348" y="254">3</text><text x="392" y="254">8</text><text x="436" y="254">8</text>
+      <text x="216" y="298">1</text><text x="304" y="298">3</text><text x="348" y="298">3</text><text x="392" y="298">8</text><text x="436" y="298">8</text>
+      <text x="172" y="342">5</text><text x="260" y="342">5</text><text x="304" y="342">0</text><text x="392" y="342">8</text><text x="436" y="342">8</text>
+      <text x="172" y="386">5</text><text x="260" y="386">5</text><text x="304" y="386">0</text><text x="348" y="386">0</text>
+    </g>
+    <g fill="#9b93e8">
+      <text x="304" y="122">9</text><text x="260" y="166">9</text><text x="304" y="166">9</text><text x="348" y="166">3</text>
+      <text x="304" y="210">3</text><text x="436" y="210">9</text>
+      <text x="260" y="254">1</text><text x="172" y="254">1</text>
+      <text x="172" y="298">1</text><text x="260" y="298">5</text><text x="348" y="298">8</text>
+      <text x="260" y="342">5</text><text x="348" y="342">0</text><text x="304" y="342">0</text>
+      <text x="216" y="386">5</text><text x="260" y="386">0</text><text x="392" y="386">0</text><text x="436" y="386">8</text>
+    </g>
+  </g>
+  <!-- 右侧说明 -->
+  <text x="520" y="100" font-size="15" font-weight="800" fill="#24292f">这张图在做什么</text>
+  <text x="520" y="130" font-size="12.5" fill="#5a6070">① 用 z_dim=2 训练一个 VAE（隐空间=平面）；</text>
+  <text x="520" y="154" font-size="12.5" fill="#5a6070">② 在 [−3, 3] × [−3, 3] 上均匀取格点 z；</text>
+  <text x="520" y="178" font-size="12.5" fill="#5a6070">③ 每个格点解码 decode(z)，贴进对应格子。</text>
+  <text x="520" y="224" font-size="15" font-weight="800" fill="#24292f">能看到什么</text>
+  <text x="520" y="254" font-size="12.5" fill="#5a6070">· 同一数字聚成一片连续区域（深色格）；</text>
+  <text x="520" y="278" font-size="12.5" fill="#5a6070">· 区域边界是平滑过渡（浅色格：介于两个</text>
+  <text x="520" y="300" font-size="12.5" fill="#5a6070">   数字之间的「混合体」，如 3↔8）；</text>
+  <text x="520" y="324" font-size="12.5" fill="#5a6070">· 整张平面是训练数据的连续「地图」——</text>
+  <text x="520" y="346" font-size="12.5" fill="#5a6070">   KL 正则把原本零散的编码摊平成了流形。</text>
+  <rect x="520" y="366" width="410" height="56" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.4"/>
+  <text x="535" y="389" font-size="12.5" fill="#047857" font-weight="700">这就是「隐空间有结构」的可视化证据：</text>
+  <text x="535" y="409" font-size="12.5" fill="#047857" font-weight="700">任意相邻两个 z 解码结果都平滑衔接。</text>
+</svg>
+<p class="figcap"><b>图 7-1</b> 2 维隐空间网格采样示意（实际运行效果为 15×15 真实图像网格，此处以符号示意）。数字区域连续、边界平滑过渡——这正是 KL 正则项把隐空间「规整化」的直接体现。第 2 章的 AE 隐空间（图 2-1 左）画出来则是无规律的碎片。</p>
+</div>
+
+<h3>7.5 常见坑速查表</h3>
+<table class="tbl">
+  <tr><th>症状</th><th>原因</th><th>修复</th></tr>
+  <tr><td>输出全黑或全灰雾</td><td>把 logvar 直接当 σ 用</td><td>std = <code>torch.exp(0.5 * logvar)</code></td></tr>
+  <tr class="hl"><td>图像糊成一团、无细节</td><td>reduction 口径不一致，KL 相对过强</td><td>两项都用 sum 再除 batch（6.4 节）</td></tr>
+  <tr><td>BCE 报错 / 输出越界</td><td>decoder 末尾没有 Sigmoid，或数据没归一到 [0,1]</td><td>加 <code>Sigmoid</code>；确认用 <code>ToTensor()</code></td></tr>
+  <tr><td>形状对不上</td><td>忘了把 [B,1,28,28] 摊平</td><td><code>x.view(x.size(0), -1)</code></td></tr>
+  <tr><td>生成样本几乎相同</td><td>KL 项没真正加进总损失</td><td>打印两项数值，确认 (recon + kl).backward()</td></tr>
+  <tr><td>KL 一路掉到 ≈0</td><td>后验坍缩</td><td>见第 8.2 节</td></tr>
+</table>
+</section>
+
+<!-- ==== 第 8 章 ==== -->
+<section id="ch8">
+<h2><span class="ch-no">08</span>进阶话题：模糊、坍缩与 Stable Diffusion</h2>
+<p class="ch-intro">前七章搭建的是「标准 VAE」。它在 MNIST 上已经能跑通，但一旦换成更真实、更多样的图像，两个著名问题就会浮出水面：<strong>生成模糊</strong>与<strong>后验坍缩</strong>。本章解释它们的成因与主流对策（β-VAE、VQ-VAE），最后看清 VAE 在 Stable Diffusion 这类现代系统里真正的位置——它不再是生成模型本身，而是<strong>压缩引擎</strong>。</p>
+
+<h3>8.1 为什么 VAE 生成的图像总是模糊的？</h3>
+<p>一句话答案：<strong>MSE / BCE 这类逐像素损失的最优解是条件均值，而均值在多模态分布上必然模糊</strong>。推导只需一步：固定 z，decoder 的输出 x̂ 是确定值，而真实数据 x 在这个 z 下可能有多种形态。对二次损失求最优：</p>
+<div class="formula">
+  x̂*(z) = E<sub>x~p(x|z)</sub>[x] = ∫ x · p(x|z) dx
+  <span class="note-below">逐像素 MSE 的最优解是条件均值；第 6 章讲过 BCE（伯努利 NLL）的最优解同样是条件均值——两种「标准损失」殊途同归</span>
+</div>
+<p>问题就出在「条件均值」四个字上。设想 z 编码了「一张数字 1」，但训练集里的 1 有的笔画偏左、有的偏右——真实的 p(x|z) 是<strong>双峰分布</strong>。decoder 只能输出一个答案，于是它输出两峰的<strong>平均</strong>：一条又粗又淡、不左不右的笔画。每个像素都经历同样的平均，整张图自然糊掉。而 GAN 清晰的原因也在这里：判别器判断的是「这张图像像不像真的」，均值图像恰好落在两个峰之间的低密度区，会被判假——生成器被迫把概率质量坍缩到某个具体模态上，输出锐利样本。</p>
+<table class="tbl">
+  <tr><th>缓解手段</th><th>思路</th><th>代表</th></tr>
+  <tr><td>感知损失（LPIPS）</td><td>用深度特征距离代替逐像素距离——均值图像在特征空间同样被惩罚</td><td>SD 的 VAE</td></tr>
+  <tr class="hl"><td>对抗损失</td><td>引入判别器直接惩罚「看起来假」的模糊输出</td><td>VQ-VAE-2、SD 的 VAE</td></tr>
+  <tr><td>离散化隐空间</td><td>decoder 输入是确定性码字，不存在「均值化」</td><td>VQ-VAE（8.4 节）</td></tr>
+  <tr><td>事后超分</td><td>生成后再接一个超分网络修细节</td><td>早期工业方案</td></tr>
+</table>
+
+<h3>8.2 后验坍缩：隐变量「罢工」</h3>
+<p>第二个问题的表现是：训练到一半，KL 项悄悄掉到 ≈ 0。</p>
+<div class="formula">
+  KL( q<sub>φ</sub>(z|x) ‖ p(z) ) → 0&nbsp;&nbsp;⟹&nbsp;&nbsp; q(z|x) ≈ N(0, I) 对所有 x 成立
+  <span class="note-below">每个样本的编码分布都退化成先验本身——z 不再携带任何关于 x 的信息</span>
+</div>
+<p>此时隐变量通道彻底「断供」：encoder 传不出信息，decoder 全靠自己「记住」训练集。训练损失看起来完全正常（重构很好、KL 为 0），但采样生成时 decoder 面对的是一个它从未见过的、不含任何信息的 z——输出全是糊图。这就是<strong>后验坍缩（posterior collapse）</strong>。</p>
+<p><strong>为什么优化器偏爱这条路？</strong>两个梯度方向的比赛不公平：让 KL 下降只需把 (μ, σ) 拉向 (0, 1)，这是一条平坦好走的下坡路；让重构变好则要求 decoder 学出复杂映射，下降缓慢。只要 decoder 容量足够——尤其是<strong>自回归 decoder</strong>（逐像素条件生成，看前几个像素就能猜出下一个，根本不需要 z）——「不用 z 也能重构」就是可行解，优化器自然会砍掉这条信息通道。文本 VAE 用 LSTM decoder 时坍缩尤其严重，原因相同。</p>
+<div class="callout warn">
+  <span class="co-title">诊断方法</span>
+  <p>同时打印两项损失曲线。健康的训练：KL 先快速上升（信息涌入 z）再缓慢回落，稳定在<strong>一个正数</strong>。坍缩的典型曲线：KL 早早触零且不再回升，重构损失反而漂亮——一旦出现，先检查 KL 是否被 reduction 口径错误放大（6.4 节），再考虑下面的缓解手段。</p>
+</div>
+<table class="tbl">
+  <tr><th>缓解策略</th><th>做法</th><th>出处</th></tr>
+  <tr class="hl"><td>KL 退火（annealing）</td><td>β 从 0 随 epoch 缓慢升到 1：先让重构学会用 z，再上正则</td><td>Bowman et al. 2016</td></tr>
+  <tr><td>Free bits</td><td>给每个隐维度设 KL 下限 λ，低于下限的部分不产生梯度</td><td>Kingma et al. 2016</td></tr>
+  <tr><td>削弱 decoder</td><td>word dropout、砍层数、去自回归——让 decoder 「离不开」z</td><td>文本 VAE 常用</td></tr>
+  <tr><td>容量调度</td><td>KL 项允许通过的容量 C 随训练逐步放开</td><td>VAE capacity 系工作</td></tr>
+  <tr><td>换离散码本</td><td>从结构上绕开「每个维度对齐高斯」的要求</td><td>VQ-VAE（下节）</td></tr>
+</table>
+
+<h3>8.3 β-VAE：一个旋钮换解耦</h3>
+<p>β-VAE 只改一个字符——给 KL 项乘上系数 β：</p>
+<div class="formula">
+  L<sub>β</sub> = E<sub>q</sub>[ log p<sub>θ</sub>(x|z) ] − β · KL( q<sub>φ</sub>(z|x) ‖ p(z) )，β ≥ 1
+  <span class="note-below">β=1 退化为标准 VAE；经典设置 β=4</span>
+</div>
+<p>β 调大后发生了一件有趣的事：隐空间各维度开始<strong>解耦（disentanglement）</strong>——每个维度趋向于独立控制一个语义因子。在 MNIST 上滑动 β=4 模型的某个维度，数字的「倾斜角度」连续变化而笔画粗细不变；滑动另一个维度则专门控制粗细。直觉解释：加重的 KL 相当于收紧「信息预算」，encoder 被迫用最经济的方式编码——把天然独立变化的语义因子分摊到不同维度，恰是最省 KL 的编码方案。</p>
+<p>代价同样是信息被过度丢弃：重构更差、更模糊。β 实质是<strong>重构保真 ↔ 隐空间解耦</strong>之间的旋钮，没有免费午餐。代码上只有一行差异：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">β-VAE 损失（对照 6.4 节的标准版）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">def loss_function_beta(recon, x, mu, logvar, beta=4.0):
+    # 与 6.4 节完全一致，仅 KL 项多乘一个 beta
+    recon = F.binary_cross_entropy(recon, x.view(-1, 784), reduction="sum")
+    kl = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+    return (recon + beta * kl) / x.size(0)</code></pre>
+</div>
+
+<h3>8.4 VQ-VAE：把「分布」换成「码本」</h3>
+<p>模糊与后验坍缩这两个顽疾，都源自 VAE「连续 + 概率化」的隐空间设计。VQ-VAE（Vector-Quantized VAE）的解法干脆利落：<strong>隐空间不要连续分布，改成 K 个可学习的离散码字</strong>（codebook）。流程三步：</p>
+<div class="flow">
+  x <span class="arr">→</span> Encoder <span class="arr">→</span> 连续特征 z<sub>e</sub>(x) <span class="arr">→</span> 最近邻查码本（K 个码字）<span class="arr">→</span> 离散码 z<sub>q</sub>(x) <span class="arr">→</span> Decoder <span class="arr">→</span> 重构 x̂
+  <span class="tag">量化：每个空间位置独立地在 K 个码字里挑 L2 距离最近的一个</span>
+</div>
+<div class="formula">
+  z<sub>q</sub>(x) = e<sub>k</sub>，&nbsp;&nbsp;k = argmin<sub>j</sub> ‖ z<sub>e</sub>(x) − e<sub>j</sub> ‖₂
+</div>
+<p>argmin 不可导，训练靠两件「外科手术」式的技巧：</p>
+<ul>
+<li><strong>损失三件套</strong>（把 argmin 拆到损失里去优化）：
+<div class="formula">
+  L = log p(x|z<sub>q</sub>) + ‖ sg[z<sub>e</sub>(x)] − e ‖² + β‖ z<sub>e</sub>(x) − sg[e] ‖²
+  <span class="note-below">第一项重构；第二项把被选中的码字 e 拉向 encoder 输出；第三项（commitment）反过来把 encoder 输出拴在码字附近，防止它漂移；sg = stop-gradient，β 通常取 0.25</span>
+</div></li>
+<li><strong>直通估计（straight-through estimator）</strong>：前向正常用量化值 z<sub>q</sub>，反向时把 decoder 对 z<sub>q</sub> 的梯度原封不动抄给 z<sub>e</sub>——量化节点对梯度「透明」。</li>
+</ul>
+<div class="codeblock">
+<div class="codehead"><span class="fname">向量量化层（PyTorch，可插入任意 CNN 的 encoder/decoder 之间）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class VectorQuantizer(nn.Module):
+    def __init__(self, num_codes=512, code_dim=64, beta=0.25):
+        super().__init__()
+        self.codes = nn.Embedding(num_codes, code_dim)  # 码本：K 个 D 维码字
+        self.beta = beta
+        nn.init.uniform_(self.codes.weight, -1/num_codes, 1/num_codes)
+
+    def forward(self, z_e):
+        # z_e: [B, D, H, W]，把每个空间位置当成一个待量化向量
+        flat = z_e.permute(0, 2, 3, 1).reshape(-1, z_e.size(1))   # [N, D]
+        dist = torch.cdist(flat, self.codes.weight)               # [N, K] L2 距离
+        idx = dist.argmin(1)                                      # 每行挑最近码字
+        z_q = self.codes(idx).view(z_e.shape).permute(0, 3, 1, 2) # 查表替换
+        # codebook 项 + commitment 项（sg 用 detach 实现）
+        loss = F.mse_loss(z_q, z_e.detach()) + self.beta * F.mse_loss(z_e, z_q.detach())
+        # 直通估计：前向用 z_q，反向梯度绕过量化直达 z_e
+        z_q = z_e + (z_q - z_e).detach()
+        return z_q, loss</code></pre>
+</div>
+<p>这套设计同时治好了两个老毛病：<strong>无后验坍缩</strong>——先验是「码字使用分布」，不存在每个维度对齐 N(0, I) 的要求，信息通过离散选择照常流动；<strong>重构锐利</strong>——decoder 输入是确定性码字，条件均值化无从谈起。代价是新问题：不能直接从 N(0, I) 采样生成，必须再训一个<strong>自回归先验</strong>（如 PixelCNN）来逐格生成码字序列，两阶段才完成生成。影响深远：DALL·E 的 dVAE、以及现代「视觉 tokenizer」路线（把图像变成 token 序列交给 Transformer）都发源于此。</p>
+
+<h3>8.5 Stable Diffusion 中的 VAE：从生成模型到压缩引擎</h3>
+<p>直接在像素空间做扩散太贵：512×512×3 的图约 78 万维，UNet 每一步去噪都要在这个维度上做卷积与注意力。Stable Diffusion 的第一性原理选择：<strong>先训一个 VAE 把图像压缩到 latent，扩散模型只在 latent 上运行，生成完再解码回像素</strong>。</p>
+<div class="formula">
+  512×512×3&nbsp;&nbsp;→&nbsp;&nbsp;64×64×4&nbsp;&nbsp;&nbsp;&nbsp;空间 8× 下采样，体积压缩 48×
+  <span class="note-below">latent 再乘缩放因子 0.18215 归一到单位方差附近，方便扩散模型建模</span>
+</div>
+<p>这个 VAE（diffusers 里叫 <code>AutoencoderKL</code>）的训练目标与传统 VAE 截然不同——重构不再是 BCE/MSE 独挑大梁，而是四种损失的组合：</p>
+<div class="formula">
+  L<sub>autoenc</sub> = L<sub>recon</sub>(L1) + λ<sub>lpips</sub>·L<sub>LPIPS</sub> + λ<sub>adv</sub>·L<sub>对抗</sub> + λ<sub>kd</sub>·KL，&nbsp;&nbsp;λ<sub>kd</sub> ≈ 4×10<sup>−6</sup>
+  <span class="note-below">L1 管像素对齐，LPIPS 管感知相似，对抗损失管「看起来真」——正是 8.1 节开出的模糊处方</span>
+</div>
+<p>注意 KL 的权重小到 10<sup>−6</sup> 量级。原因：SD 里 VAE 的职责<strong>不是生成，而是规整地压缩</strong>。采样路径上的 latent 完全由扩散模型给出，VAE 只负责 decode；KL 只需轻轻拢住 latent 分布（别漂到无限远、别留太多「空洞」让扩散模型难建模），不需要为「能采样」付重构的代价。这也解释了 8.1 表格里的选择：模糊靠 LPIPS + 对抗解决，而不是靠加重 KL。</p>
+<p>整个扩散训练期间 VAE 参数<strong>完全冻结</strong>——扩散模型学的是 p(latent)，与 VAE 解耦。两条路径各取一半：</p>
+
+<div class="figure">
+<svg viewBox="0 0 960 500" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="f1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="f2" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#10b981"/></marker>
+  </defs>
+  <!-- 泳道背景 -->
+  <rect x="16" y="42" width="928" height="130" rx="14" fill="#fbfbff" stroke="#e3e4ec"/>
+  <rect x="16" y="282" width="928" height="130" rx="14" fill="#f4fbf8" stroke="#d5efe6"/>
+  <text x="32" y="28" font-size="13.5" font-weight="800" fill="#5845e6">① 训练旁路：把图像压进 latent —— VAE Encoder 只在这一步使用</text>
+  <text x="32" y="270" font-size="13.5" font-weight="800" fill="#047857">② 生成主路：噪声在 latent 空间逐步去噪 —— VAE Decoder 只在这一步使用</text>
+  <!-- ===== 训练旁路（上行）===== -->
+  <g>
+    <rect x="30" y="72" width="150" height="70" rx="10" fill="#ffffff" stroke="#d0d5dd" stroke-width="1.4"/>
+    <text x="105" y="102" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">训练图像</text>
+    <text x="105" y="124" font-size="11.5" fill="#5a6070" text-anchor="middle" font-family="Consolas,monospace">512×512×3</text>
+    <line x1="186" y1="107" x2="222" y2="107" stroke="#5845e6" stroke-width="2" marker-end="url(#f1)"/>
+    <rect x="228" y="72" width="140" height="70" rx="10" fill="#5845e6"/>
+    <text x="298" y="97" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">VAE Encoder</text>
+    <text x="298" y="116" font-size="11" fill="#e6e3fa" text-anchor="middle" font-family="Consolas,monospace">下采样 ×8</text>
+    <text x="298" y="133" font-size="10.5" fill="#cfc9f5" text-anchor="middle">扩散训练时冻结</text>
+    <line x1="374" y1="107" x2="410" y2="107" stroke="#5845e6" stroke-width="2" marker-end="url(#f1)"/>
+    <rect x="416" y="72" width="180" height="70" rx="10" fill="#f3f1fd" stroke="#5845e6" stroke-width="1.6"/>
+    <text x="506" y="97" font-size="14" font-weight="700" fill="#4636c4" text-anchor="middle">latent</text>
+    <text x="506" y="116" font-size="11.5" fill="#5a6070" text-anchor="middle" font-family="Consolas,monospace">64×64×4</text>
+    <text x="506" y="133" font-size="10.5" fill="#8a8799" text-anchor="middle">体积压缩 48×</text>
+    <line x1="602" y1="107" x2="638" y2="107" stroke="#5845e6" stroke-width="2" marker-end="url(#f1)"/>
+    <rect x="644" y="72" width="286" height="70" rx="10" fill="#ffffff" stroke="#5845e6" stroke-width="1.4"/>
+    <text x="787" y="97" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">扩散训练</text>
+    <text x="787" y="116" font-size="11.5" fill="#5a6070" text-anchor="middle">加噪 → UNet 预测噪声</text>
+    <text x="787" y="133" font-size="10.5" fill="#8a8799" text-anchor="middle">全程只发生在 latent 空间</text>
+  </g>
+  <!-- latent 空间连接虚线 -->
+  <line x1="506" y1="142" x2="496" y2="312" stroke="#8a8799" stroke-width="1.6" stroke-dasharray="6 5"/>
+  <text x="516" y="232" font-size="12" fill="#5a6070">同一个 latent 空间</text>
+  <text x="516" y="250" font-size="11" fill="#8a8799" font-family="Consolas,monospace">4 通道，f=8</text>
+  <!-- ===== 生成主路（下行）===== -->
+  <g>
+    <rect x="30" y="312" width="150" height="70" rx="10" fill="#ffffff" stroke="#d0d5dd" stroke-width="1.4"/>
+    <text x="105" y="342" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">纯噪声 ε</text>
+    <text x="105" y="364" font-size="11.5" fill="#5a6070" text-anchor="middle" font-family="Consolas,monospace">64×64×4</text>
+    <line x1="186" y1="347" x2="222" y2="347" stroke="#10b981" stroke-width="2" marker-end="url(#f2)"/>
+    <rect x="228" y="312" width="150" height="70" rx="10" fill="#ffffff" stroke="#d0d5dd" stroke-width="1.4"/>
+    <text x="303" y="337" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">UNet / DiT</text>
+    <text x="303" y="356" font-size="11.5" fill="#5a6070" text-anchor="middle">迭代去噪 N 步</text>
+    <text x="303" y="373" font-size="10.5" fill="#8a8799" text-anchor="middle">latent 空间内循环</text>
+    <line x1="384" y1="347" x2="420" y2="347" stroke="#10b981" stroke-width="2" marker-end="url(#f2)"/>
+    <rect x="426" y="312" width="140" height="70" rx="10" fill="#f3f1fd" stroke="#5845e6" stroke-width="1.6"/>
+    <text x="496" y="337" font-size="14" font-weight="700" fill="#4636c4" text-anchor="middle">干净 latent</text>
+    <text x="496" y="356" font-size="11.5" fill="#5a6070" text-anchor="middle" font-family="Consolas,monospace">64×64×4</text>
+    <line x1="572" y1="347" x2="608" y2="347" stroke="#10b981" stroke-width="2" marker-end="url(#f2)"/>
+    <rect x="614" y="312" width="150" height="70" rx="10" fill="#10b981"/>
+    <text x="689" y="337" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">VAE Decoder</text>
+    <text x="689" y="356" font-size="11" fill="#d8f5e8" text-anchor="middle" font-family="Consolas,monospace">上采样 ×8</text>
+    <text x="689" y="373" font-size="10.5" fill="#c3edda" text-anchor="middle">扩散训练时冻结</text>
+    <line x1="772" y1="347" x2="808" y2="347" stroke="#10b981" stroke-width="2" marker-end="url(#f2)"/>
+    <rect x="814" y="312" width="116" height="70" rx="10" fill="#ffffff" stroke="#d0d5dd" stroke-width="1.4"/>
+    <text x="872" y="342" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">生成图像</text>
+    <text x="872" y="364" font-size="11.5" fill="#5a6070" text-anchor="middle" font-family="Consolas,monospace">512×512×3</text>
+  </g>
+  <!-- 底部结论 -->
+  <rect x="16" y="432" width="928" height="58" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.4"/>
+  <text x="480" y="456" font-size="12.5" fill="#047857" font-weight="700" text-anchor="middle">扩散模型从不直接在像素上工作：体积压缩约 48×，训练与采样的计算量整体降一个数量级。</text>
+  <text x="480" y="478" font-size="12.5" fill="#047857" font-weight="700" text-anchor="middle">VAE 的身份从「生成模型」变成「可学习的压缩引擎」——两端各用一半，训练完即冻结。</text>
+</svg>
+<p class="figcap"><b>图 8-1</b> Stable Diffusion 中 VAE 的位置。上泳道：训练时图像经 Encoder 压入 latent，扩散模型在 latent 上学习去噪；下泳道：生成时从纯噪声出发在 latent 空间去噪 N 步，最后经 Decoder 还原成像素图。Encoder 与 Decoder 只在各自泳道出现，且扩散训练全程冻结。</p>
+</div>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">用 diffusers 实际调用 AutoencoderKL</span><span class="lang">Python</span></div>
+<pre><code class="language-python">from diffusers import AutoencoderKL
+import torch
+
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse")
+
+with torch.no_grad():
+    # 训练旁路：像素图压缩到 latent（对应图 8-1 上泳道）
+    latent = vae.encode(pixel_values).latent_dist.sample() * 0.18215
+    # 生成主路：latent 还原回像素图（对应图 8-1 下泳道）
+    pixel = vae.decode(latent / 0.18215).sample</code></pre>
+</div>
+
+<table class="tbl">
+  <tr><th>版本</th><th>latent 通道</th><th>要点</th></tr>
+  <tr><td>SD 1.x / 2.x</td><td>4</td><td>AutoencoderKL，f=8，缩放因子 0.18215</td></tr>
+  <tr><td>SDXL</td><td>4</td><td>同款结构更大训练量；缩放因子 0.13084</td></tr>
+  <tr class="hl"><td>SD3 / FLUX</td><td>16</td><td>通道 4→16：修色偏、保留更多高频细节，f=8 不变</td></tr>
+  <tr><td>sd-vae-ft-mse</td><td>4</td><td>用 MSE 微调的版本：重构更准但略糊</td></tr>
+</table>
+
+<h3>8.6 变体速览</h3>
+<table class="tbl">
+  <tr><th>模型</th><th>核心改动</th><th>一句话定位</th></tr>
+  <tr><td>CVAE</td><td>编码条件 c：p(x|z, c)</td><td>VAE + 标签/条件控制</td></tr>
+  <tr><td>β-VAE</td><td>KL 乘系数 β</td><td>解耦表示学习</td></tr>
+  <tr><td>VQ-VAE</td><td>离散码本 + 直通梯度</td><td>图像 tokenizer 鼻祖</td></tr>
+  <tr><td>VQ-VAE-2</td><td>层级码本 + 对抗损失</td><td>大图高保真重构</td></tr>
+  <tr><td>NVAE</td><td>层级先验 + 归一化流后验</td><td>图像 NLL 刷榜系</td></tr>
+  <tr class="hl"><td>SD 的 VAE</td><td>L1 + LPIPS + 对抗 + 微弱 KL</td><td>扩散模型的压缩引擎</td></tr>
+</table>
+</section>
+
+<!-- ==== 第 9 章 ==== -->
+<section id="ch9">
+<h2><span class="ch-no">09</span>总结与速查表</h2>
+<p class="ch-intro">九章读完，把整个故事线串成一条、把所有公式收进一张表、把踩坑经验压成一份 checklist——这一章是为「合上文档还能复述」准备的。</p>
+
+<h3>9.1 故事线回顾：五步看懂 VAE</h3>
+<div class="flow">
+  AE 压缩但不生成 <span class="arr">→</span> 点改成分布 N(μ, σ²) <span class="arr">→</span> 似然不可解，改 maximize ELBO <span class="arr">→</span> 重参数化让梯度穿过采样 <span class="arr">→</span> 两项损失，一百行代码
+</div>
+<ol>
+<li><strong>病灶诊断（第 2 章）</strong>：AE 的隐空间只有零散的训练点，任意采样的 z 解码出垃圾——生成需要的是<strong>填满且连续</strong>的隐空间。</li>
+<li><strong>对症下药（第 2~3 章）</strong>：把「每个 x 编码成一个点」改成「编码成一个分布 q(z|x)=N(μ, σ²)」，并用 KL 把所有分布向统一的先验 N(0, I) 拢——隐空间被摊平成连续地图。</li>
+<li><strong>数学落地（第 3 章）</strong>：直接最大化似然 p(x) 积不出、后验算不动，转而最大化它的下界 ELBO = 重构项 − KL 项，一步把「学得好」和「空间规整」写进同一个目标。</li>
+<li><strong>梯度手术（第 4~6 章）</strong>：KL 有闭式解；重构用单样本蒙特卡洛估计；采样节点用重参数化 z = μ + σ⊙ε 绕开不可导——三条路铺平反向传播。</li>
+<li><strong>工程实现（第 5~7 章）</strong>：双头 encoder、直通采样、两项相加 backward；reduction 口径统一是新手最大的坑。</li>
+</ol>
+
+<h3>9.2 公式速查表</h3>
+<table class="tbl">
+  <tr><th>名称</th><th>公式</th><th>出处</th></tr>
+  <tr><td>ELBO（对数似然下界）</td><td>log p<sub>θ</sub>(x) ≥ E<sub>q</sub>[log p<sub>θ</sub>(x|z)] − KL(q<sub>φ</sub>(z|x)‖p(z))</td><td>3.3 节</td></tr>
+  <tr><td>KL 闭式解</td><td>½ Σ<sub>j</sub>( μ<sub>j</sub>² + σ<sub>j</sub>² − log σ<sub>j</sub>² − 1 )</td><td>6.2 节</td></tr>
+  <tr><td>重参数化</td><td>z = μ + σ⊙ε，ε~N(0, I)</td><td>第 4 章</td></tr>
+  <tr class="hl"><td>总损失（BCE 版）</td><td>L ≈ BCE(x̂, x) + ½Σ(μ²+σ²−logσ²−1)</td><td>6.1 节</td></tr>
+  <tr><td>β-VAE</td><td>L = 重构 + β·KL</td><td>8.3 节</td></tr>
+  <tr><td>VQ 量化 / 三件套</td><td>k = argmin<sub>j</sub>‖z<sub>e</sub>−e<sub>j</sub>‖₂；L = 重构 + 码字项 + commitment 项</td><td>8.4 节</td></tr>
+  <tr><td>SD VAE 损失</td><td>L1 + LPIPS + 对抗 + 4×10<sup>−6</sup>·KL</td><td>8.5 节</td></tr>
+</table>
+
+<h3>9.3 训练 Checklist</h3>
+<p>动手训一个新 VAE（或排查旧代码）之前，从上到下过一遍：</p>
+<ol>
+<li>数据归一到 [0,1]（<code>ToTensor()</code>）；用 BCE 则 decoder 末尾必须有 <code>Sigmoid</code>；数据标准化到 (−1,1) 时改用 MSE。</li>
+<li>logvar 头预测的是 log σ²；还原 σ 一律 <code>torch.exp(0.5 * logvar)</code>。</li>
+<li>重构项与 KL 项都取 <code>reduction="sum"</code>，再各自除以 batch size——口径必须一致（6.4 节）。</li>
+<li>两项相加前先分别 print 数值量级，确认谁强谁弱，再谈调参。</li>
+<li>KL 健康曲线：先升后稳在正数；早早触零即后验坍缩（8.2 节），先查 reduction 再试退火。</li>
+<li>KL 过强压死重构时：KL 退火（β 从 0 缓升至 1）或 free bits。</li>
+<li>可视化选 z_dim=2 画网格；实用选 20 起步；CNN 版按 5.5 节表格配通道。</li>
+<li>eval 模式可固定用 μ 代替采样，让重构结果可复现。</li>
+<li>优化器 Adam、lr=1e-3 起步；判断质量看 <code>sample()</code> 的输出而非只看 loss。</li>
+<li>输出糊且各项都「正常」：这不是 bug，是 MSE/BCE 的均值化本质——上 LPIPS / 对抗（8.1 节）。</li>
+</ol>
+
+<h3>9.4 延伸阅读</h3>
+<table class="tbl">
+  <tr><th>论文</th><th>贡献</th></tr>
+  <tr><td>《Auto-Encoding Variational Bayes》Kingma and Welling, 2013</td><td>VAE 原始论文：ELBO + 重参数化</td></tr>
+  <tr><td>《Stochastic Backpropagation and Approximate Inference in Deep Generative Models》Rezende et al., 2014</td><td>同期独立提出同一框架</td></tr>
+  <tr><td>《β-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework》Higgins et al., 2017</td><td>β-VAE 与解耦</td></tr>
+  <tr><td>《Neural Discrete Representation Learning》van den Oord et al., 2017</td><td>VQ-VAE</td></tr>
+  <tr><td>《Zero-Shot Text-to-Image Generation》Ramesh et al., 2021</td><td>DALL·E：dVAE 离散 tokenizer 走向大规模</td></tr>
+  <tr><td>《Taming Transformers for High-Resolution Image Synthesis》Esser et al., 2021</td><td>VQGAN：码本 + Transformer，SD 前身</td></tr>
+  <tr class="hl"><td>《High-Resolution Image Synthesis with Latent Diffusion Models》Rombach et al., 2022</td><td>Stable Diffusion：AutoencoderKL + latent 扩散</td></tr>
+</table>
+<p>最后回到全局视角：VAE 作为「独立生成模型」的高光时代已经过去，但它留下的两件东西成了整个深度生成领域的公共基础设施——<strong>「把数据编码成可采样的分布」</strong>（Stable Diffusion 的 latent 空间、扩散模型的 ELBO 视角）与<strong>「用重参数化让梯度穿过随机性」</strong>（从强化学习策略梯度到 Flow Matching 训练到处都是它的变体）。读懂这份文档的九个章节，再去看 Diffusion、VQGAN 乃至大模型后训练里的变分目标，都会顺畅得多。</p>
+</section>
+
+<footer>
+  <p>本文档由 AI 辅助整理：数学推导逐条给出，PyTorch 代码可保存为 .py 文件直接运行；理论以 Kingma 与 Welling 的论文 <a href="https://arxiv.org/abs/1312.6114">《Auto-Encoding Variational Bayes》</a>（arXiv:1312.6114）为准，β-VAE / VQ-VAE / Stable Diffusion 部分分别参考各自原始论文。</p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function(){
+  // ---------- Python / Bash 代码高亮（正则单遍 tokenizer） ----------
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var PY_RE = /(#[^\n]*)|((?:[rbfu]?)(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"))|(@[A-Za-z_][\w.]*)|(\b\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)(?=\s*\()|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|self|print|range|len|enumerate|zip|int|float|str|bool|list|dict|tuple|set|min|max|abs|round|super|getattr|hasattr|isinstance)\b)/g;
+
+  var BASH_RE = /(#[^\n]*)|((?:"[^"\n]*"|'[^'\n]*'))|(\b(?:python|python3|git|cd|pip|pip3|export|source|conda|torchrun|huggingface-cli|modelscope|accelerate|wget|curl|nvidia-smi|nvcc|apt|sudo|make|tar|unzip|cp|mv|ls|mkdir)\b)/g;
+
+  function paint(src, re, kwIsGroup6){
+    var out = esc(src).replace(re, function(m, c, s, d, n, f, kw){
+      if (c) return '<span class="tk-c">' + c + '</span>';
+      if (s) return '<span class="tk-s">' + s + '</span>';
+      if (d) return '<span class="tk-d">' + d + '</span>';
+      if (n) return '<span class="tk-n">' + n + '</span>';
+      if (f) return '<span class="tk-f">' + f + '</span>';
+      if (kw) return '<span class="tk-k">' + kw + '</span>';
+      return m;
+    });
+    return out;
+  }
+
+  document.querySelectorAll('pre code').forEach(function(el){
+    var cls = el.className || '';
+    var src = el.textContent;
+    if (/\bpython\b/.test(cls)) {
+      el.innerHTML = paint(src, PY_RE, true);
+    } else if (/\bbash\b/.test(cls)) {
+      el.innerHTML = paint(src, BASH_RE, false);
+    }
+  });
+
+  // ---------- 侧边目录 scrollspy ----------
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var secs = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  function spy(){
+    var cur = secs.length ? secs[0] : null;
+    for (var i = 0; i < secs.length; i++){
+      if (secs[i].getBoundingClientRect().top <= 140) cur = secs[i];
+    }
+    tocLinks.forEach(function(a){
+      a.classList.toggle('active', cur && a.getAttribute('href') === '#' + cur.id);
+    });
+  }
+  window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
+  spy();
+})();
+</script>
+</body>
+</html>
