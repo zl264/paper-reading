@@ -1,0 +1,1566 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiT(Diffusion Transformer)完全解读 —— 从原理到代码</title>
+<style>
+:root{
+  --bg:#f5f6fa; --card:#ffffff; --ink:#232733; --muted:#667085;
+  --accent:#4f46e5; --accent-2:#7c3aed;
+  --line:#e6e8f0; --soft:#eef1fb;
+  --code-bg:#101527; --code-head:#1a2138;
+  --amber-bg:#fff8ea; --amber-bd:#f2c879; --amber-ink:#8a5a00;
+  --green-bg:#edfaf3; --green-bd:#93d7b4; --green-ink:#0a6b45;
+  --blue-bg:#eef4ff; --blue-bd:#b9cdf6; --blue-ink:#274b9f;
+  --violet-bg:#f4f0ff; --violet-bd:#d4c5fb; --violet-ink:#5b34b3;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px; line-height:1.85;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ---------- 顶部横幅 ---------- */
+.topbar{
+  background:linear-gradient(135deg,#312e81 0%,#4f46e5 45%,#7c3aed 100%);
+  color:#fff; padding:56px 24px 48px;
+}
+.topbar .inner{max-width:1180px; margin:0 auto}
+.eyebrow{
+  display:inline-block; font-size:13px; letter-spacing:.35em; font-weight:600;
+  color:#c7d2fe; border:1px solid rgba(255,255,255,.28); border-radius:999px;
+  padding:3px 14px; margin-bottom:18px;
+}
+.topbar h1{font-size:34px; font-weight:800; letter-spacing:.5px; line-height:1.35}
+.topbar h1 .thin{font-weight:300; opacity:.9}
+.topbar .sub{margin-top:14px; font-size:15.5px; color:#e0e7ff; max-width:820px; line-height:1.9}
+.meta-chips{margin-top:22px; display:flex; flex-wrap:wrap; gap:10px}
+.meta-chips span{
+  background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.22);
+  border-radius:8px; padding:4px 12px; font-size:12.5px; color:#eef2ff;
+}
+.meta-chips b{color:#fff; font-weight:600}
+
+/* ---------- 布局 ---------- */
+.layout{
+  max-width:1180px; margin:36px auto 0; padding:0 24px 60px;
+  display:grid; grid-template-columns:250px minmax(0,1fr); gap:36px; align-items:start;
+}
+aside.toc{
+  position:sticky; top:20px; max-height:calc(100vh - 40px); overflow:auto;
+  background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 6px;
+  font-size:13.5px;
+}
+aside.toc .toc-title{font-weight:700; font-size:13px; letter-spacing:.2em; color:var(--muted); padding:0 14px 10px; border-bottom:1px dashed var(--line); margin-bottom:8px}
+aside.toc a{display:block; color:#4b5262; padding:5.5px 14px; border-left:3px solid transparent; border-radius:0 8px 8px 0; line-height:1.5}
+aside.toc a:hover{background:var(--soft); color:var(--accent); text-decoration:none}
+aside.toc a.on{background:var(--soft); color:var(--accent); border-left-color:var(--accent); font-weight:600}
+aside.toc a.lv2{padding-left:30px; font-size:12.8px; color:#79808f}
+
+main.content{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  padding:44px 52px 52px; min-width:0;
+}
+section{margin-bottom:58px; scroll-margin-top:18px}
+section:last-of-type{margin-bottom:10px}
+
+/* ---------- 标题 ---------- */
+h2{
+  font-size:24px; font-weight:800; line-height:1.4; margin-bottom:22px;
+  padding-left:14px; border-left:5px solid var(--accent); letter-spacing:.3px;
+}
+h2 .secno{
+  display:inline-block; background:var(--soft); color:var(--accent);
+  font-size:13px; font-weight:700; border-radius:7px; padding:1px 10px;
+  vertical-align:3px; margin-right:10px; letter-spacing:.05em;
+}
+h3{
+  font-size:18.5px; font-weight:700; margin:34px 0 14px; color:#1c2030;
+  display:flex; align-items:center; gap:9px;
+}
+h3::before{content:""; width:8px; height:8px; border-radius:2px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); flex:none}
+h4{font-size:16px; font-weight:700; margin:22px 0 10px}
+p{margin:0 0 14px}
+ul,ol{padding-left:26px; margin-bottom:14px}
+li{margin-bottom:7px}
+strong{color:#111527}
+hr{border:none; border-top:1px dashed var(--line); margin:30px 0}
+
+/* ---------- 行内代码 / 公式 ---------- */
+code{
+  font-family:"JetBrains Mono",Consolas,"Cascadia Code",Menlo,monospace;
+  background:var(--soft); color:#4338ca; border-radius:5px; padding:1px 7px;
+  font-size:.86em; word-break:break-all;
+}
+.formula{
+  background:#fbfbff; border:1px solid var(--line); border-radius:12px;
+  padding:16px 22px; margin:16px 0 20px; text-align:center; overflow-x:auto;
+  font-family:"Cambria Math","STIX Two Math",Georgia,"Times New Roman",serif;
+  font-size:17.5px; line-height:2.1; color:#1f2437;
+}
+.formula .var{font-style:italic}
+.formula .op{color:var(--accent); font-weight:600}
+.formula .note{display:block; font-family:inherit; font-size:12.5px; color:var(--muted); margin-top:6px; line-height:1.7}
+sub,sup{font-size:.68em}
+.formula i{font-style:italic}
+
+/* ---------- 提示框 ---------- */
+.callout{border-radius:12px; padding:15px 18px 13px; margin:18px 0; font-size:14.8px; line-height:1.85}
+.callout .ct{font-weight:700; display:block; margin-bottom:4px}
+.callout.tip{background:var(--blue-bg); border:1px solid var(--blue-bd)}
+.callout.tip .ct{color:var(--blue-ink)}
+.callout.warn{background:var(--amber-bg); border:1px solid var(--amber-bd)}
+.callout.warn .ct{color:var(--amber-ink)}
+.callout.key{background:var(--green-bg); border:1px solid var(--green-bd)}
+.callout.key .ct{color:var(--green-ink)}
+.callout.vio{background:var(--violet-bg); border:1px solid var(--violet-bd)}
+.callout.vio .ct{color:var(--violet-ink)}
+
+/* ---------- 代码块 ---------- */
+.codewrap{margin:16px 0 22px; border-radius:13px; overflow:hidden; border:1px solid #232b47; box-shadow:0 6px 24px rgba(23,32,64,.10)}
+.codehead{
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232b47;
+}
+.codehead .fn{font-family:Consolas,Menlo,monospace; font-size:12.5px; color:#8f9bc4}
+.codehead .fn::before{content:"● ● ●"; letter-spacing:4px; color:#3b4670; margin-right:12px; font-size:9px; vertical-align:2px}
+.codehead button{
+  background:#232b47; color:#aab6dd; border:1px solid #333e66; border-radius:7px;
+  font-size:12px; padding:3px 12px; cursor:pointer; font-family:inherit;
+}
+.codehead button:hover{color:#fff; background:#324073}
+pre[data-lang]{
+  background:var(--code-bg); color:#dce3f5; padding:18px 20px; overflow:auto;
+  font-family:"JetBrains Mono",Consolas,"Cascadia Code",Menlo,monospace;
+  font-size:13.2px; line-height:1.75; tab-size:4;
+}
+pre[data-lang]::-webkit-scrollbar{height:9px}
+pre[data-lang]::-webkit-scrollbar-thumb{background:#2b3559; border-radius:9px}
+.tk-kw{color:#ff7bb0} .tk-str{color:#9ce69c} .tk-com{color:#6b7699; font-style:italic}
+.tk-num{color:#ffb86d} .tk-bi{color:#6fd3e8} .tk-fn{color:#82aaff} .tk-dec{color:#f0d38a}
+
+/* ---------- 表格 ---------- */
+.tablewrap{overflow-x:auto; margin:16px 0 22px; border:1px solid var(--line); border-radius:12px}
+table{border-collapse:collapse; width:100%; font-size:14px; background:#fff; min-width:560px}
+th{background:#f2f4fb; color:#39415a; font-weight:700; text-align:left; padding:10px 14px; border-bottom:2px solid var(--line); white-space:nowrap}
+td{padding:10px 14px; border-bottom:1px solid #eef0f6; vertical-align:top}
+tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#fafbfe}
+tbody tr.hl{background:#f2f0ff}
+td.num,th.num{text-align:right; font-variant-numeric:tabular-nums}
+.tablewrap .cap,figure figcaption{ text-align:center; color:var(--muted); font-size:13px; padding:10px 14px; background:#fafbfe; border-top:1px solid var(--line); line-height:1.7}
+
+/* ---------- 图 ---------- */
+figure{margin:18px 0 24px}
+.figbox{background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 12px 8px; overflow-x:auto}
+.figbox svg{display:block; margin:0 auto; max-width:100%; height:auto; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.txtbox{
+  background:linear-gradient(180deg,#fbfcff,#f6f8fe); border:1px solid var(--line); border-radius:14px;
+  padding:22px 26px; font-size:14px; color:#3a4256; overflow-x:auto; white-space:pre;
+  font-family:"JetBrains Mono",Consolas,monospace; line-height:1.9; margin:16px 0 22px;
+}
+
+/* ---------- 卡片网格 ---------- */
+.grid3{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin:18px 0}
+.card{
+  background:linear-gradient(180deg,#fcfdff,#f8f9fe); border:1px solid var(--line);
+  border-radius:13px; padding:16px 18px; font-size:14.2px; line-height:1.8;
+}
+.card .ct{font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:8px; font-size:15px}
+.card .ct .dot{width:9px; height:9px; border-radius:50%; flex:none}
+
+/* ---------- 时间线 ---------- */
+.timeline{margin:20px 0 26px; border-left:3px solid #dfe3f2; padding-left:26px}
+.tl-item{position:relative; margin-bottom:18px}
+.tl-item::before{
+  content:""; position:absolute; left:-33px; top:7px; width:11px; height:11px;
+  border-radius:50%; background:var(--accent); box-shadow:0 0 0 4px #e6e4ff;
+}
+.tl-item .when{font-size:12.5px; font-weight:700; color:var(--accent); letter-spacing:.05em}
+.tl-item .what{font-size:14.8px; margin-top:2px}
+.tl-item .what b{color:#111527}
+
+/* ---------- 徽章 ---------- */
+.badge{display:inline-block; background:var(--soft); color:var(--accent); border:1px solid #d9dcf6; border-radius:999px; padding:1px 11px; font-size:12.3px; font-weight:600; margin:0 4px 4px 0; white-space:nowrap}
+.badge.big{font-size:13px}
+
+/* ---------- 交互 ---------- */
+.pillbar{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:14px 0 6px}
+.pillbar .lbl{font-size:13.5px; color:var(--muted); font-weight:600}
+.pill{
+  background:#fff; border:1.5px solid #d8dcf0; color:#4a5268; border-radius:999px;
+  padding:5px 18px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .15s;
+}
+.pill:hover{border-color:var(--accent); color:var(--accent)}
+.pill.on{background:var(--accent); border-color:var(--accent); color:#fff; box-shadow:0 4px 14px rgba(79,70,229,.32)}
+.readout{
+  display:flex; flex-wrap:wrap; gap:10px; margin:12px 0 4px;
+}
+.readout .stat{
+  background:var(--soft); border:1px solid #dde1f7; border-radius:11px;
+  padding:8px 18px; font-size:13.5px; color:#3c4360;
+}
+.readout .stat b{display:block; font-size:21px; color:var(--accent); font-variant-numeric:tabular-nums; line-height:1.3}
+
+/* ---------- FAQ / 总结 ---------- */
+details.faq{border:1px solid var(--line); border-radius:11px; margin:10px 0; overflow:hidden; background:#fcfcfe}
+details.faq summary{
+  cursor:pointer; padding:12px 18px; font-weight:600; font-size:14.8px; list-style:none;
+  display:flex; align-items:center; gap:10px;
+}
+details.faq summary::before{content:"Q"; flex:none; width:22px; height:22px; border-radius:6px; background:var(--soft); color:var(--accent); display:inline-flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800}
+details.faq[open] summary{border-bottom:1px dashed var(--line); background:#f7f8fd}
+details.faq .fa-body{padding:13px 20px 15px; font-size:14.5px}
+.checklist{list-style:none; padding-left:0}
+.checklist li{position:relative; padding-left:30px; margin-bottom:10px}
+.checklist li::before{
+  content:"✓"; position:absolute; left:0; top:1px; width:21px; height:21px; border-radius:6px;
+  background:var(--green-bg); border:1px solid var(--green-bd); color:var(--green-ink);
+  display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800;
+}
+
+/* ---------- 参考 / 页脚 ---------- */
+.refs{font-size:14.2px}
+.refs li{margin-bottom:9px}
+footer{
+  text-align:center; color:#8a91a5; font-size:12.8px; padding:26px 20px 34px; line-height:2;
+}
+.svg-arrow{stroke:#9aa3bd; stroke-width:2.2; fill:none; marker-end:url(#ah)}
+@media (max-width:1020px){
+  .layout{grid-template-columns:1fr; gap:20px}
+  aside.toc{position:static; max-height:none}
+  main.content{padding:30px 24px 40px}
+  .topbar h1{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="inner">
+    <span class="eyebrow">DEEP DIVE · 生成模型架构</span>
+    <h1>DiT(Diffusion Transformer)完全解读<br><span class="thin">从扩散模型原理 · Transformer 结构 · 到逐行代码实现</span></h1>
+    <p class="sub">一份自包含的中文详解文档:先补齐扩散模型与 ViT 的前置知识,再逐层拆解 DiT 的每一个组件(Patchify、adaLN-Zero、DiT Block……),最后给出一份可运行的 PyTorch 完整实现,并延伸到 SD3、FLUX、Sora 等现代模型与 DiT 的关系。</p>
+    <div class="meta-chips">
+      <span>论文 <b>Scalable Diffusion Models with Transformers</b></span>
+      <span>arXiv <b>2212.09748</b>(2022.12)</span>
+      <span>作者 <b>William Peebles · Saining Xie</b></span>
+      <span><b>ICCV 2023 最佳论文</b></span>
+      <span>代码 <b>github.com/facebookresearch/DiT</b></span>
+      <span>代表模型 <b>DiT-XL/2 · 675M · FID 2.27</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+<aside class="toc" id="toc">
+  <div class="toc-title">目录</div>
+  <a href="#s1" class="lv1">1 · 什么是 DiT</a>
+  <a href="#s2" class="lv1">2 · 预备知识</a>
+  <a href="#s2-1" class="lv2">2.1 扩散模型(DDPM)</a>
+  <a href="#s2-2" class="lv2">2.2 潜空间扩散(LDM)</a>
+  <a href="#s2-3" class="lv2">2.3 Transformer / ViT</a>
+  <a href="#s3" class="lv1">3 · DiT 核心思想与整体流程</a>
+  <a href="#s3-1" class="lv2">3.1 设计空间:三个旋钮</a>
+  <a href="#s3-2" class="lv2">3.2 整体流水线</a>
+  <a href="#s3-3" class="lv2">3.3 Patchify:切成序列</a>
+  <a href="#s4" class="lv1">4 · 架构逐层拆解</a>
+  <a href="#s4-1" class="lv2">4.1 模型配置 S/B/L/XL</a>
+  <a href="#s4-2" class="lv2">4.2 输入嵌入与位置编码</a>
+  <a href="#s4-3" class="lv2">4.3 条件注入:四种方案</a>
+  <a href="#s4-4" class="lv2">4.4 adaLN-Zero 详解 ★</a>
+  <a href="#s4-5" class="lv2">4.5 输出头与 Unpatchify</a>
+  <a href="#s4-6" class="lv2">4.6 规模化:Gflops↔FID</a>
+  <a href="#s5" class="lv1">5 · 训练与采样全流程</a>
+  <a href="#s5-1" class="lv2">5.1 训练目标与配方</a>
+  <a href="#s5-2" class="lv2">5.2 无分类器引导 CFG</a>
+  <a href="#s5-3" class="lv2">5.3 采样(DDIM)</a>
+  <a href="#s6" class="lv1">6 · PyTorch 代码实现</a>
+  <a href="#s6-2" class="lv2">6.2-6.3 条件嵌入</a>
+  <a href="#s6-4" class="lv2">6.4-6.5 DiT Block ★</a>
+  <a href="#s6-6" class="lv2">6.6-6.8 主模型与初始化</a>
+  <a href="#s6-9" class="lv2">6.9-6.12 扩散·采样·训练</a>
+  <a href="#s7" class="lv1">7 · 从 DiT 到 SD3/FLUX/Sora</a>
+  <a href="#s7-3" class="lv2">7.3 MM-DiT(SD3/FLUX)</a>
+  <a href="#s7-5" class="lv2">7.5 架构对比总表</a>
+  <a href="#s8" class="lv1">8 · 总结 · FAQ · 学习路线</a>
+  <a href="#s9" class="lv1">9 · 参考资料</a>
+</aside>
+
+<main class="content">
+
+<!-- ================= 1 什么是 DiT ================= -->
+<section id="s1">
+  <h2><span class="secno">01</span>什么是 DiT</h2>
+  <p><strong>DiT = Diffusion Transformer(扩散 Transformer)</strong>。它做的事情一句话就能讲完:<strong>把潜空间扩散模型里的 U-Net 去噪骨干网络,整个换成 Vision Transformer(ViT)</strong>——图像先经 VAE 压缩成潜向量,再切成一个个 patch 组成 token 序列,交给一摞标准 Transformer 块去预测噪声,最后拼回潜向量、解码成图像。</p>
+  <p>DiT 出自 William Peebles(UC Berkeley,实习于 Meta FAIR)与谢赛宁(NYU)2022 年 12 月的论文 <em>Scalable Diffusion Models with Transformers</em>,并拿下 <strong>ICCV 2023 最佳论文</strong>。它的价值不在于"又刷了一个 SOTA",而在于回答了一个基础问题:</p>
+  <div class="callout key"><span class="ct">📌 论文的核心结论</span>
+    <strong>U-Net 的归纳偏置(局部卷积、多尺度下采样、跳跃连接)对扩散模型的性能并不是必需的。</strong>换成结构统一、可预测放大的纯 Transformer 之后,模型质量(FID)随前向计算量(Gflops)的增长而<strong>稳定、单调地提升</strong>——扩散模型第一次拥有了类似 LLM 的"scaling law"体验。
+  </div>
+  <div class="grid3">
+    <div class="card"><div class="ct"><span class="dot" style="background:#4f46e5"></span>一句话理解</div>图像 → VAE 压成 <code>32×32×4</code> 潜向量 → 切 patch 成 token 序列 → N 个 Transformer 块预测噪声 → 拼回潜向量 → VAE 解码成图像。</div>
+    <div class="card"><div class="ct"><span class="dot" style="background:#0ea5e9"></span>代表成绩</div>DiT-XL/2(675M 参数,118.6 Gflops)在 ImageNet 256×256 类条件生成上取得 <strong>FID 2.27</strong>(当时 SOTA),512×512 上 FID 3.04。</div>
+    <div class="card"><div class="ct"><span class="dot" style="background:#f59e0b"></span>江湖地位</div>Stable Diffusion 3、FLUX、Sora、Veo、PixArt、混元视频、Wan、Qwen-Image……今天几乎所有前沿图像/视频生成模型都是 DiT 的直系后代。</div>
+  </div>
+  <h3>发展时间线:DiT 站在哪里</h3>
+  <div class="timeline">
+    <div class="tl-item"><div class="when">2015 / 2020</div><div class="what"><b>扩散模型思想 → DDPM</b>:Ho 等人提出去噪扩散概率模型,确立"加噪—去噪"训练范式与 <b>U-Net</b> 骨干。</div></div>
+    <div class="tl-item"><div class="when">2022</div><div class="what"><b>Latent Diffusion / Stable Diffusion</b>:把扩散搬进 VAE 潜空间,大幅降低计算成本;U-Net + 交叉注意力注入文本。</div></div>
+    <div class="tl-item"><div class="when">2022.12</div><div class="what"><b>DiT</b>:证明 U-Net 可被标准 Transformer 替代,且 scaling 行为干净、可预测。<span class="badge">本文主角</span></div></div>
+    <div class="tl-item"><div class="when">2023</div><div class="what"><b>PixArt-α / U-ViT / SiT</b>:在 DiT 上引入 T5 文本条件、分解式低成本训练、改进训练目标,文生图成本骤降。</div></div>
+    <div class="tl-item"><div class="when">2024</div><div class="what"><b>Stable Diffusion 3 · Sora · FLUX</b>:MM-DiT 双流架构、流匹配目标、RoPE 位置编码——Transformer 骨干全面接管图像与视频生成。</div></div>
+    <div class="tl-item"><div class="when">2025 →</div><div class="what"><b>Sora 2 · Veo 3 · 混元视频 · Wan 2.x · Qwen-Image</b>:统一的多模态 DiT 成为事实标准,scaling 继续主导能力上限。</div></div>
+  </div>
+  <div class="callout tip"><span class="ct">💡 阅读建议</span>如果你对扩散模型、ViT 已经熟悉,可以跳过第 2 章;如果对"adaLN-Zero"这类名词陌生,请务必按顺序阅读第 4 章——它是 DiT 相对标准 ViT 的<strong>唯一关键改动</strong>。</div>
+</section>
+
+<!-- ================= 2 预备知识 ================= -->
+<section id="s2">
+  <h2><span class="secno">02</span>预备知识:读懂 DiT 需要的三块基石</h2>
+  <p>DiT 不是从零发明的东西,它是三个成熟组件的组合:<strong>扩散模型(提供训练目标) + VAE(提供潜空间) + ViT(提供骨干网络)</strong>。下面三小节各用最短的篇幅把"够用"的知识补齐。</p>
+
+  <h3 id="s2-1">2.1 扩散模型(DDPM):加噪与去噪的博弈</h3>
+  <p>扩散模型分两个过程。<strong>前向过程</strong>(固定、不需要学习):对一张干净图像 <span class="var">x₀</span>,按时间步 <span class="var">t</span> = 1…T 逐步叠加微小的方差表 β<sub>t</sub> 的高斯噪声;<strong>反向过程</strong>:训练一个神经网络 <span class="var">ε<sub>θ</sub></span>,学会在任意噪声水平下"去掉一点噪声"。生成时,从纯噪声出发反复调用网络,一步步把图像"雕刻"出来。</p>
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 190" width="960">
+        <defs>
+          <linearGradient id="scene" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#fde68a"/><stop offset="0.35" stop-color="#fb7185"/>
+            <stop offset="0.7" stop-color="#818cf8"/><stop offset="1" stop-color="#34d399"/>
+          </linearGradient>
+          <filter id="nz" x="0" y="0" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" result="n"/>
+            <feColorMatrix in="n" type="saturate" values="0"/>
+          </filter>
+          <marker id="ah" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z" fill="#9aa3bd"/>
+          </marker>
+        </defs>
+        <g font-size="13" fill="#4b5262" text-anchor="middle">
+          <g transform="translate(60,30)">
+            <rect width="110" height="110" rx="10" fill="url(#scene)"/>
+            <rect width="110" height="110" rx="10" filter="url(#nz)" opacity="0"/>
+            <text y="140" fill="#232733" font-weight="700">t = 0</text><text y="160">干净图像 x₀</text>
+          </g>
+          <line x1="185" y1="85" x2="235" y2="85" class="svg-arrow"/>
+          <g transform="translate(255,30)">
+            <rect width="110" height="110" rx="10" fill="url(#scene)"/>
+            <rect width="110" height="110" rx="10" filter="url(#nz)" opacity="0.35"/>
+            <text y="140" fill="#232733" font-weight="700">t = 250</text><text y="160">轻微加噪</text>
+          </g>
+          <line x1="380" y1="85" x2="430" y2="85" class="svg-arrow"/>
+          <g transform="translate(450,30)">
+            <rect width="110" height="110" rx="10" fill="url(#scene)"/>
+            <rect width="110" height="110" rx="10" filter="url(#nz)" opacity="0.62"/>
+            <text y="140" fill="#232733" font-weight="700">t = 600</text><text y="160">噪声渐强</text>
+          </g>
+          <line x1="575" y1="85" x2="625" y2="85" class="svg-arrow"/>
+          <g transform="translate(645,30)">
+            <rect width="110" height="110" rx="10" fill="url(#scene)"/>
+            <rect width="110" height="110" rx="10" filter="url(#nz)" opacity="0.85"/>
+            <text y="140" fill="#232733" font-weight="700">t = 999</text><text y="160">≈ 纯噪声 x_T</text>
+          </g>
+          <g transform="translate(800,52)">
+            <text y="0" font-weight="700" fill="#4f46e5">训练目标(直觉版)</text>
+            <text y="26" font-size="12.5">给定 (x_t, t),</text>
+            <text y="47" font-size="12.5">让网络 ε_θ 猜出</text>
+            <text y="68" font-size="12.5">"掺进去的 ε 是什么"</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+    <figcaption>图 2-1 · 前向加噪过程:β<sub>t</sub> 方差表随 t 增大,图像逐渐被高斯噪声淹没(示意图)</figcaption>
+  </figure>
+  <p>前向过程有两条等价的数学描述。逐转移(单步)形式为 <span class="var">q</span>(<span class="var">x<sub>t</sub></span> | <span class="var">x<sub>t−1</sub></span>) = <span class="var">N</span>(√(1−β<sub>t</sub>) <span class="var">x<sub>t−1</sub></span>, β<sub>t</sub>I</span>) ;而 DDPM 最优雅的地方在于,任意时刻的 <span class="var">x<sub>t</sub></span> 可以从 <span class="var">x₀</span> <strong>一步采样</strong>得到:</p>
+  <div class="formula">
+    <span class="var">x<sub>t</sub></span> <span class="op">=</span> √ᾱ<sub><span class="var">t</span></sub> · <span class="var">x<sub>0</sub></span> <span class="op">+</span> √(1 − ᾱ<sub><span class="var">t</span></sub>) · <span class="var">ε</span>,&nbsp;&nbsp;&nbsp;<span class="var">ε</span> ~ <span class="var">N</span>(0, I),&nbsp;&nbsp;&nbsp;ᾱ<sub><span class="var">t</span></sub> = ∏<sub><span class="var">s</span>≤<span class="var">t</span></sub>(1 − β<sub><span class="var">s</span></sub>)
+    <span class="note">训练时不用真的一步步加噪:采样一个随机 t,直接按此式"一步到位"造出带噪样本 x_t</span>
+  </div>
+  <p>于是整个训练目标简单到令人发指——<strong>预测噪声的均方误差</strong>:</p>
+  <div class="formula">
+    <span class="var">L</span><sub>simple</sub> <span class="op">=</span> E<sub><span class="var">x</span>₀, <span class="var">ε</span>~N(0,I), <span class="var">t</span></sub> [ ‖ <span class="var">ε</span> − <span class="var">ε<sub>θ</sub></span>(<span class="var">x<sub>t</sub></span>, <span class="var">t</span>, <span class="var">c</span>) ‖<sup>2</sup> ]
+    <span class="note">c 为条件(类别标签、文本等);DiT 额外沿用 ADM 的做法,同时回归一个对角方差(learn_sigma),见 4.5 节</span>
+  </div>
+  <div class="callout warn"><span class="ct">⚠️ 两个常被追问的点</span>
+  ① <strong>为什么预测噪声而不是直接预测干净图像?</strong>两者数学上可互相换算,但预测 ε 的回归目标分布简单(接近标准高斯)、训练更稳定,这是 DDPM 的经典结论。<br>
+  ② <strong>t 怎么编码进网络?</strong>不是直接把整数塞进网络,而是先做正弦嵌入再过 MLP(见 4.2 节),与 Transformer 的位置编码思路相同。
+  </div>
+
+  <h3 id="s2-2">2.2 潜空间扩散(LDM):先压缩,再扩散</h3>
+  <p>在原始像素上做扩散非常昂贵:一张 <code>512×512×3</code> 的图有约 78.6 万个数值,采样 250 步意味着网络要对这么大的张量跑 250 次以上。<strong>潜空间扩散模型(LDM,即 Stable Diffusion 的方法论)</strong>的解法是引入一个冻结的 <strong>VAE(自编码器)</strong>:</p>
+  <ul>
+    <li><strong>Encoder</strong>:把图像压到低维潜空间,空间分辨率缩小 8 倍,如 <code>256×256×3 → 32×32×4</code>(数值量约 48 倍压缩);</li>
+    <li><strong>扩散模型只在潜空间训练与采样</strong>,去噪对象是 4 通道的潜向量,而不是 RGB 像素;</li>
+    <li><strong>Decoder</strong>:生成完成后,只解码<strong>一次</strong>还原成图像。</li>
+  </ul>
+  <p>DiT 直接复用 Stable Diffusion 的预训练 VAE(<code>sd-vae-ft-ema</code>,下采样系数 8,潜向量缩放系数 <code>0.18215</code>),整个训练过程 VAE 全程冻结、不参与梯度更新——<strong>要训练的只有 Transformer</strong>。</p>
+  <div class="callout tip"><span class="ct">💡 记住这组数字</span>
+  DiT 论文的"256×256 模型",实际扩散发生在 <code>32×32×4</code> 的潜空间;"512×512 模型"对应 <code>64×64×4</code>。后面讲 patch 化时,一切 token 数都从 <code>32×32</code> 这个网格出发。
+  </div>
+
+  <h3 id="s2-3">2.3 Transformer 与 ViT:把一切变成序列</h3>
+  <p>Transformer 的核心是<strong>自注意力</strong>:序列中每个 token 生成 Query、Key、Value 三个向量;用 Query 与所有 Key 的内积(缩放后过 softmax)算出"该看谁"的权重,再加权求和 Value:</p>
+  <div class="formula">
+    Attention(<span class="var">Q</span>, <span class="var">K</span>, <span class="var">V</span>) <span class="op">=</span> softmax( <span class="var">QK</span><sup>T</sup> / √<span class="var">d<sub>k</sub></span> ) <span class="var">V</span>
+  </div>
+  <p><strong>多头注意力</strong>把 D 维向量拆成 H 个头独立做注意力再拼接,让不同头关注不同类型的关系。标准 Transformer 块(pre-LN 风格)长这样:</p>
+  <div class="formula">
+    <span class="var">x</span> ← <span class="var">x</span> <span class="op">+</span> MultiHeadAttn( LN(<span class="var">x</span>) )&nbsp;&nbsp;&nbsp;&nbsp;<span class="var">x</span> ← <span class="var">x</span> <span class="op">+</span> MLP( LN(<span class="var">x</span>) )
+    <span class="note">残差 + LayerNorm + (注意力 | 前馈网络) —— DiT 块的骨架与之完全一致</span>
+  </div>
+  <p><strong>ViT(Vision Transformer)</strong> 解决了"图像怎么进 Transformer"的问题:把图像切成不重叠的 <span class="var">p</span>×<span class="var">p</span> 小块(patch),每块展平后线性投影成一个 token,加上位置编码,之后就是纯标准 Transformer。DiT 完整继承了这套做法——只是作用对象从图像换成了<strong>潜向量</strong>。</p>
+  <div class="callout key"><span class="ct">📌 本章结论(全文最重要的一句话)</span>
+  <strong>一个 DiT 块 ≈ 一个标准 ViT 块,唯一的结构性改动是:LayerNorm 里原本自己学习的仿射参数(缩放 γ、偏移 β),改成由条件信号(时间步 t + 类别 y)通过一个小 MLP 回归生成</strong>——这就是 adaLN-Zero,第 4 章的主角。理解了这句话,DiT 就懂了 80%。
+  </div>
+</section>
+
+<!-- ================= 3 核心思想与流程 ================= -->
+<section id="s3">
+  <h2><span class="secno">03</span>DiT 核心思想与整体流程</h2>
+
+  <h3 id="s3-1">3.1 设计空间:DiT 的三个旋钮</h3>
+  <p>DiT 的研究方式非常"工程化":先把设计空间画清楚,再逐个旋钮做消融实验。整个 DiT 家族由三个自由度决定——</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>旋钮</th><th>取值</th><th>影响参数量</th><th>影响计算量</th><th>论文结论</th></tr></thead>
+    <tbody>
+      <tr><td><b>A · 骨干规模</b></td><td>DiT-S / B / L / XL<br>(宽度 384~1152,层数 12~28)</td><td>33M → 675M</td><td>↑↑</td><td>越大越好,Gflops 与 FID 强相关</td></tr>
+      <tr><td><b>B · patch 大小 p</b></td><td>2 / 4 / 8</td><td><b>几乎不变</b></td><td>↑↑(与 token 数成正比)</td><td><b>最划算的扩算力方式</b>:p 减半 ≈ 计算量 ×4,FID 持续下降</td></tr>
+      <tr><td><b>C · 条件注入方式</b></td><td>in-context / cross-attn / adaLN / <b>adaLN-Zero</b></td><td>略有差异</td><td>≈ 不变</td><td><b>adaLN-Zero 全面最优</b>(4.3 节)</td></tr>
+    </tbody>
+  </table><div class="cap">表 3-1 · DiT 设计空间的三个旋钮。模型命名 <code>DiT-XL/2</code> = XL 规模 + patch 大小 2</div></div>
+
+  <h3 id="s3-2">3.2 整体流水线:训练与采样</h3>
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 435" width="960">
+        <defs>
+          <marker id="ahp" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+        </defs>
+        <style>
+          .pb{stroke-width:1.6}
+          .pt{font-size:12.5px;font-weight:700;fill:#2b3247}
+          .ps{font-size:10.8px;fill:#5b6377}
+          .arr{stroke:#94a3b8;stroke-width:2;fill:none;marker-end:url(#ahp)}
+        </style>
+
+        <!-- 训练泳道 -->
+        <text x="22" y="30" font-size="13.5" font-weight="800" fill="#4f46e5">① 训练(每个 batch 一次前向)</text>
+        <rect x="10" y="40" width="940" height="152" rx="14" fill="#f8f9fe" stroke="#e6e8f0"/>
+        <g>
+          <rect x="20" y="90" width="104" height="56" rx="9" fill="#eef2ff" stroke="#c7d2fe" class="pb"/>
+          <text x="72" y="114" text-anchor="middle" class="pt">真实图像</text><text x="72" y="133" text-anchor="middle" class="ps">256×256×3</text>
+          <line x1="124" y1="118" x2="146" y2="118" class="arr"/>
+          <rect x="150" y="90" width="96" height="56" rx="9" fill="#fef3c7" stroke="#fcd34d" class="pb"/>
+          <text x="198" y="114" text-anchor="middle" class="pt">VAE Encoder</text><text x="198" y="133" text-anchor="middle" class="ps">冻结 · 空间 ÷8</text>
+          <line x1="246" y1="118" x2="268" y2="118" class="arr"/>
+          <rect x="272" y="90" width="100" height="56" rx="9" fill="#ecfdf5" stroke="#a7f3d0" class="pb"/>
+          <text x="322" y="114" text-anchor="middle" class="pt">潜向量 x₀</text><text x="322" y="133" text-anchor="middle" class="ps">32×32×4</text>
+          <line x1="372" y1="118" x2="394" y2="118" class="arr"/>
+          <rect x="398" y="90" width="118" height="56" rx="9" fill="#fee2e2" stroke="#fca5a5" class="pb"/>
+          <text x="457" y="114" text-anchor="middle" class="pt">加噪得 x<sub>t</sub></text><text x="457" y="133" text-anchor="middle" class="ps">随机时间步 t</text>
+          <rect x="412" y="56" width="90" height="24" rx="6" fill="#fff1f2" stroke="#fca5a5" class="pb"/>
+          <text x="457" y="72" text-anchor="middle" font-size="11" fill="#9f1239">ε ~ N(0, I)</text>
+          <line x1="457" y1="80" x2="457" y2="88" class="arr"/>
+          <line x1="516" y1="118" x2="534" y2="118" class="arr"/>
+          <rect x="538" y="86" width="140" height="64" rx="10" fill="#4f46e5"/>
+          <text x="608" y="114" text-anchor="middle" font-size="13.5" font-weight="800" fill="#fff">DiT × N 块</text>
+          <text x="608" y="134" text-anchor="middle" font-size="11" fill="#dfe2ff">adaLN-Zero 注入 t 和 y</text>
+          <rect x="548" y="52" width="46" height="24" rx="6" fill="#ede9fe" stroke="#c4b5fd" class="pb"/>
+          <text x="571" y="68" text-anchor="middle" font-size="11" font-weight="700" fill="#5b21b6">t</text>
+          <rect x="606" y="52" width="46" height="24" rx="6" fill="#ede9fe" stroke="#c4b5fd" class="pb"/>
+          <text x="629" y="68" text-anchor="middle" font-size="11" font-weight="700" fill="#5b21b6">y</text>
+          <line x1="571" y1="76" x2="571" y2="84" class="arr"/>
+          <line x1="629" y1="76" x2="629" y2="84" class="arr"/>
+          <line x1="678" y1="118" x2="700" y2="118" class="arr"/>
+          <rect x="704" y="90" width="104" height="56" rx="9" fill="#f3e8ff" stroke="#d8b4fe" class="pb"/>
+          <text x="756" y="114" text-anchor="middle" class="pt">ε̂<sub>θ</sub>(x<sub>t</sub>, t, y)</text><text x="756" y="133" text-anchor="middle" class="ps">噪声 + 方差</text>
+          <line x1="808" y1="118" x2="830" y2="118" class="arr"/>
+          <rect x="834" y="90" width="104" height="56" rx="9" fill="#ffe4e6" stroke="#fb7185" class="pb"/>
+          <text x="886" y="114" text-anchor="middle" class="pt" fill="#9f1239">MSE 损失</text><text x="886" y="133" text-anchor="middle" class="ps">‖ ε̂ − ε ‖²</text>
+          <path d="M497,80 L497,164 L886,164 L886,150" stroke="#f8a4b8" stroke-width="1.8" fill="none" stroke-dasharray="5,4" marker-end="url(#ahp)"/>
+          <text x="692" y="160" text-anchor="middle" font-size="10.8" fill="#be4d63">监督信号:真实噪声 ε</text>
+        </g>
+
+        <!-- 采样泳道 -->
+        <text x="22" y="232" font-size="13.5" font-weight="800" fill="#4f46e5">② 采样(生成)—— 循环 250 步(DDIM)</text>
+        <rect x="10" y="242" width="940" height="178" rx="14" fill="#f8f9fe" stroke="#e6e8f0"/>
+        <g>
+          <rect x="20" y="296" width="104" height="60" rx="9" fill="#fee2e2" stroke="#fca5a5" class="pb"/>
+          <text x="72" y="322" text-anchor="middle" class="pt">随机噪声 x<sub>T</sub></text><text x="72" y="341" text-anchor="middle" class="ps">32×32×4</text>
+          <line x1="124" y1="326" x2="146" y2="326" class="arr"/>
+          <rect x="150" y="262" width="230" height="132" rx="12" fill="none" stroke="#4f46e5" stroke-dasharray="7,5" stroke-width="1.6"/>
+          <text x="265" y="282" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4f46e5">去噪循环:每步一次 DiT 前向 + 采样器更新</text>
+          <rect x="170" y="296" width="120" height="62" rx="10" fill="#4f46e5"/>
+          <text x="230" y="322" text-anchor="middle" font-size="12.5" font-weight="800" fill="#fff">DiT(x<sub>t</sub>, t, y)</text>
+          <text x="230" y="340" text-anchor="middle" font-size="11" fill="#dfe2ff">预测 ε̂ → 反推 x̂₀</text>
+          <rect x="314" y="296" width="52" height="62" rx="9" fill="#e0e7ff" stroke="#a5b4fc" class="pb"/>
+          <text x="340" y="322" text-anchor="middle" font-size="11" font-weight="700" fill="#3730a3">采样器</text>
+          <text x="340" y="338" text-anchor="middle" font-size="10.5" fill="#4c51a3">DDIM</text>
+          <line x1="290" y1="327" x2="310" y2="327" class="arr"/>
+          <path d="M340,358 C340,388 230,388 230,362" stroke="#94a3b8" stroke-width="1.8" fill="none" stroke-dasharray="5,4" marker-end="url(#ahp)"/>
+          <text x="285" y="392" text-anchor="middle" font-size="10.8" fill="#64748b">用 x̂₀ 和 ε̂ 更新 x<sub>t</sub> → x<sub>t−1</sub></text>
+          <line x1="380" y1="326" x2="394" y2="326" class="arr"/>
+          <rect x="398" y="296" width="110" height="60" rx="9" fill="#ecfdf5" stroke="#a7f3d0" class="pb"/>
+          <text x="453" y="322" text-anchor="middle" class="pt">干净潜向量 x̂₀</text><text x="453" y="341" text-anchor="middle" class="ps">32×32×4</text>
+          <line x1="508" y1="326" x2="530" y2="326" class="arr"/>
+          <rect x="534" y="296" width="100" height="60" rx="9" fill="#fef3c7" stroke="#fcd34d" class="pb"/>
+          <text x="584" y="322" text-anchor="middle" class="pt">VAE Decoder</text><text x="584" y="341" text-anchor="middle" class="ps">冻结 · 空间 ×8</text>
+          <line x1="634" y1="326" x2="656" y2="326" class="arr"/>
+          <rect x="660" y="296" width="140" height="60" rx="9" fill="#eef2ff" stroke="#c7d2fe" class="pb"/>
+          <text x="730" y="322" text-anchor="middle" class="pt">生成图像</text><text x="730" y="341" text-anchor="middle" class="ps">256×256×3</text>
+          <text x="830" y="304" font-size="11.5" font-weight="700" fill="#7c3aed">CFG 说明:</text>
+          <text x="830" y="322" font-size="11" fill="#5b6377">每步实际跑两次 DiT:</text>
+          <text x="830" y="338" font-size="11" fill="#5b6377">有条件(y)与无条件(∅),</text>
+          <text x="830" y="354" font-size="11" fill="#5b6377">结果外插融合(见 5.2)</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>图 3-1 · DiT 整体流水线:上为训练(一次前向 + MSE),下为采样(循环去噪 + VAE 解码)。VAE 全程冻结,<strong>只有紫色的 DiT 参与训练</strong></figcaption>
+  </figure>
+  <p>把上图翻译成一句话:<strong>DiT 只是"流水线里的去噪网络"这一环被换掉了</strong>,VAE、扩散公式、采样器、CFG 这些 LDM 的基础设施全部原样保留。训练时它接收带噪潜向量 <span class="var">x<sub>t</sub></span> 与条件 (t, y),输出对噪声的估计;采样时它被调用 250 次,一步步把纯噪声变成干净的潜向量。</p>
+
+  <h3 id="s3-3">3.3 Patchify:把 32×32 的潜空间切成序列</h3>
+  <p>Transformer 只吃序列,不吃网格。DiT 的第一层因此是 ViT 式的 <strong>patchify(图块化)</strong>:把 <code>I×I×4</code> 的潜向量切成 <span class="var">p</span>×<span class="var">p</span> 的不重叠小块,每块展平(得到 <span class="var">p²·4</span> 个数)后经一个线性层投影到模型宽度 D:</p>
+  <div class="formula">
+    <span class="var">T</span> <span class="op">=</span> (<span class="var">I</span> / <span class="var">p</span>)<sup>2</sup> 个 token&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;每个 token = Linear( flatten( p × p × 4 ) ) ∈ ℝ<sup><span class="var">D</span></sup> <span class="op">+</span> 位置编码
+  </div>
+  <p>对 256×256 图像(<code>I=32</code>)来说:patch 越小,序列越长、token 数越多,注意力能"看"得越细,但计算量也随之上升——这就是表 3-1 里"最划算的旋钮"。</p>
+
+  <div class="pillbar">
+    <span class="lbl">动手试试:选择 patch 大小 p</span>
+    <button class="pill" data-p="2">p = 2</button>
+    <button class="pill on" data-p="4">p = 4</button>
+    <button class="pill" data-p="8">p = 8</button>
+  </div>
+  <div class="readout">
+    <div class="stat">token 数 T = (32/p)²<b id="statT">64</b></div>
+    <div class="stat">每个 token 原始维度 p²×4<b id="statDim">64</b></div>
+    <div class="stat">DiT-XL 计算量(Gflops)<b id="statGF">29.1</b></div>
+    <div class="stat">DiT-XL 参数量<b>675M<span style="font-size:12px;color:#8a91a5">(不变)</span></b></div>
+  </div>
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 310" width="960" id="patchSvg">
+        <defs>
+          <marker id="ahf" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+          <pattern id="chk2" width="13" height="13" patternUnits="userSpaceOnUse">
+            <rect width="13" height="13" fill="#eef2ff"/>
+            <rect width="6.5" height="6.5" fill="#e0e7ff"/>
+            <rect x="6.5" y="6.5" width="6.5" height="6.5" fill="#e0e7ff"/>
+          </pattern>
+        </defs>
+        <style>
+          .arrf{stroke:#94a3b8;stroke-width:2;fill:none;marker-end:url(#ahf)}
+          .ft{font-size:12.5px;fill:#3a4256}
+        </style>
+        <rect x="40" y="46" width="208" height="208" fill="url(#chk2)" stroke="#a5b4fc" stroke-width="1.5"/>
+        <text x="144" y="30" text-anchor="middle" font-size="13" font-weight="700" fill="#3a4256">潜空间 32×32×4(方格示意像素)</text>
+        <!-- p=8 -->
+        <g id="pv8" visibility="hidden">
+          <path d="M92,46V254 M144,46V254 M196,46V254 M40,98H248 M40,150H248 M40,202H248" stroke="#4f46e5" stroke-width="3.2" fill="none"/>
+          <rect x="40" y="46" width="52" height="52" fill="#f59e0b" opacity="0.3" stroke="#d97706" stroke-dasharray="4,3" stroke-width="2"/>
+        </g>
+        <!-- p=4 -->
+        <g id="pv4">
+          <path d="M66,46V254 M92,46V254 M118,46V254 M144,46V254 M170,46V254 M196,46V254 M222,46V254 M40,72H248 M40,98H248 M40,124H248 M40,150H248 M40,176H248 M40,202H248 M40,228H248" stroke="#4f46e5" stroke-width="3" fill="none"/>
+          <rect x="40" y="46" width="26" height="26" fill="#f59e0b" opacity="0.3" stroke="#d97706" stroke-dasharray="4,3" stroke-width="2"/>
+        </g>
+        <!-- p=2 -->
+        <g id="pv2" visibility="hidden">
+          <path d="M53,46V254 M66,46V254 M79,46V254 M92,46V254 M105,46V254 M118,46V254 M131,46V254 M144,46V254 M157,46V254 M170,46V254 M183,46V254 M196,46V254 M209,46V254 M222,46V254 M235,46V254 M40,59H248 M40,72H248 M40,85H248 M40,98H248 M40,111H248 M40,124H248 M40,137H248 M40,150H248 M40,163H248 M40,176H248 M40,189H248 M40,202H248 M40,215H248 M40,228H248 M40,241H248" stroke="#4f46e5" stroke-width="2.6" fill="none"/>
+          <rect x="40" y="46" width="13" height="13" fill="#f59e0b" opacity="0.45" stroke="#d97706" stroke-dasharray="3,2" stroke-width="1.6"/>
+        </g>
+        <text x="144" y="276" text-anchor="middle" font-size="11.5" fill="#6b7280" id="pvCap">当前:8×8 = 64 个 patch,每个 patch 含 4×4 潜像素</text>
+        <line x1="252" y1="150" x2="306" y2="150" class="arrf"/>
+        <text x="330" y="34" font-size="12.5" font-weight="700" fill="#3a4256">每个 patch:展平 → 线性投影 → D 维 token</text>
+        <g font-size="12.5">
+          <rect x="330" y="50" width="150" height="32" rx="8" fill="#fff" stroke="#4f46e5" stroke-width="1.6"/>
+          <text x="405" y="70" text-anchor="middle" fill="#3a4256">token P₁ = E(patch₁)</text>
+          <rect x="330" y="92" width="150" height="32" rx="8" fill="#fff" stroke="#4f46e5" stroke-width="1.6"/>
+          <text x="405" y="112" text-anchor="middle" fill="#3a4256">token P₂</text>
+          <rect x="330" y="134" width="150" height="32" rx="8" fill="#fff" stroke="#4f46e5" stroke-width="1.6"/>
+          <text x="405" y="154" text-anchor="middle" fill="#3a4256">token P₃</text>
+          <text x="405" y="182" text-anchor="middle" fill="#8a91a5" font-size="16">⋮</text>
+          <rect x="330" y="192" width="150" height="32" rx="8" fill="#fff" stroke="#4f46e5" stroke-width="1.6"/>
+          <text x="405" y="212" text-anchor="middle" fill="#3a4256">token P<sub><tspan id="pvT">64</tspan></sub></text>
+          <text x="405" y="248" text-anchor="middle" font-size="11.5" fill="#6b7280" id="pvPlus">+ 2D 正弦位置编码,顺序 = 行优先</text>
+        </g>
+        <line x1="484" y1="150" x2="540" y2="150" class="arrf"/>
+        <rect x="544" y="112" width="150" height="76" rx="11" fill="#4f46e5"/>
+        <text x="619" y="144" text-anchor="middle" font-size="13.5" font-weight="800" fill="#fff">进入 N 个</text>
+        <text x="619" y="164" text-anchor="middle" font-size="13.5" font-weight="800" fill="#fff">DiT Block</text>
+        <text x="619" y="212" text-anchor="middle" font-size="11.5" fill="#6b7280">注意力在整条序列上</text>
+        <text x="619" y="228" text-anchor="middle" font-size="11.5" fill="#6b7280">全局交互(无卷积)</text>
+      </svg>
+    </div>
+    <figcaption>图 3-2 · Patchify 交互演示(基于 DiT-XL):patch 越小 → token 越多 → 计算量越大,但参数量不变</figcaption>
+  </figure>
+
+  <div class="tablewrap"><table>
+    <thead><tr><th>DiT-XL 配置</th><th class="num">patch p</th><th class="num">token 数 T</th><th class="num">Gflops</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td><b>DiT-XL/2</b>(最终模型)</td><td class="num">2</td><td class="num">256</td><td class="num">118.6</td><td>论文最终模型,<b>ImageNet-256 FID 2.27</b></td></tr>
+      <tr><td>DiT-XL/4</td><td class="num">4</td><td class="num">64</td><td class="num">29.1</td><td>论文表 1 的基准配置</td></tr>
+      <tr><td>DiT-XL/8</td><td class="num">8</td><td class="num">16</td><td class="num">≈ 7.3(按 token 数外推)</td><td>序列过短,生成质量明显下降</td></tr>
+    </tbody>
+  </table><div class="cap">表 3-2 · 同一个 XL 骨干,只改 patch 大小:参数量始终 675M,计算量相差 16 倍</div></div>
+  <div class="callout warn"><span class="ct">⚠️ 为什么 token 数不能太少?</span>注意力是 DiT 唯一的"空间信息通道",token 数决定了模型对潜空间的"分辨率"。p=8 时整个 32×32 潜空间只剩 16 个 token,模型连"哪里该有什么"都难以表达;论文实验也表明在同等训练量下 <b>patch 越小 FID 越低</b>——所以最终模型选择了最"贵"的 /2。</div>
+</section>
+
+<!-- ================= 4 架构拆解 ================= -->
+<section id="s4">
+  <h2><span class="secno">04</span>架构逐层拆解:从输入到输出</h2>
+
+  <h3 id="s4-1">4.1 模型配置:四个尺寸</h3>
+  <p>DiT 完全沿用 ViT 的尺寸命名(S/B/L/XL,隐藏宽度与标准 ViT 一致),这让它可以无缝继承 ViT 的初始化与训练经验:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>模型</th><th class="num">层数 N</th><th class="num">宽度 D</th><th class="num">注意力头</th><th class="num">参数量</th><th class="num">Gflops(p=4)</th></tr></thead>
+    <tbody>
+      <tr><td>DiT-S</td><td class="num">12</td><td class="num">384</td><td class="num">6</td><td class="num">33M</td><td class="num">1.4</td></tr>
+      <tr><td>DiT-B</td><td class="num">12</td><td class="num">768</td><td class="num">12</td><td class="num">130M</td><td class="num">5.6</td></tr>
+      <tr><td>DiT-L</td><td class="num">24</td><td class="num">1024</td><td class="num">16</td><td class="num">458M</td><td class="num">19.7</td></tr>
+      <tr class="hl"><td><b>DiT-XL</b>(最终模型)</td><td class="num">28</td><td class="num">1152</td><td class="num">16</td><td class="num">675M</td><td class="num">29.1(p=2 时 118.6)</td></tr>
+    </tbody>
+  </table><div class="cap">表 4-1 · DiT 四种尺寸(Gflops 按 ImageNet-256 的 32×32 潜空间、patch=4 计)。每个 DiT Block 内 MLP 隐藏层为 4D</div></div>
+  <p>整个模型的数据流是:<code>PatchEmbed(潜向量) → +位置编码 → ×N [DiT Block] → FinalLayer → Unpatchify</code>。下面按顺序拆解每一层。</p>
+
+  <h3 id="s4-2">4.2 输入侧:Patch 嵌入、位置编码与条件嵌入</h3>
+  <h4>PatchEmbed:一个卷积搞定</h4>
+  <p>把每个 <span class="var">p</span>×<span class="var">p</span>×4 的 patch 展平后做线性投影,等价于一个 <code>kernel_size = stride = p</code> 的 <code>Conv2d(4, D, p, p)</code>——官方实现就用这个卷积,一行完成"切块 + 展平 + 投影"三件事。</p>
+  <h4>2D 正弦位置编码(默认冻结)</h4>
+  <p>patch 切成序列后需要告诉模型"谁在哪儿"。DiT 默认使用 ViT 的 <strong>2D 正弦-余弦位置编码</strong>(固定、不参与训练),逐元素加到每个 token 上;代码里也保留了可学习位置编码的选项。因为潜空间只有 16×16 个 patch,位置编码这件事在 DiT 里非常轻量。</p>
+  <h4>两个条件各配一个嵌入器</h4>
+  <ul>
+    <li><strong>时间步 t</strong>:先做 256 维正弦嵌入(与 Transformer 位置编码同款公式,只是把"位置"换成"时间步"),再过两层 MLP 升到 D 维。这样 0~999 的整数时间步被编码成了语义平滑的向量,相邻时间步的嵌入也相近。</li>
+    <li><strong>类别 y</strong>:一个普通的 <code>nn.Embedding(1001, D)</code>——1000 个 ImageNet 类别 + 1 个"空标签"(为什么多一个,见 5.2 节 CFG)。</li>
+  </ul>
+  <p>两个嵌入<strong>直接相加</strong>(不是拼接)得到条件向量 <span class="var">c</span>,它会送进每一个 DiT Block 的 adaLN 调制器:</p>
+  <div class="formula"><span class="var">c</span> <span class="op">=</span> MLP<sub>t</sub>( sin-cos(<span class="var">t</span>) ) <span class="op">+</span> Emb(<span class="var">y</span>)&nbsp;&nbsp;∈&nbsp;ℝ<sup><span class="var">D</span></sup></div>
+
+  <h3 id="s4-3">4.3 条件注入:四种方案与胜负</h3>
+  <p>"条件怎么进入网络"是 DiT 论文最核心的消融实验。四种候选方案:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>方案</th><th>做法</th><th>计算开销</th><th>论文表现</th></tr></thead>
+    <tbody>
+      <tr><td><b>In-context</b></td><td>把 t、y 的嵌入当作两个额外 token 拼在序列开头,让自注意力自己"看着办"</td><td>几乎不增加</td><td>最差——条件只是"序列里的一员",注意力可能忽略它</td></tr>
+      <tr><td><b>Cross-attention</b></td><td>每个块新增交叉注意力层:图像 token 当 Q,条件 token 当 K/V(LDM 的做法)</td><td>Gflops ↑ 约 15%</td><td>较好</td></tr>
+      <tr><td><b>adaLN</b></td><td>用条件 c 回归 LayerNorm 的仿射参数 (γ, β),替换原本可学习的缩放偏移</td><td><b>最省</b>(一个小 MLP)</td><td>更好</td></tr>
+      <tr class="hl"><td><b>adaLN-Zero</b> ✓</td><td>adaLN 基础上再回归一个门控 α 乘在残差分支上,且 α 的回归层<b>零初始化</b></td><td><b>最省</b></td><td><b>全面最优,最终采用</b></td></tr>
+    </tbody>
+  </table><div class="cap">表 4-2 · 条件注入方案对比(同等训练预算下 FID 从高到低:in-context &gt; cross-attn &gt; adaLN &gt; adaLN-Zero)</div></div>
+  <p>结论耐人寻味:<strong>最省计算的方案反而效果最好</strong>。adaLN-Zero 用几乎为零的额外开销,把条件"焊"进了每一个归一化层——条件不再是一个可以被忽略的 token,而是直接控制每一层的特征分布。</p>
+
+  <h3 id="s4-4">4.4 adaLN-Zero 详解(全文最重要的一节)</h3>
+  <p>标准 Transformer 的 LayerNorm 自带一对可学习参数(缩放 γ、偏移 β)。adaLN 的想法是:<strong>这两个参数不自己学,而是由条件 c 通过一个小 MLP 实时"算"出来</strong>。adaLN-Zero 再进一步:每个子层(注意力、MLP)各有独立的 (γ, β, α) 共 6 组参数,其中 <strong>α 是乘在残差分支输出上的门控,其回归层初始化为全零</strong>。一个完整的 DiT Block 计算如下:</p>
+  <div class="formula">
+    (γ<sub>1</sub>, β<sub>1</sub>, α<sub>1</sub>, γ<sub>2</sub>, β<sub>2</sub>, α<sub>2</sub>) <span class="op">=</span> MLP<sub>adaLN</sub>(<span class="var">c</span>) ∈ ℝ<sup>6<span class="var">D</span></sup><br>
+    <span class="var">x</span> ← <span class="var">x</span> <span class="op">+</span> α<sub>1</sub> ⊙ Attn( (1 <span class="op">+</span> γ<sub>1</sub>) ⊙ LN(<span class="var">x</span>) <span class="op">+</span> β<sub>1</sub> )<br>
+    <span class="var">x</span> ← <span class="var">x</span> <span class="op">+</span> α<sub>2</sub> ⊙ MLP( (1 <span class="op">+</span> γ<sub>2</sub>) ⊙ LN(<span class="var">x</span>) <span class="op">+</span> β<sub>2</sub> )
+    <span class="note">⊙ 为逐元素乘(广播到 token 维度);MLP<sub>adaLN</sub> = SiLU → Linear(D, 6D),每个 Block 独立一个</span>
+  </div>
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 410" width="960">
+        <defs>
+          <marker id="ahb" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+          <marker id="aho" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d97706"/></marker>
+        </defs>
+        <style>
+          .cw{stroke:#d97706;stroke-width:1.7;fill:none}
+          .da{stroke:#94a3b8;stroke-width:2.1;fill:none;marker-end:url(#ahb)}
+          .bt{font-size:12px;font-weight:700}
+        </style>
+        <!-- 条件支路 -->
+        <rect x="30" y="40" width="160" height="38" rx="9" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.6"/>
+        <text x="110" y="55" text-anchor="middle" class="bt" fill="#92400e">条件向量 c</text>
+        <text x="110" y="71" text-anchor="middle" font-size="10.5" fill="#92400e">c = MLP(t) + Emb(y)</text>
+        <line x1="110" y1="78" x2="110" y2="90" class="da"/>
+        <rect x="30" y="94" width="160" height="46" rx="9" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1.6"/>
+        <text x="110" y="112" text-anchor="middle" class="bt" fill="#4c1d95">adaLN 调制 MLP</text>
+        <text x="110" y="129" text-anchor="middle" font-size="10.5" fill="#4c1d95">SiLU + Linear(D → 6D)</text>
+        <!-- γ β α 芯片 -->
+        <rect x="230" y="122" width="64" height="26" rx="7" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="262" y="139" text-anchor="middle" font-size="11" font-weight="700" fill="#92400e">γ₁ · 缩放</text>
+        <rect x="292" y="122" width="64" height="26" rx="7" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="324" y="139" text-anchor="middle" font-size="11" font-weight="700" fill="#92400e">β₁ · 偏移</text>
+        <rect x="686" y="142" width="64" height="26" rx="7" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="718" y="159" text-anchor="middle" font-size="11" font-weight="700" fill="#92400e">α₁ · 门控</text>
+        <!-- 条件连线 -->
+        <path d="M110,140 L110,192 L445,192 L445,232" class="cw" marker-end="url(#aho)"/>
+        <path d="M324,148 L324,210 L495,210 L495,232" class="cw" marker-end="url(#aho)"/>
+        <path d="M190,100 L718,100 L718,138" class="cw" marker-end="url(#aho)"/>
+        <!-- 主干:输入 -->
+        <rect x="218" y="240" width="64" height="30" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.6"/>
+        <text x="250" y="259" text-anchor="middle" font-size="13" font-weight="800" fill="#3730a3">x</text>
+        <line x1="282" y1="255" x2="304" y2="255" class="da"/>
+        <rect x="310" y="240" width="74" height="30" rx="8" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+        <text x="347" y="259" text-anchor="middle" font-size="11.5" font-weight="700" fill="#475569">LayerNorm</text>
+        <line x1="384" y1="255" x2="404" y2="255" class="da"/>
+        <rect x="410" y="236" width="120" height="38" rx="8" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1.6"/>
+        <text x="470" y="252" text-anchor="middle" font-size="12" font-weight="800" fill="#4c1d95">⊙ (1 + γ₁)</text>
+        <text x="470" y="267" text-anchor="middle" font-size="12" font-weight="800" fill="#4c1d95">⊕ β₁</text>
+        <line x1="530" y1="255" x2="552" y2="255" class="da"/>
+        <rect x="558" y="228" width="140" height="54" rx="10" fill="#4f46e5"/>
+        <text x="628" y="251" text-anchor="middle" font-size="12.5" font-weight="800" fill="#fff">Multi-Head</text>
+        <text x="628" y="269" text-anchor="middle" font-size="12.5" font-weight="800" fill="#fff">Self-Attention</text>
+        <line x1="698" y1="255" x2="718" y2="255" class="da"/>
+        <rect x="724" y="236" width="76" height="38" rx="8" fill="#ecfdf5" stroke="#34d399" stroke-width="1.6"/>
+        <text x="762" y="259" text-anchor="middle" font-size="13" font-weight="800" fill="#065f46">× α₁</text>
+        <line x1="800" y1="255" x2="820" y2="255" class="da"/>
+        <circle cx="840" cy="255" r="16" fill="#fff" stroke="#6366f1" stroke-width="2"/>
+        <line x1="832" y1="255" x2="848" y2="255" stroke="#6366f1" stroke-width="2"/>
+        <line x1="840" y1="247" x2="840" y2="263" stroke="#6366f1" stroke-width="2"/>
+        <line x1="856" y1="255" x2="878" y2="255" class="da"/>
+        <text x="893" y="259" font-size="13" font-weight="800" fill="#3730a3">x′</text>
+        <!-- 残差弧(下方) -->
+        <path d="M248,270 L248,302 L840,302 L840,273" stroke="#94a3b8" stroke-width="2" fill="none" stroke-dasharray="6,5" marker-end="url(#ahb)"/>
+        <text x="544" y="318" text-anchor="middle" font-size="11" fill="#64748b">残差连接(skip connection)</text>
+        <!-- 后续 MLP 子层 -->
+        <path d="M893,268 L893,358 L806,358" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#ahb)"/>
+        <rect x="240" y="336" width="560" height="44" rx="10" fill="none" stroke="#94a3b8" stroke-dasharray="6,5" stroke-width="1.5"/>
+        <text x="520" y="362" text-anchor="middle" font-size="12" fill="#475569">→ 再经过一个结构完全相同的 <tspan font-weight="700" fill="#4f46e5">MLP 子层</tspan>(用 γ₂, β₂, α₂)→ 得到 Block 输出</text>
+        <!-- 图例与要点 -->
+        <text x="30" y="352" font-size="10.8" fill="#64748b">每个 Block 独立持有自己的调制 MLP;</text>
+        <text x="30" y="370" font-size="10.8" fill="#64748b">橙线 = 条件调制参数,蓝框 = 数据流</text>
+        <text x="30" y="392" font-size="11.5" font-weight="800" fill="#0a6b45">★ α₁ 零初始化 ⇒ 初始时子层输出为 0 ⇒ 整块 = 恒等映射</text>
+      </svg>
+    </div>
+    <figcaption>图 4-1 · DiT Block(adaLN-Zero)的注意力子层全景。MLP 子层结构与左侧完全对称,仅调制参数换为 γ₂、β₂、α₂</figcaption>
+  </figure>
+  <h4>三个精妙的设计细节</h4>
+  <ul>
+    <li><strong>为什么是 (1 + γ) 而不是 γ?</strong>初始化时调制 MLP 输出全零,则 (1+γ)=1、β=0,LayerNorm 退化回标准行为——<strong>初始状态就是普通 Transformer</strong>,训练从熟悉的起点出发。</li>
+    <li><strong>为什么 α 零初始化如此关键?</strong>α=0 意味着初始时每个子层的贡献被"关掉",整个 DiT Block 等价于恒等映射。深网络在初始时不对输入做任何破坏,梯度通畅、优化极其稳定——这与 ResNet 的零初始化残差分支、ControlNet 的零卷积是同一思想。论文消融显示:去掉零初始化,adaLN 的优势会大幅缩水。</li>
+    <li><strong>条件每层都注入,且是"乘性 + 加性"双通道。</strong>γ 缩放特征、β 平移特征、α 决定"这一层听条件多少"——时间步与类别信息就这样深度参与到每一层的计算中。</li>
+  </ul>
+  <div class="callout vio"><span class="ct">🔮 一点前瞻</span>adaLN-Zero 这个设计后来被整个行业继承:SD3、FLUX 全部使用 adaLN 系列条件注入(FLUX 的变体叫 <b>adaLN-single</b>,把 6D 调制参数只算一次、各层复用,进一步省计算)。可以说,图 4-1 这张图是当代所有 DiT 系模型的"公分母"。</div>
+
+  <h3 id="s4-5">4.5 输出头:FinalLayer 与 Unpatchify</h3>
+  <p>最后一个 Block 的输出先经过一个"迷你版 adaLN"(只回归 2 组参数:shift、scale)加 LayerNorm,再接一个线性层,把每个 token 从 D 维投影回 <span class="var">p²·(2C)</span> 维;最后按 patch 网格<strong>拼回</strong>(unpatchify)潜空间的形状 <code>(B, 2C, 32, 32)</code>。</p>
+  <p>为什么输出通道是 <strong>2C = 8</strong> 而不是 4?这沿用了 ADM 的 <code>learn_sigma</code> 设计:DiT 同时预测<strong>噪声 ε̂</strong>(前 4 通道)与<strong>对角方差 Σ̂</strong>(后 4 通道)。采样时,预测的方差用于决定每一步去噪的"步幅",让接近干净的低噪声阶段走得更保守,提升细节质量。</p>
+  <div class="formula">
+    输出 = Linear( (1 <span class="op">+</span> γ<sub>f</sub>) ⊙ LN(<span class="var">x</span>) <span class="op">+</span> β<sub>f</sub> )&nbsp;&nbsp;→&nbsp;&nbsp;reshape 回 (B, 2C, 32, 32)
+  </div>
+
+  <h3 id="s4-6">4.6 规模化:一张图看懂 DiT 的"scaling law"</h3>
+  <p>论文最著名的结论:在 ImageNet-256、400K 训练步的统一预算下,<strong>Gflops 与 FID 呈现清晰的负相关</strong>——无论算力来自"更宽更深"(S→XL)还是"更多 token"(p 8→2),点都落在同一条趋势线上。这给了工程上极大的确定性:想变好,加算力就行。</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>模型(均训 400K 步)</th><th class="num">Gflops</th><th class="num">FID-50K(无 CFG)</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>DiT-S/2</td><td class="num">6.1</td><td class="num">68.4</td><td rowspan="4">模型越大、patch 越小,FID 单调下降;最终 <b>DiT-XL/2(118.6 Gflops,675M)</b> 在 ImageNet-256 以 <b>FID 2.27</b>(CFG 1.5)刷新 SOTA,512×512 上 FID 3.04(524 Gflops)</td></tr>
+      <tr><td>DiT-B/2</td><td class="num">11.5</td><td class="num">43.5</td></tr>
+      <tr><td>DiT-L/2</td><td class="num">80.7</td><td class="num">—(趋势持续)</td></tr>
+      <tr class="hl"><td><b>DiT-XL/2</b></td><td class="num"><b>118.6</b></td><td class="num">9.62</td></tr>
+    </tbody>
+  </table><div class="cap">表 4-3 · 规模化趋势(节选自论文实验;无 CFG 的 FID 明显更高——CFG 是另一大功臣,见下节)</div></div>
+</section>
+
+<!-- ================= 5 训练与采样 ================= -->
+<section id="s5">
+  <h2><span class="secno">05</span>训练与采样全流程</h2>
+
+  <h3 id="s5-1">5.1 训练:目标函数与完整配方</h3>
+  <p>训练循环本质上就是第 2 章的扩散损失,套上 DiT 骨干。伪代码:</p>
+  <div class="txtbox">repeat:
+    x0, y  ← 取一个 batch 的(潜向量, 类别)        # 图像先经冻结 VAE 编码为 32×32×4
+    t      ~ Uniform{0, 1, …, 999}                 # 每个样本独立抽时间步
+    ε      ~ N(0, I)                               # 抽高斯噪声
+    x_t    = √ᾱ_t · x0 + √(1−ᾱ_t) · ε             # 一步加噪(闭式公式)
+    以 10% 概率把 y 替换为"空标签"                  # 为 CFG 做准备(见 5.2)
+    ε̂, Σ̂  = DiT(x_t, t, y)                        # 前向:预测噪声与方差
+    loss   = ‖ε̂ − ε‖²  (+ 方差项)                  # ADM 风格混合损失
+    反向传播,只更新 DiT(VAE 冻结)</div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>超参</th><th>取值</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td>优化器</td><td>AdamW,lr = 1e-4(恒定),wd = 0</td><td>无学习率衰减</td></tr>
+      <tr><td>batch size</td><td>256</td><td>ImageNet 类条件训练</td></tr>
+      <tr><td>训练步数</td><td>400K(消融基准)/ <b>7M(最终 XL/2)</b></td><td>7M ≈ 1400 epochs</td></tr>
+      <tr><td>EMA</td><td>0.9999</td><td>采样用 EMA 权重</td></tr>
+      <tr><td>标签丢弃</td><td>10%</td><td>服务于 CFG</td></tr>
+      <tr><td>扩散设置</td><td>T=1000,线性 β:1e-4 → 0.02,learn_sigma</td><td>沿用 ADM</td></tr>
+    </tbody>
+  </table><div class="cap">表 5-1 · ImageNet-256 官方训练配方</div></div>
+
+  <h3 id="s5-2">5.2 无分类器引导(CFG):FID 从 9.62 到 2.27 的魔法</h3>
+  <p>类条件模型直接采样往往"不够听话"。CFG 的做法极其简单:<strong>同时跑一次有条件和无条件的预测,然后沿"无条件 → 有条件"的方向外推</strong>:</p>
+  <div class="formula">
+    ε̃ <span class="op">=</span> ε̂<sub>θ</sub>(<span class="var">x<sub>t</sub></span>, <span class="var">t</span>, ∅) <span class="op">+</span> <span class="var">w</span> · ( ε̂<sub>θ</sub>(<span class="var">x<sub>t</sub></span>, <span class="var">t</span>, <span class="var">y</span>) − ε̂<sub>θ</sub>(<span class="var">x<sub>t</sub></span>, <span class="var">t</span>, ∅) )
+    <span class="note">w=1 退化为普通条件采样;w&gt;1 放大条件的影响,提升保真度与分类准确率,代价是多样性下降</span>
+  </div>
+  <p>前提是模型必须"见过"无条件情形——这正是训练时以 10% 概率把标签替换为空标签的原因(对应 LabelEmbedder 里多出来的那一行嵌入)。<strong>CFG 是 DiT 战绩里不可缺少的一半</strong>:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>DiT-XL/2 @ ImageNet-256</th><th class="num">FID-50K</th><th class="num">IS</th></tr></thead>
+    <tbody>
+      <tr><td>无 CFG(w = 1)</td><td class="num">9.62</td><td class="num">121.5</td></tr>
+      <tr><td>w = 1.25</td><td class="num">3.22</td><td class="num">201.8</td></tr>
+      <tr class="hl"><td><b>w = 1.50(论文采用)</b></td><td class="num"><b>2.27</b></td><td class="num">278.8</td></tr>
+    </tbody>
+  </table><div class="cap">表 5-2 · CFG 强度对生成质量的影响:w 越大越"像指定类别",但过大会导致模式崩塌、画面过饱和</div></div>
+  <div class="callout warn"><span class="ct">⚠️ 代价</span>CFG 让每一步采样都要跑<b>两次</b> DiT 前向(有条件 + 无条件),推理成本直接翻倍。现代模型常用蒸馏(如一致性蒸馏、引导蒸馏)来消掉这笔开销。</div>
+
+  <h3 id="s5-3">5.3 采样:DDIM 250 步</h3>
+  <p>官方采样器为 <strong>250 步 DDIM</strong>(cfg = 1.5)。完整流程:</p>
+  <ol>
+    <li>从纯噪声出发:<span class="var">x<sub>T</sub></span> ~ <span class="var">N</span>(0, I),并给定目标类别 <span class="var">y</span>;</li>
+    <li>在均匀间隔的 250 个时间步上,从 <span class="var">t</span> = 999 递减到 0,每步:
+      <ul>
+        <li>跑两次 DiT 得 <span class="var">ε̂<sub>y</sub></span> 与 <span class="var">ε̂<sub>∅</sub></span>,按 CFG 公式融合为 <span class="var">ε̃</span>;</li>
+        <li>反推干净潜向量的估计:<span class="var">x̂₀</span> = ( <span class="var">x<sub>t</sub></span> − √(1−ᾱ<sub>t</sub>)·<span class="var">ε̃</span> ) / √ᾱ<sub>t</sub>;</li>
+        <li>DDIM 确定性更新:<span class="var">x<sub>t−1</sub></span> = √ᾱ<sub>t−1</sub>·<span class="var">x̂₀</span> + √(1−ᾱ<sub>t−1</sub>)·<span class="var">ε̃</span>;</li>
+      </ul>
+    </li>
+    <li>循环结束后得到 <span class="var">x̂₀</span>,除以缩放系数 <code>0.18215</code> 后送入 VAE Decoder,输出 RGB 图像。</li>
+  </ol>
+  <div class="callout tip"><span class="ct">💡 为什么选 DDIM?</span>DDIM 是确定性采样器,在 250 步内就能达到 DDPM 上千步的质量,且采样轨迹稳定、便于复现与插值。DiT 的采样代码(基于 OpenAI 的 improved-diffusion 库)一行即可切换 DDPM/DDIM。</div>
+</section>
+
+<!-- ================= 6 代码实现 ================= -->
+<section id="s6">
+  <h2><span class="secno">06</span>PyTorch 代码实现:一个文件写完 DiT</h2>
+  <p>下面是与官方仓库 <code>facebookresearch/DiT</code> 同构、但为教学精简过的完整实现(约 300 行)。差异仅有两处:注意力用 PyTorch 2.x 内置的 <code>scaled_dot_product_attention</code>(自动启用 Flash Attention,更快更省显存);扩散部分改写成自包含的教学版。依赖只有 <code>torch</code> 与 <code>math</code>。</p>
+
+  <h3 id="s6-1">6.1 文件结构总览</h3>
+  <div class="txtbox">dit_minimal.py
+├── TimestepEmbedder    # 时间步 t 的正弦嵌入 + MLP
+├── LabelEmbedder       # 类别 y 的嵌入(带 CFG 标签丢弃)
+├── modulate / Mlp / Attention        # 基础组件
+├── DiTBlock            # ★ adaLN-Zero 块(论文核心)
+├── FinalLayer          # 输出头(迷你 adaLN + 线性投影)
+├── PatchEmbed          # 输入头(切块 + 投影 = 一个卷积)
+├── get_2d_sincos_pos_embed           # 固定 2D 正弦位置编码
+├── DiT                 # 主模型(组装 + 零初始化)
+├── DiT_models          # S / B / L / XL 四种尺寸的配置字典
+├── SimpleDiffusion     # 极简扩散(加噪 + 训练损失)
+├── ddim_sample         # DDIM + CFG 采样
+└── train / __main__    # 训练循环 + 冒烟测试</div>
+
+  <h3 id="s6-2">6.2 时间步嵌入 与 6.3 类别嵌入</h3>
+  <p>两个嵌入器的输出最终会<strong>相加</strong>成条件向量 <span class="var">c</span>。注意 <code>LabelEmbedder</code> 里那个"多出来的第 1001 行"——它是 CFG 的空标签 <code>∅</code>,训练时以 10% 概率被使用,采样时用来跑无条件分支:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 1/6 条件嵌入</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class TimestepEmbedder(nn.Module):
+    """把标量时间步 t(如 0~999)映射为 hidden_size 维条件向量"""
+
+    def __init__(self, hidden_size, freq_size=256):
+        super().__init__()
+        self.freq_size = freq_size
+        self.mlp = nn.Sequential(
+            nn.Linear(freq_size, hidden_size),   # 256 -&gt; D
+            nn.SiLU(),
+            nn.Linear(hidden_size, hidden_size), # D -&gt; D
+        )
+
+    @staticmethod
+    def timestep_embedding(t, dim, max_period=10000):
+        # 与 Transformer 位置编码同款:不同频率的 sin/cos 组合
+        half = dim // 2
+        freqs = torch.exp(
+            -math.log(max_period) * torch.arange(half, dtype=torch.float32) / (half - 1)
+        ).to(t.device)
+        args = t[:, None].float() * freqs[None]                    # (B, half)
+        return torch.cat([torch.cos(args), torch.sin(args)], -1)   # (B, dim)
+
+    def forward(self, t):
+        return self.mlp(self.timestep_embedding(t, self.freq_size))
+
+
+class LabelEmbedder(nn.Module):
+    """类别标签嵌入;内置 10% 随机丢弃(替换为"空标签"),为 CFG 服务"""
+
+    def __init__(self, num_classes, hidden_size, dropout_prob=0.1):
+        super().__init__()
+        use_cfg = dropout_prob &gt; 0
+        # 额外多一行(第 num_classes 个)= "空标签" ∅,给 CFG 的无条件分支用
+        self.embedding_table = nn.Embedding(num_classes + use_cfg, hidden_size)
+        self.num_classes = num_classes
+        self.dropout_prob = dropout_prob
+
+    def token_drop(self, labels, force_drop_ids=None):
+        if force_drop_ids is None:
+            drop = torch.rand(labels.shape[0], device=labels.device) &lt; self.dropout_prob
+        else:
+            drop = force_drop_ids == 1
+        return torch.where(drop, self.num_classes, labels)
+
+    def forward(self, labels, train):
+        if train and self.dropout_prob &gt; 0:
+            labels = self.token_drop(labels)     # 训练时 10% 概率换成 ∅
+        return self.embedding_table(labels)      # (B, D)</pre></div>
+  <div class="callout tip"><span class="ct">💡 代码要点</span>
+  ① <code>timestep_embedding</code> 的公式与 Transformer 正弦位置编码完全一致,只是"位置"换成了"时间步"——所以 t 不是 one-hot,而是一条平滑曲线上的点,相邻 t 的嵌入也相近;<br>
+  ② <code>token_drop</code> 只在 <code>train=True</code> 时生效;采样跑无条件分支时,直接把标签设为 <code>num_classes</code>(即 ∅ 那一行)即可。</div>
+
+  <h3 id="s6-4">6.4 基础组件 与 6.5 DiTBlock(对照图 4-1 逐行读)</h3>
+  <p>先看三个小件:<code>modulate</code> 是 adaLN 的数学本体;<code>Mlp</code> 是标准前馈;<code>Attention</code> 是标准多头自注意力,没有任何魔改:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 2/6 基础组件</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">def modulate(x, shift, scale):
+    """adaLN 本体:x (B,N,D) 逐元素乘 (1+scale)、加 shift;
+    shift / scale 形状 (B,D),通过 unsqueeze 广播到所有 token"""
+    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+
+class Mlp(nn.Module):
+    """标准前馈网络:Linear -&gt; GELU -&gt; Linear,隐藏层 4D"""
+    def __init__(self, dim, hidden):
+        super().__init__()
+        self.fc1 = nn.Linear(dim, hidden)
+        self.act = nn.GELU(approximate="tanh")
+        self.fc2 = nn.Linear(hidden, dim)
+
+    def forward(self, x):
+        return self.fc2(self.act(self.fc1(x)))
+
+
+class Attention(nn.Module):
+    """缩放点积多头自注意力;用 PyTorch 2.x 内置算子(自动 Flash Attention)"""
+    def __init__(self, dim, num_heads):
+        super().__init__()
+        self.num_heads = num_heads
+        self.qkv = nn.Linear(dim, dim * 3)     # 一次线性变换同时算出 Q、K、V
+        self.proj = nn.Linear(dim, dim)
+
+    def forward(self, x):
+        B, N, D = x.shape                      # N 个 token,每个 D 维
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, D // self.num_heads)
+        qkv = qkv.permute(2, 0, 3, 1, 4)       # (3, B, heads, N, d_head)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        x = F.scaled_dot_product_attention(q, k, v)   # softmax(QK^T/√d)V
+        x = x.transpose(1, 2).reshape(B, N, D)
+        return self.proj(x)</pre></div>
+  <p>然后是全文的主角 <code>DiTBlock</code>。对照图 4-1:构造函数里那两行 <code>elementwise_affine=False</code> 的 LayerNorm,加上末尾 15 行的 <code>SiLU + Linear(D, 6D)</code>,就是 DiT 与普通 ViT 块的全部区别:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 3/6 DiTBlock(adaLN-Zero)★</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">class DiTBlock(nn.Module):
+    """DiT 块:adaLN-Zero 条件注入(论文最终方案)"""
+
+    def __init__(self, dim, num_heads, mlp_ratio=4.0):
+        super().__init__()
+        # LayerNorm 关掉自身可学习的仿射参数,交给 adaLN 从条件 c 回归
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=False)
+        self.attn = Attention(dim, num_heads)
+        self.norm2 = nn.LayerNorm(dim, elementwise_affine=False)
+        self.mlp = Mlp(dim, int(dim * mlp_ratio))
+        # 调制 MLP:条件 c -&gt; 6 组参数 (shift, scale, gate) x 2
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(dim, 6 * dim),
+        )
+
+    def forward(self, x, c):
+        # c = t_emb + y_emb,形状 (B, D)
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = \
+            self.adaLN_modulation(c).chunk(6, dim=-1)
+
+        # --- 子层 1:调制 LN -&gt; 自注意力 -&gt; 门控 -&gt; 残差相加 ---
+        x = x + gate_msa.unsqueeze(1) * self.attn(
+            modulate(self.norm1(x), shift_msa, scale_msa))
+
+        # --- 子层 2:调制 LN -&gt; MLP -&gt; 门控 -&gt; 残差相加 ---
+        x = x + gate_mlp.unsqueeze(1) * self.mlp(
+            modulate(self.norm2(x), shift_mlp, scale_mlp))
+        return x</pre></div>
+  <div class="callout key"><span class="ct">📌 与公式的对应关系</span>
+  <code>modulate(norm1(x), shift, scale)</code> 就是 <b>(1+γ₁) ⊙ LN(x) + β₁</b>;<br>
+  <code>gate_msa.unsqueeze(1) * attn(...)</code> 就是 <b>α₁ ⊙ Attn(...)</b>;<br>
+  两个子层的结构逐字符对称——MLP 子层只是把 <code>attn</code> 换成 <code>mlp</code>、参数下标换成 2。<b>注意:参数是逐通道(维度级)的</b>,即 α₁、γ₁、β₁ 都是 D 维向量而非标量,条件可以精细控制每一个特征通道。</div>
+
+  <h3 id="s6-6">6.6 输出头、输入头与位置编码</h3>
+  <p><code>FinalLayer</code> 是一个"迷你版 DiTBlock":只保留一次调制 LN + 一次线性投影,<b>没有门控 α 和残差</b>(它不再需要)。线性层的输出维度是 <code>p² × 2C</code>——每个 token 负责还原自己那个 patch 里所有像素通道;<code>PatchEmbed</code> 则用 <b>kernel = stride = patch_size 的一个卷积</b>,把"切块 + 线性投影"两步合成一步:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 4/8 输入/输出头与位置编码</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">class FinalLayer(nn.Module):
+    """输出头:调制 LN + Linear(D -&gt; p*p*out_chans),无残差无门控"""
+
+    def __init__(self, dim, patch_size, out_chans):
+        super().__init__()
+        self.norm_final = nn.LayerNorm(dim, elementwise_affine=False)
+        self.linear = nn.Linear(dim, patch_size * patch_size * out_chans)
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(dim, 2 * dim),       # 只需 shift、scale 两组参数
+        )
+
+    def forward(self, x, c):
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=-1)
+        x = modulate(self.norm_final(x), shift, scale)
+        return self.linear(x)               # (B, N, p*p*out_chans)
+
+
+class PatchEmbed(nn.Module):
+    """输入头:Conv2d(k=p, s=p) 一步完成"切块 + 每块线性投影" """
+
+    def __init__(self, img_size=32, patch_size=2, in_chans=4, dim=1152):
+        super().__init__()
+        self.num_patches = (img_size // patch_size) ** 2    # 32/2 -&gt; 16*16=256
+        # 卷积核不重叠地扫过图像,等价于:每个 p×p 潜像素块
+        # 展平成 p*p*in_chans 维向量后过一个共享 Linear
+        self.proj = nn.Conv2d(in_chans, dim,
+                              kernel_size=patch_size, stride=patch_size)
+
+    def forward(self, x):                    # x: (B, 4, 32, 32)
+        x = self.proj(x)                     # (B, D, 16, 16)
+        return x.flatten(2).transpose(1, 2)  # (B, 256, D)
+
+
+def get_1d_sincos_pos_embed(embed_dim, pos):
+    """1D 正弦位置编码(与 Transformer 原版同一公式)"""
+    omega = np.arange(embed_dim // 2, dtype=np.float64)
+    omega /= embed_dim / 2.0
+    omega = 1.0 / 10000 ** omega             # 频率从 1 到 1/10000
+    out = np.outer(pos.reshape(-1), omega)   # (M, D/2) 弧度
+    return np.concatenate([np.sin(out), np.cos(out)], axis=1)  # (M, D)
+
+
+def get_2d_sincos_pos_embed(embed_dim, grid_size):
+    """2D 版:行坐标、列坐标各用一半维度编码,再拼接"""
+    grid = np.meshgrid(np.arange(grid_size, dtype=np.float32),   # 行
+                       np.arange(grid_size, dtype=np.float32))   # 列
+    grid = np.stack(grid, axis=0)            # (2, g, g)
+    emb_h = get_1d_sincos_pos_embed(embed_dim // 2, grid[0].flatten())
+    emb_w = get_1d_sincos_pos_embed(embed_dim // 2, grid[1].flatten())
+    return np.concatenate([emb_h, emb_w], axis=1)   # (g*g, D)</pre></div>
+  <div class="callout tip"><span class="ct">💡 代码要点</span>
+  ① 位置编码是 <b>2D sincos 且默认冻结</b>(论文中"learnable"为可选项):<code>register_buffer(persistent=False)</code> 表示它不参与梯度更新、也不存进 checkpoint;<br>
+  ② 二维坐标拆成"行 + 列"两个一维编码,各占一半维度——这样每个 token 的位置编码同时知道自己在第几行、第几列;<br>
+  ③ <code>FinalLayer</code> 输出 <code>p²×2C</code>:如果 <code>learn_sigma=True</code>,网络同时预测每个像素的噪声 ε <b>和方差 Σ</b>(交错模型),采样时用 Σ 给 DDIM 加随机性。</div>
+
+  <h3 id="s6-7">6.7 DiT 主模型:组装与零初始化</h3>
+  <p>主模型把所有零件串起来。重点看 <code>forward</code> 的四步流程和 <code>initialize_weights</code> 里那段<b>置零初始化</b>——它就是"adaLN-Zero"名字里 Zero 的落点:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 5/8 DiT 主模型</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">class DiT(nn.Module):
+    """DiT 主模型:Patchify -&gt; 加位置 -&gt; [DiTBlock] x depth -&gt; FinalLayer"""
+
+    def __init__(self, img_size=32, patch_size=2, in_chans=4,
+                 dim=1152, depth=28, num_heads=16,
+                 num_classes=1000, learn_sigma=True):
+        super().__init__()
+        self.learn_sigma = learn_sigma
+        self.num_classes = num_classes
+        self.patch_size = patch_size
+        self.in_chans = in_chans
+        # learn_sigma: 输出通道翻倍(前半 ε,后半 Σ)
+        out_chans = in_chans * 2 if learn_sigma else in_chans
+
+        # (1) 输入:Patchify + 冻结的 2D sincos 位置编码
+        self.x_embedder = PatchEmbed(img_size, patch_size, in_chans, dim)
+        pos = torch.tensor(get_2d_sincos_pos_embed(
+            dim, img_size // patch_size), dtype=torch.float32)
+        self.register_buffer("pos_embed", pos.unsqueeze(0), persistent=False)
+
+        # (2) 条件:t 与 y 两条嵌入支路
+        self.t_embedder = TimestepEmbedder(dim)
+        self.y_embedder = LabelEmbedder(num_classes, dim)
+
+        # (3) 主体:depth 个 DiTBlock 堆叠
+        self.blocks = nn.ModuleList(
+            [DiTBlock(dim, num_heads) for _ in range(depth)])
+
+        # (4) 输出:FinalLayer + 零初始化
+        self.final_layer = FinalLayer(dim, patch_size, out_chans)
+        self.initialize_weights()
+
+    def unpatchify(self, x):
+        """(B, N, p*p*out_chans) -&gt; (B, out_chans, H, W)"""
+        c = self.in_chans * 2 if self.learn_sigma else self.in_chans
+        p, N = self.patch_size, x.shape[1]
+        h = w = int(N ** 0.5)                 # 256 个 token 排回 16x16 网格
+        assert h * w == N
+        x = x.reshape(x.shape[0], h, w, p, p, c)
+        x = torch.einsum("nhwpqc-&gt;nchpwq", x)   # 通道换到最前
+        return x.reshape(x.shape[0], c, h * p, w * p)
+
+    def forward(self, x, t, y):
+        """x: (B,4,32,32) 噪声潜图 / t: (B,) 时间步 / y: (B,) 类别标签"""
+        x = self.x_embedder(x) + self.pos_embed    # (B, N, D) + 位置
+        c = self.t_embedder(t) + self.y_embedder(y, self.training)  # (B, D)
+        for block in self.blocks:
+            x = block(x, c)                         # (B, N, D)
+        x = self.final_layer(x, c)                  # (B, N, p*p*2C)
+        return self.unpatchify(x)                   # (B, 2C, 32, 32)
+
+    def initialize_weights(self):
+        # ViT 式默认:所有 Linear 用 Xavier 均匀初始化、偏置置零
+        def _basic_init(m):
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        self.apply(_basic_init)
+
+        # Patchify 卷积:std=0.02 正态(把卷积权重摊平成矩阵看待)
+        w = self.x_embedder.proj.weight.data
+        nn.init.normal_(w.view(w.shape[0], -1), std=0.02)
+
+        # ★ adaLN-Zero 灵魂所在:所有调制层、输出层全部置零
+        #   -&gt; 每个 block 初始都是恒等映射,网络初始输出 0
+        for block in self.blocks:
+            nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
+            nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
+        nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
+        nn.init.constant_(self.final_layer.linear.weight, 0)
+        nn.init.constant_(self.final_layer.linear.bias, 0)
+
+
+DiT_models = {
+    "DiT-S":  dict(dim=384,  depth=12, num_heads=6),
+    "DiT-B":  dict(dim=768,  depth=12, num_heads=12),
+    "DiT-L":  dict(dim=1024, depth=24, num_heads=16),
+    "DiT-XL": dict(dim=1152, depth=28, num_heads=16),
+}
+# 复现 DiT-XL/2:patch_size=2 即 "/2"
+model = DiT(img_size=32, patch_size=2, **DiT_models["DiT-XL"],
+            num_classes=1000, learn_sigma=True)</pre></div>
+  <div class="callout key"><span class="ct">📌 为什么要全部置零?</span>
+  adaLN 的调制参数和门控 α 初始为 0 时,每个 block 的前向退化为 <b>x = x + 0×(...) = x</b>——一个 28 层的巨型网络在初始时刻等价于<b>恒等函数</b>,梯度可以毫无阻碍地穿过所有层直达到输入端(与 ResNet 论文"零初始化 BN-γ"同一思想)。配合输出层置零(初始预测 ε=0),整条训练曲线从最温和的起点出发。论文消融显示:去掉零初始化,大 DiT 的损失会明显变差。</div>
+  <div class="callout tip"><span class="ct">💡 unpatchify 的 einsum</span>
+  token 序列先 reshape 回 <code>(B, h, w, p, p, c)</code> 的六维布局(哪个 token 在网格哪个格子、格子里哪行哪列的像素),再用 <code>"nhwpqc-&gt;nchpwq"</code> 一步完成"像素移到最后一层、通道提到最前"的重排,最后 flatten 回图像。这就是 Patchify 的精确逆操作。</div>
+
+  <h3 id="s6-9">6.9 极简扩散与训练损失</h3>
+  <p>扩散过程本身不需要任何可学习参数——只是预先算好一串调度系数。<code>q_sample</code> 把第 2 章的前向加噪公式一行写完,<code>training_loss</code> 则是 DiT 的训练目标"<b>预测加进来的噪声 ε</b>":</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 6/8 扩散过程与训练损失</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">class SimpleDiffusion:
+    """扩散调度表:预计算 β_t / ᾱ_t,零可学习参数"""
+
+    def __init__(self, T=1000, beta_start=1e-4, beta_end=0.02, device="cuda"):
+        self.T = T
+        # 线性调度:β 从 1e-4 均匀升到 0.02(DDPM 原版设定)
+        self.betas = torch.linspace(beta_start, beta_end, T, device=device)
+        self.ac = torch.cumprod(1.0 - self.betas, axis=0)   # ᾱ_t 累乘
+        self.device = device
+
+    def q_sample(self, x0, t, noise):
+        """前向加噪一步到位:x_t = √ᾱ_t · x0 + √(1-ᾱ_t) · ε"""
+        ac_t = self.ac[t].view(-1, 1, 1, 1)          # (B,1,1,1) 便于广播
+        return ac_t.sqrt() * x0 + (1 - ac_t).sqrt() * noise
+
+    def training_loss(self, model, x0, y):
+        """DiT 训练目标:预测加进来的噪声 ε(L_simple)"""
+        t = torch.randint(0, self.T, (x0.shape[0],), device=self.device)
+        noise = torch.randn_like(x0)
+        x_t = self.q_sample(x0, t, noise)            # 随机加噪
+
+        out = model(x_t, t, y)                       # (B, 2C, 32, 32)
+        if model.learn_sigma:                        # learn_sigma:后一半是 Σ,丢掉
+            out, _ = out.chunk(2, dim=1)
+        return F.mse_loss(out, noise)                # 只监督前一半 ε</pre></div>
+
+  <h3>6.10 DDIM 采样 + 无分类器引导</h3>
+  <p>采样循环把第 5 章的两张图变成代码:250 步 DDIM 从 <code>t=999</code> 倒着走到 <code>0</code>,每步对模型做<b>两次前向</b>(有条件 / 无条件 ∅),再按 CFG 公式外推:</p>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 7/8 DDIM + CFG 采样</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">@torch.no_grad()
+def ddim_sample(model, diff, y, n_samples=16, steps=250,
+                cfg_scale=1.5, img_size=32, device="cuda"):
+    """DDIM 采样(eta=0,确定性)+ CFG;y: 想要的类别标签"""
+    # 250 个时间步:从 T-1 均匀倒序取到 0
+    ts = torch.linspace(diff.T - 1, 0, steps).long().to(device)
+    # 无条件标签 ∅ = num_classes(嵌入表里多出来的那一行)
+    y_null = torch.full_like(y, model.num_classes)
+
+    x = torch.randn(n_samples, model.in_chans, img_size, img_size,
+                    device=device)                    # 纯高斯噪声起步
+
+    for i, t in enumerate(ts):
+        tb = t.repeat(n_samples)
+        # 每步两次前向:有条件 / 无条件(训练时 10% 标签丢弃为此服务)
+        eps_c, _ = model(x, tb, y).chunk(2, dim=1)
+        eps_u, _ = model(x, tb, y_null).chunk(2, dim=1)
+        eps = eps_u + cfg_scale * (eps_c - eps_u)    # ★ CFG 外推公式
+
+        # DDIM 跳转:x0 = (x_t - √(1-ᾱ_t)·ε) / √ᾱ_t
+        ac_t = diff.ac[tb].view(-1, 1, 1, 1)
+        x0 = ((x - (1 - ac_t).sqrt() * eps) / ac_t.sqrt()).clamp(-1, 1)
+
+        if i == len(ts) - 1:                          # 最后一步直接给 x0
+            return x0
+        ac_p = diff.ac[ts[i + 1]].view(-1, 1, 1, 1)  # 上一个时间步的 ᾱ
+        x = ac_p.sqrt() * x0 + (1 - ac_p).sqrt() * eps   # 回到 t-1
+    return x0</pre></div>
+  <div class="callout tip"><span class="ct">💡 代码要点</span>
+  ① <code>eps_c - eps_u</code> 就是"条件指向的方向",<code>cfg_scale</code> 沿着它放大——这正是表 5-2 里 1.25→1.5→2.0 时 FID 从 3.22 → 2.27 → 变差的来源:推力越大越忠实类别,但多样性坍缩;<br>
+  ② DDIM 取 <code>eta=0</code> 时整条采样轨迹是<b>确定性</b>的:固定初始噪声 → 固定输出,这也是它能从 1000 步压到 250 步的原因;<br>
+  ③ <code>clamp(-1, 1)</code> 只是对 x0 估计的常规裁剪,防止极端步漂移。</div>
+
+  <h3>6.11 训练循环与 VAE 接口</h3>
+  <div class="codewrap"><div class="codehead"><span>dit_minimal.py · 8/8 训练循环 · VAE · 冒烟测试</span><button class="copybtn">复制</button></div>
+<pre data-lang="python">def train(dataloader):
+    """论文训练配方:batch 256 · AdamW lr 1e-4 恒定 · wd 0 · EMA 0.9999 · 400K 步"""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    diff = SimpleDiffusion(device=device)
+    model = DiT(img_size=32, patch_size=2, **DiT_models["DiT-XL"],
+                num_classes=1000).to(device)
+    model.train()
+
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.0)
+    # EMA:滑动平均权重,采样时用 ema.module 才有论文级 FID
+    ema = torch.optim.swa_utils.AveragedModel(
+        model, avg_fn=lambda a, b, n: 0.9999 * a + 0.0001 * b)
+
+    for step in range(400_000):                      # 论文基准 400K,最终 7M
+        x0, y = next(dataloader)                    # 你的 ImageNet 数据管线
+        loss = diff.training_loss(model, x0.to(device), y.to(device))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        ema.update_parameters(model)
+
+    torch.save(ema.module.state_dict(), "dit-xl-2.pth")
+
+
+# ── 接入 Stable Diffusion 同款 VAE(sd-vae-ft-ema,f8 潜空间)──
+# from diffusers.models import AutoencoderKL
+# vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-ema")
+#
+# x = PIL 图像 -&gt; tensor,值域 [-1,1],形状 (B, 3, 256, 256)
+# with torch.no_grad():
+#     latent = vae.encode(x).latent_dist.sample() * 0.18215   # (B, 4, 32, 32)
+#
+# ……训练 / 采样全部发生在这个 32×32 的潜空间里……
+#
+# with torch.no_grad():
+#     img = vae.decode(latent / 0.18215).sample               # (B, 3, 256, 256)
+# img = (img / 2 + 0.5).clamp(0, 1)      # [-1,1] -&gt; [0,1],再转 PIL 存图
+
+
+if __name__ == "__main__":
+    # CPU 冒烟测试:全链路形状检查,几十秒即可跑完
+    model = DiT(img_size=32, patch_size=4, num_classes=10,
+                **DiT_models["DiT-S"])                # 用最小的 DiT-S/4
+    x = torch.randn(2, 4, 32, 32)                     # 2 张噪声潜图
+    t = torch.randint(0, 1000, (2,))                  # 随机时间步
+    y = torch.randint(0, 10, (2,))                    # 随机类别
+
+    out = model(x, t, y)
+    n_params = sum(p.numel() for p in model.parameters()) / 1e6
+    print(out.shape)                                  # torch.Size([2, 8, 32, 32])
+    print(f"DiT-S 参数量约 {n_params:.1f}M")</pre></div>
+  <div class="callout key"><span class="ct">📌 三个易错点</span>
+  ① <b>别忘 EMA</b>:直接用训练权重采样,FID 会差一大截,采样必须换 <code>ema.module</code>;<br>
+  ② <b>0.18215</b> 是 SD VAE 的缩放系数(把潜变量方差归一到 1 附近),编码乘、解码除,丢掉它训练会明显退化;<br>
+  ③ <b>冒烟测试</b>用的是 <code>patch_size=4</code>:不是笔误——p=4 让 token 数从 256 降到 64,CPU 上快 16 倍,恰好验证"换 p 不改代码、只改 token 数"。</div>
+  <p>到这里,约 300 行的 <code>dit_minimal.py</code> 已经覆盖了论文的全部核心:<b>Patchify、adaLN-Zero、零初始化、CFG 标签丢弃、DDIM 采样、EMA</b>。把它与官方仓库 <code>models.py</code> 对照阅读,你会发现几乎逐行对应——官方代码只是多了训练日志、权重下载与 DDP 分布式而已。</p>
+</section>
+
+<!-- ================= 7 演进 ================= -->
+<section id="s7">
+  <h2><span class="secno">07</span>从 DiT 到 SD3 / FLUX / Sora:骨干替换引发的海啸</h2>
+  <p>DiT 论文的真正价值不是刷新 ImageNet 分数,而是回答了工业界最关心的问题:<strong>"扩散模型的骨干换成标准 Transformer 后,还能继续靠堆规模变强吗?"</strong>答案是一个干净的 yes。此后两年,几乎所有主流生成模型都完成了从 U-Net 到 DiT 的迁移,并沿着三个方向持续升级——<strong>条件注入、训练目标、位置编码</strong>:</p>
+  <div class="timeline">
+    <div class="tl-item"><div class="when">2023.10</div><div class="what"><b>PixArt-α</b>(华为诺亚):DiT 骨干 + T5 文本 + 交叉注意力,256×256 训练成本仅约 101 美元,文生图成本断崖式下降。</div></div>
+    <div class="tl-item"><div class="when">2024.01</div><div class="what"><b>SiT</b>(与 DiT 同一实验室):骨干不变,把 DDPM 目标换成更一般的插值框架,为"流匹配"铺路。</div></div>
+    <div class="tl-item"><div class="when">2024.06</div><div class="what"><b>Stable Diffusion 3</b>:MM-DiT 双流架构 + Rectified Flow + RoPE,scaling law 在文生图上再次应验(一路堆到 8B)。</div></div>
+    <div class="tl-item"><div class="when">2024.08</div><div class="what"><b>FLUX.1</b>(Black Forest Labs,12B):双流 + 单流两段式结构、adaLN-single、引导蒸馏,DiT 系首次大规模商用。</div></div>
+    <div class="tl-item"><div class="when">2024.12 →</div><div class="what"><b>混元视频(13B)/ Wan 2.1 / OpenSora 2.0 / Qwen-Image</b>:图像与视频统一的开源 DiT 生态全面开花。</div></div>
+  </div>
+
+  <h3 id="s7-1">7.1 PixArt-α:把类别标签换成自然语言(2023.10)</h3>
+  <p>DiT 的条件只有 1000 个类别,离"文生图"还差一步。PixArt-α 在 DiT 骨干上做了三件事:</p>
+  <ul>
+    <li><strong>接入文本</strong>:用冻结的 T5-XXL(4.3B)把提示词编码成 token 序列,经<strong>交叉注意力</strong>注入——正是表 4-2 里的方案 (c):adaLN 继续负责时间步,文本单独走一条注意力旁路;</li>
+    <li><strong>分解式训练</strong>:先沿用 ImageNet 类条件预训练学"像素依赖",再在 SAM 大规模图文数据上学"图文对齐",最后用 LLaVA 生成的密集长标注学"概念组合"——每一步都站在上一步的权重上;</li>
+    <li><strong>极致省钱</strong>:0.6B 参数达到可商用画质,论文称 256×256 模型训练成本约 101 美元,只有同代模型的百分之几。</li>
+  </ul>
+  <p>"DiT + 文本旁路"从此成为文生图的性价比路线,PixArt 系列(α / Σ / 8K)也是国内开源生态的重要起点。</p>
+
+  <h3 id="s7-2">7.2 SiT 与流匹配:换一个训练目标(2024.01)</h3>
+  <p>同期出现的 <strong>SiT</strong>(Scalable Interpolant Transformers,与 DiT 出自同一实验室)证明了一个反直觉的事实:<strong>骨干完全不动,只换训练目标,同样算力下 FID 就能一路走低</strong>。SiT 把 DDPM 的 ε-预测放进更一般的"随机插值"框架里统一描述,发现更优的插值路径存在。这条路线与 Flow Matching(Lipman 等)、Rectified Flow(Liu 等)一脉相承:<strong>不再逐步预测噪声,而是学习一个速度场,把噪声到数据的路径尽量拉直</strong>——路径越直,采样步数越少。此后 SD3、FLUX、混元视频、Wan 全部采用流匹配系目标,DDPM 时代的"1000 步"彻底成为历史。</p>
+
+  <h3 id="s7-3">7.3 MM-DiT:文本不再是旁路,而是同桌(2024.06)★</h3>
+  <p>PixArt 的文本走交叉注意力旁路,但 SD3 论文(Stable Diffusion 3)提出了更强的观点:文本条件本身就是一个几百 token 的<strong>序列</strong>,凭什么要压缩成一个向量再"旁听"?MM-DiT(Multimodal DiT)为此把 DiT 块拆成<strong>两条并行的流</strong>,每条流有自己独立的 LayerNorm、Q/K/V 投影和 MLP 权重,但在注意力处拼接 K、V <strong>联合计算</strong>:</p>
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 960 360" width="960">
+        <defs>
+          <marker id="ahm" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#94a3b8"/></marker>
+        </defs>
+        <!-- 文本流 -->
+        <rect x="60" y="28" width="300" height="66" rx="12" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.6"/>
+        <text x="210" y="54" text-anchor="middle" font-size="13.5" font-weight="800" fill="#075985">文本 token 流(N_t × D)</text>
+        <text x="210" y="76" text-anchor="middle" font-size="11" fill="#475569">自己的 LN · Q/K/V 投影 · 调制参数</text>
+        <!-- 图像流 -->
+        <rect x="600" y="28" width="300" height="66" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+        <text x="750" y="54" text-anchor="middle" font-size="13.5" font-weight="800" fill="#4c1d95">图像 token 流(N_i × D)</text>
+        <text x="750" y="76" text-anchor="middle" font-size="11" fill="#475569">自己的 LN · Q/K/V 投影 · 调制参数</text>
+        <!-- 汇入联合注意力 -->
+        <path d="M210,94 L210,120 L380,120 L380,166" stroke="#0284c7" stroke-width="2" fill="none" marker-end="url(#ahm)"/>
+        <path d="M750,94 L750,120 L580,120 L580,166" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#ahm)"/>
+        <text x="480" y="150" text-anchor="middle" font-size="11.5" fill="#64748b">两条流各自送出 Q,并把 K、V 拼接成一条</text>
+        <rect x="310" y="170" width="340" height="74" rx="12" fill="#4f46e5"/>
+        <text x="480" y="199" text-anchor="middle" font-size="13.5" font-weight="800" fill="#fff">联合自注意力</text>
+        <text x="480" y="221" text-anchor="middle" font-size="11.5" fill="#e0e7ff">K / V = [文本 ; 图像],Q_t 与 Q_img 互相看见</text>
+        <!-- 拆回两条流 -->
+        <path d="M380,244 L380,262 L210,262 L210,288" stroke="#0284c7" stroke-width="2" fill="none" marker-end="url(#ahm)"/>
+        <path d="M580,244 L580,262 L750,262 L750,288" stroke="#7c3aed" stroke-width="2" fill="none" marker-end="url(#ahm)"/>
+        <text x="480" y="276" text-anchor="middle" font-size="11.5" fill="#64748b">输出按流拆开</text>
+        <rect x="60" y="292" width="300" height="56" rx="12" fill="#f0f9ff" stroke="#0284c7" stroke-width="1.6"/>
+        <text x="210" y="314" text-anchor="middle" font-size="12" font-weight="700" fill="#075985">拆回文本流 → 门控 + 残差</text>
+        <text x="210" y="334" text-anchor="middle" font-size="11" fill="#475569">仍保留 N_t 个文本 token</text>
+        <rect x="600" y="292" width="300" height="56" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.6"/>
+        <text x="750" y="314" text-anchor="middle" font-size="12" font-weight="700" fill="#4c1d95">拆回图像流 → 门控 + 残差</text>
+        <text x="750" y="334" text-anchor="middle" font-size="11" fill="#475569">仍保留 N_i 个图像 token</text>
+      </svg>
+    </div>
+    <figcaption>图 7-1 · MM-DiT(SD3)的联合注意力:文本与图像各持一套权重,但注意力时 K/V 拼在一起——文本与像素"同桌"参与每一层计算,而不是旁听</figcaption>
+  </figure>
+  <p>SD3 的完整配方是:<strong>MM-DiT 块 × 多层 + Rectified Flow 目标(logit-normal 时间步加权)+ RoPE 位置编码 + T5-XXL 与双 CLIP 三个文本塔</strong>。其中 RoPE 替换 sincos,让任意分辨率、任意长宽比的输入即插即用——这正是视频模型的前提。同一篇论文把这套结构从 2B 一路堆到 8B,FID 持续下降,DiT 式的 scaling law 在文生图上再次应验。</p>
+  <div class="callout vio"><span class="ct">🔮 FLUX.1:MM-DiT 的工程化(2024.08)</span>
+  Black Forest Labs(SD 原班人马)的 FLUX.1(12B)把 MM-DiT 推向实用:前段 <b>双流块 × 38</b>(文本/图像分离)+ 后段 <b>单流块 × 18</b>(两流合并再深化处理);调制升级为 <b>adaLN-single</b>(6D 调制参数只在第一层算一次,各层加可学习偏移直接复用,大幅省算力);并用<b>引导蒸馏</b>把 CFG 强度变成一个标量输入——采样不再需要"有条件 + 无条件"两次前向,速度翻倍。</div>
+
+  <h3 id="s7-4">7.4 视频 DiT:Sora 与开源追随者(2024 →)</h3>
+  <p>在 DiT 的视角里,视频不过是"多了一根时间轴的潜码序列"。Sora 的技术报告披露了三个关键选择,每一条都踩在 DiT 的肩膀上:</p>
+  <ul>
+    <li><strong>时空 patch(spacetime patches)</strong>:先用视频压缩网络(类 3D VAE)把视频压成时空潜码,再切成"时间 × 空间"的 patch——第 3 章的 Patchify 直接多了一维;</li>
+    <li><strong>原生多分辨率训练</strong>:时长、分辨率、长宽比都不固定,靠 RoPE 兜底任意尺寸——这解释了 7.3 节为什么必须换掉 sincos;</li>
+    <li><strong>图像与视频统一训练</strong>:一个骨干同时吃静态图和视频,生成能力互相迁移。</li>
+  </ul>
+  <p>开源生态随即跟上:Latte 系统对比了"空间/时间注意力分解"与"全 3D 注意力"的四种组合;OpenSora 完整复现了这条路线;腾讯混元视频(13B)采用类 FLUX 的"双流→单流"结构 + 3D 因果 VAE;阿里 Wan 2.1 开源了 1.3B/14B 文生视频与图生视频全家桶;Qwen-Image 则把 MMDiT 路线带回图像。今天,<strong>"视频生成模型"几乎就是"视频 DiT"的同义词</strong>。</p>
+
+  <h3 id="s7-5">7.5 架构对比总表</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>模型</th><th>时间</th><th>条件注入</th><th>条件编码器</th><th>位置编码</th><th>训练目标</th><th class="num">参数量</th></tr></thead>
+    <tbody>
+      <tr class="hl"><td><b>DiT</b>(本文)</td><td>2022.12</td><td><b>adaLN-Zero</b>(全局向量)</td><td>类别嵌入表</td><td>2D sincos(冻结)</td><td>DDPM(ε + Σ)</td><td class="num">33M–675M</td></tr>
+      <tr><td>PixArt-α</td><td>2023.10</td><td>adaLN + 交叉注意力旁路</td><td>T5-XXL(冻结)</td><td>sincos</td><td>DDPM</td><td class="num">0.6B</td></tr>
+      <tr><td>SD3</td><td>2024.06</td><td>MM-DiT 双流联合注意力</td><td>T5-XXL + 2×CLIP</td><td>RoPE</td><td>Rectified Flow</td><td class="num">2B / 8B</td></tr>
+      <tr><td>FLUX.1</td><td>2024.08</td><td>双流 38 + 单流 18,adaLN-single</td><td>T5-XXL + CLIP</td><td>2D RoPE</td><td>Rectified Flow + 引导蒸馏</td><td class="num">12B</td></tr>
+      <tr><td>混元视频</td><td>2024.12</td><td>双流 → 单流(类 FLUX)</td><td>mT5-XXL</td><td>3D RoPE</td><td>Flow Matching</td><td class="num">13B</td></tr>
+      <tr><td>Wan 2.1</td><td>2025.02</td><td>视频 DiT + 3D 因果 VAE</td><td>umT5-XXL</td><td>RoPE</td><td>Flow Matching</td><td class="num">1.3B / 14B</td></tr>
+    </tbody>
+  </table><div class="cap">表 7-1 · DiT 系架构演进一览(Sora 未开源,未列入):条件注入从"压缩成一个向量"进化为"平等的一路 token 流";训练目标从 DDPM 迁移到流匹配;位置编码从固定网格走向 RoPE</div></div>
+  <div class="callout key"><span class="ct">📌 万变不离其宗</span>剥掉名字的外衣,每一代模型的块结构仍然是图 4-1 的三件套:<b>调制 → 注意力/MLP → 门控 → 残差</b>。读懂了 DiT 块,你就已经握住了当代所有主流生成模型的"公分母"——剩下的只是三根轴上的排列组合:条件怎么进、目标怎么定、位置怎么编。</div>
+</section>
+
+<!-- ================= 8 总结 ================= -->
+<section id="s8">
+  <h2><span class="secno">08</span>总结 · FAQ · 学习路线</h2>
+
+  <h3>8.1 五句话带走全文</h3>
+  <ol>
+    <li><strong>DiT = LDM 潜空间 + ViT 骨干 + adaLN-Zero 条件注入</strong>:它证明了 U-Net 的卷积归纳偏置对扩散模型并非必需,标准 Transformer 骨干反而 scaling 行为更干净、更可预测。</li>
+    <li><strong>patch 大小 p 是"质量 vs 算力"的主旋钮</strong>:token 数 T = (H/p)²,参数量不变、计算量随 T 走高;论文最终选择最"贵"也最好的 p=2(DiT-XL/2)。</li>
+    <li><strong>adaLN-Zero 是 DiT 相对普通 ViT 的唯一关键改动</strong>:6D 调制参数 + 门控 + 零初始化——这个三件套后来被 SD3、FLUX 全盘继承,成了行业标配。</li>
+    <li><strong>Gflops 与 FID 强相关</strong>:堆宽、堆深、减 patch、延长训练全部落在同一条 scaling 曲线上——Transformer 十年攒下的并行与加速基建可以直接平移到生成模型。</li>
+    <li><strong>当代生成模型几乎都是 DiT 的直系后代</strong>:PixArt(文本旁路)→ MM-DiT(双流同桌)→ 视频 DiT(Sora / 混元 / Wan);变的只是条件注入、训练目标与位置编码三根轴。</li>
+  </ol>
+
+  <h3>8.2 FAQ</h3>
+  <details class="faq">
+    <summary>DiT 和 Stable Diffusion 是什么关系?</summary>
+    <div class="fa-body">Stable Diffusion 1.x / 2.x 的骨干是 U-Net;从 SD3 开始,骨干换成 DiT 系(MM-DiT)。但 DiT 论文本身只做 ImageNet 类条件生成、不接收文本提示词——"听懂文字"是 PixArt-α 之后的改进。</div>
+  </details>
+  <details class="faq">
+    <summary>U-Net 的卷积归纳偏置为什么"不香了"?</summary>
+    <div class="fa-body">卷积的局部性与平移等变是好东西,但在足够大的模型与数据规模下,全注意力能自己学出来,而且 scaling 更可预测(Gflops 与 FID 强相关)、更容易吃到 FlashAttention / 序列并行等 Transformer 基建红利。小模型小数据下 U-Net 仍可能占优——DiT 回答的是"规模化之后谁更强"。</div>
+  </details>
+  <details class="faq">
+    <summary>patch 越小越好,那 p=1 行不行?</summary>
+    <div class="fa-body">理论上可以(p=1 时 32×32 潜空间变成 1024 个 token)。论文试过 /1 到 /8:/1 计算量再涨数倍、收益递减,/8 则序列太短、模型连"哪里该有什么"都表达不了;p=2 是质量与算力的甜点。SD3/FLUX 等在更高分辨率潜空间上同样常用 2×2 patch,再靠 RoPE 吃任意长宽比。</div>
+  </details>
+  <details class="faq">
+    <summary>adaLN-Zero 和交叉注意力,只能二选一吗?</summary>
+    <div class="fa-body">不冲突,它们注入的是不同"粒度"的条件:adaLN 注入<strong>全局量级</strong>的信息(时间步、类别、全局风格——每个 token 拿到同一份调制参数),交叉注意力/MM-DiT 注入<strong>序列级</strong>的信息(几百个文本 token、逐 token 对齐)。PixArt-α 两者都用;SD3 把序列条件升级为双流联合注意力。大模型的共识是:全局条件走 adaLN,序列条件走注意力。</div>
+  </details>
+  <details class="faq">
+    <summary>我没有 8 卡 A100,能玩 DiT 吗?</summary>
+    <div class="fa-body">可以。推理:diffusers 的 <code>DiTPipeline</code> 加载官方 DiT-XL/2 权重,单卡(f16 下十几 GB 显存)即可按类别生成 256×256 图像;训练:本文 <code>dit_minimal.py</code> 的 DiT-S/4 在单张消费级显卡上跑几个小时,就能在小数据集上看到雏形——麻雀虽小,五脏俱全。</div>
+  </details>
+  <details class="faq">
+    <summary>DiT / SiT / U-ViT / MDT / MM-DiT 都是什么关系?</summary>
+    <div class="fa-body">都是"把 Transformer 用进扩散模型"的家族成员:U-ViT 把 U-Net 式跳连装进 ViT;DiT(本文)用纯 ViT 替换骨干;SiT 换训练目标(随机插值);MDT 加掩码生成式训练,更快更准;MM-DiT 是 SD3 的双流变体。名字看花眼,块结构都是图 4-1 的那三件套。</div>
+  </details>
+
+  <h3>8.3 学习路线(建议顺序)</h3>
+  <ul class="checklist">
+    <li><strong>[读]</strong> 精读 DiT 论文第 3–5 节:重点盯 Table 1(四种注入方案)、Figure 5(Gflops-FID 相关性)、Figure 8(规模化曲线);</li>
+    <li><strong>[跑]</strong> 用 diffusers 十行内按类别生成第一张图(DiT-XL/2 官方预训练权重);</li>
+    <li><strong>[抄]</strong> 手敲本文 <code>dit_minimal.py</code>(约 300 行),跑通最后的冒烟测试;</li>
+    <li><strong>[读]</strong> 对照官方仓库三件套:<code>models.py</code> / <code>diffusion/gaussian_diffusion.py</code> / <code>train.py</code>;</li>
+    <li><strong>[练]</strong> 用 DiT-S 在 CIFAR-10 或自选数据集训 100K 步,记录 loss 与目测质量的变化;</li>
+    <li><strong>[进阶]</strong> 读 SiT、PixArt-α、SD3 论文,对照表 7-1 找每一处改动;</li>
+    <li><strong>[视野]</strong> Sora 技术报告、混元视频与 Wan 技术报告——看视频 DiT 如何延伸每一处设计。</li>
+  </ul>
+</section>
+
+<!-- ================= 9 参考资料 ================= -->
+<section id="s9">
+  <h2><span class="secno">09</span>参考资料</h2>
+  <ul class="refs">
+    <li><strong>DiT 原论文</strong> · Scalable Diffusion Models with Transformers(Peebles &amp; Xie,ICCV 2023)· <a href="https://arxiv.org/abs/2212.09748" target="_blank" rel="noopener">arxiv.org/abs/2212.09748</a></li>
+    <li><strong>官方代码</strong> · facebookresearch/DiT(PyTorch 实现、预训练权重、采样脚本)· <a href="https://github.com/facebookresearch/DiT" target="_blank" rel="noopener">github.com/facebookresearch/DiT</a></li>
+    <li><strong>DDPM</strong> · Denoising Diffusion Probabilistic Models(Ho 等,2020)· <a href="https://arxiv.org/abs/2006.11239" target="_blank" rel="noopener">arxiv.org/abs/2006.11239</a></li>
+    <li><strong>DDIM</strong> · Denoising Diffusion Implicit Models(Song 等,2020)· <a href="https://arxiv.org/abs/2010.02502" target="_blank" rel="noopener">arxiv.org/abs/2010.02502</a></li>
+    <li><strong>Latent Diffusion / Stable Diffusion</strong>(Rombach 等,2022)· <a href="https://arxiv.org/abs/2112.10752" target="_blank" rel="noopener">arxiv.org/abs/2112.10752</a></li>
+    <li><strong>ViT</strong> · An Image is Worth 16×16 Words(Dosovitskiy 等,2020)· <a href="https://arxiv.org/abs/2010.11929" target="_blank" rel="noopener">arxiv.org/abs/2010.11929</a></li>
+    <li><strong>Classifier-Free Guidance</strong>(Ho &amp; Salimans,2022)· <a href="https://arxiv.org/abs/2207.12598" target="_blank" rel="noopener">arxiv.org/abs/2207.12598</a></li>
+    <li><strong>SiT</strong> · Scalable Interpolant Transformers(Ma 等,2024)· <a href="https://arxiv.org/abs/2401.05245" target="_blank" rel="noopener">arxiv.org/abs/2401.05245</a></li>
+    <li><strong>PixArt-α</strong>(Chen 等,2023)· <a href="https://arxiv.org/abs/2310.00426" target="_blank" rel="noopener">arxiv.org/abs/2310.00426</a></li>
+    <li><strong>Flow Matching</strong>(Lipman 等,2022)· <a href="https://arxiv.org/abs/2210.02747" target="_blank" rel="noopener">arxiv.org/abs/2210.02747</a> · <strong>Rectified Flow</strong>(Liu 等,2022)· <a href="https://arxiv.org/abs/2209.03003" target="_blank" rel="noopener">arxiv.org/abs/2209.03003</a></li>
+    <li><strong>SD3</strong> · Scaling Rectified Flow Transformers for High-Resolution Image Synthesis(Esser 等,2024)· <a href="https://arxiv.org/abs/2403.03206" target="_blank" rel="noopener">arxiv.org/abs/2403.03206</a></li>
+    <li><strong>Sora 技术报告</strong> · Video Generation Models as World Simulators(OpenAI,2024)· <a href="https://openai.com/index/video-generation-models-as-world-simulators/" target="_blank" rel="noopener">openai.com/index/video-generation-models-as-world-simulators</a></li>
+    <li><strong>混元视频</strong>(腾讯,2024)· <a href="https://github.com/Tencent-Hunyuan/HunyuanVideo" target="_blank" rel="noopener">github.com/Tencent-Hunyuan/HunyuanVideo</a> · <strong>Wan 2.1</strong>(阿里,2025)· <a href="https://github.com/Wan-Video/Wan2.1" target="_blank" rel="noopener">github.com/Wan-Video/Wan2.1</a></li>
+    <li><strong>diffusers · DiTPipeline 文档</strong> · <a href="https://huggingface.co/docs/diffusers/api/pipelines/dit" target="_blank" rel="noopener">huggingface.co/docs/diffusers/api/pipelines/dit</a></li>
+  </ul>
+</section>
+</main>
+</div>
+
+<footer>
+  <div>DiT(Diffusion Transformer)完全解读 · 原理 → 结构 → 代码 → 演进</div>
+  <div>文中事实与数字依据论文 arXiv:2212.09748(Peebles &amp; Xie,ICCV 2023)及官方仓库 facebookresearch/DiT 核对;示例代码为教学用最小化实现,与官方 models.py 逐行对应</div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- 1. Python 语法高亮 ---------- */
+  var ESC_MAP = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
+  function esc(s) { return s.replace(/[&<>]/g, function (m) { return ESC_MAP[m]; }); }
+  var KW = ["False","None","True","and","as","assert","break","class","continue","def","del",
+            "elif","else","except","for","from","global","if","import","in","is","lambda",
+            "not","or","pass","raise","return","try","while","with","yield"];
+  var BI = ["torch","nn","np","math","super","print","range","len","int","float","list","dict",
+            "set","tuple","str","zip","enumerate","sum","min","max","abs","round","isinstance",
+            "getattr","setattr","type","next","open"];
+  var kwSet = {}, biSet = {};
+  KW.forEach(function (w) { kwSet[w] = 1; });
+  BI.forEach(function (w) { biSet[w] = 1; });
+
+  function tokenize(src) {
+    var out = [], i = 0, n = src.length;
+    while (i < n) {
+      var c = src[i], j, m, w, k, cls;
+      if (c === "#") {                                  /* 注释 */
+        j = src.indexOf("\n", i); if (j < 0) j = n;
+        out.push('<span class="tk-com">' + esc(src.slice(i, j)) + "</span>"); i = j; continue;
+      }
+      if (c === '"' || c === "'") {                     /* 字符串(含三引号) */
+        var trip = src.substr(i, 3);
+        if (trip === '"""' || trip === "'''") {
+          var e = src.indexOf(trip, i + 3); j = e < 0 ? n : e + 3;
+        } else {
+          j = i + 1;
+          while (j < n && src[j] !== c) { if (src[j] === "\\") j++; j++; }
+          j = Math.min(j + 1, n);
+        }
+        out.push('<span class="tk-str">' + esc(src.slice(i, j)) + "</span>"); i = j; continue;
+      }
+      if (c >= "0" && c <= "9") {                       /* 数字 */
+        m = src.slice(i).match(/^[0-9_]*(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/);
+        out.push('<span class="tk-num">' + esc(m[0]) + "</span>"); i += m[0].length; continue;
+      }
+      if (/[A-Za-z_]/.test(c)) {                        /* 标识符 */
+        m = src.slice(i).match(/^[A-Za-z_][A-Za-z0-9_]*/);
+        w = m[0];
+        if (kwSet[w]) cls = "tk-kw";
+        else if (biSet[w]) cls = "tk-bi";
+        else {
+          k = i + w.length;
+          while (k < n && (src[k] === " " || src[k] === "\t")) k++;
+          if (src[k] === "(") cls = "tk-fn";
+        }
+        out.push(cls ? '<span class="' + cls + '">' + esc(w) + "</span>" : esc(w));
+        i += w.length; continue;
+      }
+      if (c === "@") {                                  /* 装饰器:整行 */
+        j = i; while (j < n && src[j] !== "\n") j++;
+        out.push('<span class="tk-dec">' + esc(src.slice(i, j)) + "</span>"); i = j; continue;
+      }
+      out.push(esc(c)); i++;
+    }
+    return out.join("");
+  }
+  document.querySelectorAll('pre[data-lang="python"]').forEach(function (pre) {
+    pre.innerHTML = tokenize(pre.textContent);
+  });
+
+  /* ---------- 2. 复制按钮 ---------- */
+  document.querySelectorAll(".copybtn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var wrap = btn.closest(".codewrap");
+      var pre = wrap ? wrap.querySelector("pre") : null;
+      var text = pre ? pre.textContent : "";
+      function finish(ok) {
+        btn.textContent = ok ? "已复制 ✓" : "复制失败";
+        setTimeout(function () { btn.textContent = "复制"; }, 1600);
+      }
+      function fallback() {
+        try {
+          var ta = document.createElement("textarea");
+          ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.select();
+          var ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          finish(ok);
+        } catch (e) { finish(false); }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () { finish(true); }, fallback);
+      } else { fallback(); }
+    });
+  });
+
+  /* ---------- 3. 目录滚动高亮 ---------- */
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a[href^="#"]'));
+  if (tocLinks.length && "IntersectionObserver" in window) {
+    var byId = {};
+    tocLinks.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        tocLinks.forEach(function (a) { a.classList.remove("on"); });
+        if (byId[e.target.id]) byId[e.target.id].classList.add("on");
+      });
+    }, { rootMargin: "-12% 0px -76% 0px" });
+    tocLinks.forEach(function (a) {
+      var el = document.getElementById(a.getAttribute("href").slice(1));
+      if (el) io.observe(el);
+    });
+  }
+
+  /* ---------- 4. Patchify 交互演示 ---------- */
+  var patchCaps = {
+    "2": "当前:16×16 = 256 个 patch,每个 patch 只含 2×2 潜像素",
+    "4": "当前:8×8 = 64 个 patch,每个 patch 含 4×4 潜像素",
+    "8": "当前:4×4 = 16 个 patch,每个 patch 含 8×8 潜像素"
+  };
+  var patchStats = {
+    "2": { t: "256", d: "16",  g: "118.6" },
+    "4": { t: "64",  d: "64",  g: "29.1" },
+    "8": { t: "16",  d: "256", g: "≈ 7.3(外推)" }
+  };
+  function setPatch(p) {
+    document.querySelectorAll(".pill[data-p]").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-p") === p);
+    });
+    ["2", "4", "8"].forEach(function (q) {
+      var g = document.getElementById("pv" + q);
+      if (g) g.setAttribute("visibility", q === p ? "visible" : "hidden");
+    });
+    var s = patchStats[p], el;
+    if (s) {
+      if ((el = document.getElementById("statT")))   el.textContent = s.t;
+      if ((el = document.getElementById("statDim"))) el.textContent = s.d;
+      if ((el = document.getElementById("statGF")))  el.textContent = s.g;
+      if ((el = document.getElementById("pvT")))     el.textContent = s.t;
+    }
+    if ((el = document.getElementById("pvCap"))) el.textContent = patchCaps[p];
+  }
+  document.querySelectorAll(".pill[data-p]").forEach(function (b) {
+    b.addEventListener("click", function () { setPatch(b.getAttribute("data-p")); });
+  });
+})();
+</script>
+</body>
+</html>
