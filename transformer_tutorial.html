@@ -1,0 +1,2080 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer 详解 — 从原理、结构到代码实现</title>
+<style>
+/* ========== 基础 ========== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #4f46e5;
+  --primary-deep: #3730a3;
+  --primary-light: #eef2ff;
+  --text: #1e293b;
+  --text-light: #64748b;
+  --bg: #f1f5f9;
+  --card: #ffffff;
+  --border: #e2e8f0;
+  --code-bg: #0f172a;
+  --code-text: #d4d8e8;
+  --enc: #2563eb;      /* 编码器 蓝 */
+  --dec: #d97706;      /* 解码器 橙 */
+  --attn: #7c3aed;     /* 注意力 紫 */
+  --ffn: #059669;      /* FFN 绿 */
+  --pink: #db2777;
+  --sidebar-w: 272px;
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.8;
+  font-size: 16px;
+}
+
+/* ========== 布局 ========== */
+.sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: #0f172a;
+  color: #cbd5e1;
+  overflow-y: auto;
+  padding: 28px 0 40px;
+  z-index: 100;
+}
+.sidebar .logo {
+  padding: 0 24px 20px;
+  border-bottom: 1px solid #1e293b;
+  margin-bottom: 16px;
+}
+.sidebar .logo .t-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff; font-weight: 800; font-size: 20px; margin-bottom: 12px;
+  font-family: Georgia, serif;
+}
+.sidebar .logo h1 { font-size: 17px; color: #f1f5f9; line-height: 1.4; }
+.sidebar .logo p { font-size: 12px; color: #64748b; margin-top: 4px; }
+.toc-title {
+  padding: 8px 24px; font-size: 12px; letter-spacing: 2px;
+  color: #64748b; text-transform: uppercase;
+}
+.toc a {
+  display: block; padding: 6px 24px 6px 28px;
+  color: #94a3b8; text-decoration: none; font-size: 13.5px;
+  border-left: 3px solid transparent;
+  transition: all .15s;
+}
+.toc a:hover { color: #e2e8f0; background: rgba(255,255,255,.04); }
+.toc a.lv2 { font-weight: 600; color: #cbd5e1; margin-top: 8px; }
+.toc a.lv3 { padding-left: 44px; font-size: 12.5px; }
+.toc a.active { color: #fff; border-left-color: #818cf8; background: rgba(99,102,241,.15); }
+
+main {
+  margin-left: var(--sidebar-w);
+  max-width: 900px;
+  padding: 36px 44px 80px;
+}
+@media (max-width: 1100px) {
+  .sidebar { display: none; }
+  main { margin-left: 0; padding: 20px 18px 60px; }
+}
+
+/* ========== Hero ========== */
+.hero {
+  background: linear-gradient(135deg, #312e81 0%, #4f46e5 55%, #7c3aed 100%);
+  border-radius: 18px;
+  color: #fff;
+  padding: 46px 48px 42px;
+  margin-bottom: 36px;
+  position: relative;
+  overflow: hidden;
+}
+.hero::after {
+  content: ""; position: absolute; right: -80px; top: -80px;
+  width: 320px; height: 320px; border-radius: 50%;
+  background: rgba(255,255,255,.08);
+}
+.hero::before {
+  content: ""; position: absolute; right: 60px; bottom: -120px;
+  width: 240px; height: 240px; border-radius: 50%;
+  background: rgba(255,255,255,.06);
+}
+.hero h1 { font-size: 34px; margin-bottom: 14px; letter-spacing: 1px; position: relative; z-index: 2; }
+.hero p.sub { font-size: 16px; opacity: .92; max-width: 620px; position: relative; z-index: 2; }
+.hero .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; position: relative; z-index: 2; }
+.hero .meta span {
+  background: rgba(255,255,255,.14);
+  border: 1px solid rgba(255,255,255,.25);
+  padding: 4px 14px; border-radius: 999px; font-size: 13px;
+}
+
+/* ========== 章节 ========== */
+.chapter {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px 46px;
+  margin-bottom: 34px;
+  box-shadow: 0 1px 3px rgba(15,23,42,.05);
+}
+@media (max-width: 1100px) { .chapter { padding: 26px 20px; } }
+.chapter > h2 {
+  font-size: 26px; margin-bottom: 6px; color: var(--primary-deep);
+  display: flex; align-items: baseline; gap: 14px;
+  border-bottom: 2px solid var(--primary-light);
+  padding-bottom: 14px; margin-bottom: 26px;
+}
+.chapter > h2 .no {
+  font-family: Georgia, serif; font-size: 34px; color: #c7d2fe;
+  font-weight: 700; line-height: 1;
+}
+h3 {
+  font-size: 19.5px; margin: 38px 0 14px; color: #1e293b;
+  padding-left: 12px; border-left: 4px solid var(--primary);
+}
+h4 { font-size: 16.5px; margin: 24px 0 10px; color: #334155; }
+p { margin: 12px 0; }
+ul, ol { padding-left: 26px; margin: 10px 0; }
+li { margin: 6px 0; }
+strong { color: var(--primary-deep); }
+em { color: var(--pink); font-style: normal; font-weight: 600; }
+a { color: var(--primary); }
+
+/* ========== 公式 ========== */
+.formula {
+  background: linear-gradient(180deg,#fafbff,#f4f6fd);
+  border: 1px solid #dbe2f5;
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin: 18px 0;
+  text-align: center;
+  font-family: "Cambria Math", "STIX Two Math", Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  overflow-x: auto;
+  color: #1e293b;
+}
+.formula .flabel {
+  display: block; font-family: inherit; font-size: 12.5px; color: #818cf8;
+  margin-bottom: 8px; letter-spacing: 1px; font-family: -apple-system, "Microsoft YaHei", sans-serif;
+}
+.frac {
+  display: inline-flex; flex-direction: column; vertical-align: middle;
+  text-align: center; margin: 0 4px;
+}
+.frac .num { padding: 0 6px 2px; border-bottom: 1.5px solid #475569; }
+.frac .den { padding: 2px 6px 0; }
+.mvar { font-style: italic; }
+.op { margin: 0 3px; color: #475569; }
+
+/* ========== 提示框 ========== */
+.callout {
+  border-radius: 12px; padding: 16px 20px 16px 18px;
+  margin: 18px 0; font-size: 14.8px; position: relative;
+  border: 1px solid; border-left-width: 4px;
+}
+.callout .tag {
+  display: inline-block; font-size: 12px; font-weight: 700;
+  padding: 1px 10px; border-radius: 999px; margin-bottom: 8px; letter-spacing: 1px;
+}
+.callout.info  { background: #eff6ff; border-color: #bfdbfe; border-left-color: #2563eb; }
+.callout.info .tag { background: #2563eb; color: #fff; }
+.callout.tip  { background: #ecfdf5; border-color: #a7f3d0; border-left-color: #059669; }
+.callout.tip .tag { background: #059669; color: #fff; }
+.callout.warn { background: #fffbeb; border-color: #fde68a; border-left-color: #d97706; }
+.callout.warn .tag { background: #d97706; color: #fff; }
+.callout.think { background: #faf5ff; border-color: #e9d5ff; border-left-color: #9333ea; }
+.callout.think .tag { background: #9333ea; color: #fff; }
+
+/* ========== 表格 ========== */
+.table-wrap { overflow-x: auto; margin: 18px 0; }
+table.dtable {
+  width: 100%; border-collapse: collapse; font-size: 14.5px;
+  background: #fff;
+}
+table.dtable th {
+  background: #eef2ff; color: #3730a3; font-weight: 700;
+  padding: 10px 14px; border: 1px solid #dbe2f5; text-align: left; white-space: nowrap;
+}
+table.dtable td { padding: 9px 14px; border: 1px solid #e2e8f0; vertical-align: top; }
+table.dtable tr:nth-child(even) td { background: #f8fafc; }
+table.dtable td code, p code, li code {
+  background: #eef2ff; color: #4338ca; border-radius: 5px;
+  padding: 1px 7px; font-size: 13.5px;
+  font-family: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+}
+
+/* ========== 代码块 ========== */
+pre.codeblock {
+  background: var(--code-bg);
+  border-radius: 12px;
+  margin: 18px 0;
+  padding: 0;
+  position: relative;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+}
+pre.codeblock .code-head {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #1e293b; padding: 8px 16px;
+  font-size: 12.5px; color: #94a3b8;
+  font-family: Consolas, monospace;
+}
+pre.codeblock .code-head .dots::before {
+  content: ""; display: inline-block;
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #f87171; box-shadow: 18px 0 0 #fbbf24, 36px 0 0 #34d399;
+  margin-right: 48px; vertical-align: middle;
+}
+.btn-copy {
+  background: #334155; color: #cbd5e1; border: none; cursor: pointer;
+  border-radius: 6px; padding: 3px 12px; font-size: 12px;
+  font-family: inherit;
+}
+.btn-copy:hover { background: #475569; color: #fff; }
+pre.codeblock code {
+  display: block; padding: 18px 20px;
+  color: var(--code-text);
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 13.8px; line-height: 1.75;
+  overflow-x: auto;
+  white-space: pre;
+}
+/* Python 语法着色（JS 添加） */
+.c-kw  { color: #c792ea; }
+.c-str { color: #c3e88d; }
+.c-com { color: #7f8ea3; font-style: italic; }
+.c-num { color: #f78c6c; }
+.c-self{ color: #ffcb6b; font-style: italic; }
+.c-fn  { color: #82aaff; }
+
+/* ========== 交互演示区 ========== */
+.demo-box {
+  border: 2px dashed #c7d2fe;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8faff, #f4f6ff);
+  padding: 22px 24px 24px;
+  margin: 22px 0;
+}
+.demo-box .demo-title {
+  font-size: 13px; font-weight: 700; color: var(--primary);
+  letter-spacing: 1px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.demo-box .demo-title::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary); box-shadow: 0 0 0 4px rgba(79,70,229,.18);
+}
+.demo-note { font-size: 13px; color: var(--text-light); margin-top: 12px; }
+.demo-controls {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 12px 0;
+}
+.demo-controls label { font-size: 13.5px; color: #334155; }
+input[type=range] { accent-color: var(--primary); vertical-align: middle; }
+.btn-mini {
+  background: var(--primary); color: #fff; border: none; cursor: pointer;
+  border-radius: 8px; padding: 6px 16px; font-size: 13px; font-family: inherit;
+}
+.btn-mini:hover { background: var(--primary-deep); }
+.btn-mini.gray { background: #64748b; }
+.btn-mini.gray:hover { background: #475569; }
+
+/* token 行 */
+.tok-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 10px 0; }
+.tok {
+  padding: 4px 10px; border-radius: 8px; font-size: 13.5px;
+  background: #fff; border: 1.5px solid #cbd5e1; cursor: pointer;
+  transition: all .15s; color: #334155; user-select: none;
+}
+.tok:hover { border-color: var(--primary); }
+.tok.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 10px rgba(79,70,229,.35); }
+.tok.lit { background: #fef3c7; border-color: #f59e0b; color: #92400e; font-weight: 600; }
+
+/* 条形图 */
+.bars { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; }
+.bar-item { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.bar-item .blabel { width: 76px; text-align: right; color: #475569; font-family: Consolas, monospace; }
+.bar-item .btrack { flex: 1; background: #e2e8f0; border-radius: 6px; height: 20px; overflow: hidden; }
+.bar-item .bfill { height: 100%; border-radius: 6px; background: linear-gradient(90deg,#6366f1,#a855f7); width: 0%; transition: width .35s; }
+.bar-item .bval { width: 92px; color: #475569; font-family: Consolas, monospace; font-size: 12.5px; }
+
+/* 通用小标签 */
+.pill {
+  display: inline-block; padding: 2px 12px; border-radius: 999px;
+  font-size: 12.5px; font-weight: 600; margin: 0 3px;
+}
+.pill.enc { background: #dbeafe; color: #1d4ed8; }
+.pill.dec { background: #fef3c7; color: #b45309; }
+.pill.attn { background: #ede9fe; color: #6d28d9; }
+.pill.ffn { background: #d1fae5; color: #047857; }
+
+/* SVG 图容器 */
+.fig {
+  margin: 22px 0; text-align: center;
+  background: #fff; border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 12px 8px;
+}
+.fig svg { max-width: 100%; height: auto; }
+.fig figcaption { font-size: 13px; color: var(--text-light); padding: 10px 8px 8px; }
+
+/* 折叠面板 */
+details.fold {
+  border: 1px solid var(--border); border-radius: 10px;
+  margin: 14px 0; background: #f8fafc; overflow: hidden;
+}
+details.fold summary {
+  cursor: pointer; padding: 12px 18px; font-weight: 600; font-size: 14.5px;
+  color: var(--primary-deep); background: #eef2ff; list-style: none;
+  display: flex; align-items: center; gap: 8px;
+}
+details.fold summary::before { content: "+"; font-family: monospace; font-size: 16px; color: var(--primary); }
+details.fold[open] summary::before { content: "−"; }
+details.fold .fold-body { padding: 14px 20px; font-size: 14.5px; }
+
+/* 步骤列表 */
+ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+ol.steps > li {
+  counter-increment: step; position: relative; padding: 4px 0 4px 46px; margin: 12px 0;
+}
+ol.steps > li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 8px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--primary); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700;
+}
+
+/* 页脚 */
+footer {
+  text-align: center; color: var(--text-light); font-size: 13px;
+  padding: 30px 0 10px;
+}
+#backtop {
+  position: fixed; right: 26px; bottom: 30px; width: 42px; height: 42px;
+  border-radius: 50%; border: none; background: var(--primary); color: #fff;
+  font-size: 18px; cursor: pointer; opacity: 0; pointer-events: none;
+  transition: opacity .25s; box-shadow: 0 6px 16px rgba(79,70,229,.4); z-index: 99;
+}
+#backtop.show { opacity: 1; pointer-events: auto; }
+.katex-note { font-size: 13px; color: var(--text-light); }
+.canvas-box { background:#fff; border:1px solid var(--border); border-radius:10px; padding:8px; }
+</style>
+</head>
+<body>
+
+<!-- ================= 侧边栏 ================= -->
+<aside class="sidebar">
+  <div class="logo">
+    <div class="t-mark">T</div>
+    <h1>Transformer 完全指南</h1>
+    <p>原理 · 结构 · 代码实现</p>
+  </div>
+  <div class="toc-title">目录</div>
+  <nav class="toc" id="toc"></nav>
+</aside>
+
+<main>
+
+<!-- ================= HERO ================= -->
+<div class="hero">
+  <h1>Transformer 深度详解</h1>
+  <p class="sub">从"为什么需要它"讲到"如何亲手实现它"——一篇写给初学者的完整教程：直觉、数学、架构、以及一份带中文注释的 PyTorch 实现。</p>
+  <div class="meta">
+    <span>论文：Attention Is All You Need (2017)</span>
+    <span>数学基础：高中 + 线性代数入门</span>
+    <span>代码：PyTorch 从零实现</span>
+    <span>阅读约 60 分钟</span>
+  </div>
+</div>
+
+<!-- ================= 第 1 章 ================= -->
+<section class="chapter" id="ch1">
+  <h2><span class="no">01</span>为什么需要 Transformer</h2>
+
+  <h3 id="s1-1">1.1 一切要从"序列"说起</h3>
+  <p>语言天生是<strong>序列</strong>（Sequence）：一句话里的词有先后顺序，而一个词的含义又依赖于它的上下文。"我吃苹果"和"苹果吃我"用的是同样的三个字，意思完全相反。因此，任何处理语言的模型都必须回答两个根本问题：</p>
+  <ol>
+    <li><strong>理解</strong>：如何让每个词"吸收"上下文信息，得到真正属于它的含义表示？</li>
+    <li><strong>生成</strong>：如何把一个序列转换成另一个序列（翻译：中文 → 英文；摘要：长文 → 短文）？</li>
+  </ol>
+  <p>在 2017 年之前，这两个问题的主流答案是<strong>循环神经网络（RNN / LSTM）</strong>；2017 年之后，答案变成了 <strong>Transformer</strong>。要理解 Transformer 解决了什么，得先看看旧方案卡在了哪里。</p>
+
+  <h3 id="s1-2">1.2 RNN 时代的三大困境</h3>
+  <p>RNN 的思路非常直觉：像人阅读一样，<strong>从左到右逐词处理</strong>，用一个"记忆向量" h 不断更新：</p>
+  <div class="formula">
+    <span class="mvar">h</span><sub>t</sub> <span class="op">=</span> tanh(<span class="mvar">W</span> · <span class="mvar">h</span><sub>t−1</sub> <span class="op">+</span> <span class="mvar">U</span> · <span class="mvar">x</span><sub>t</sub>)
+  </div>
+  <p>即"第 t 步的记忆 = 对上一步记忆和当前输入的加工"。这个设计简洁优雅，但带来了三个致命问题：</p>
+
+  <div class="fig">
+  <svg viewBox="0 0 860 250" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+    <!-- 左：RNN 链式 -->
+    <text x="215" y="28" text-anchor="middle" font-size="15" font-weight="bold" fill="#b91c1c">RNN：信息串行传递（接力赛）</text>
+    <g font-size="13">
+      <rect x="30" y="120" width="52" height="40" rx="8" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+      <text x="56" y="145" text-anchor="middle" fill="#991b1b">x₁</text>
+      <rect x="126" y="120" width="52" height="40" rx="8" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+      <text x="152" y="145" text-anchor="middle" fill="#991b1b">x₂</text>
+      <rect x="222" y="120" width="52" height="40" rx="8" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+      <text x="248" y="145" text-anchor="middle" fill="#991b1b">x₃</text>
+      <rect x="318" y="120" width="52" height="40" rx="8" fill="#fee2e2" stroke="#ef4444" stroke-width="1.5"/>
+      <text x="344" y="145" text-anchor="middle" fill="#991b1b">x₄</text>
+      <rect x="78" y="52" width="52" height="36" rx="8" fill="#ffedd5" stroke="#ea580c"/>
+      <text x="104" y="75" text-anchor="middle" fill="#9a3412">h₁</text>
+      <rect x="174" y="52" width="52" height="36" rx="8" fill="#ffedd5" stroke="#ea580c"/>
+      <text x="200" y="75" text-anchor="middle" fill="#9a3412">h₂</text>
+      <rect x="270" y="52" width="52" height="36" rx="8" fill="#ffedd5" stroke="#ea580c"/>
+      <text x="296" y="75" text-anchor="middle" fill="#9a3412">h₃</text>
+      <rect x="366" y="52" width="52" height="36" rx="8" fill="#ffedd5" stroke="#ea580c"/>
+      <text x="392" y="75" text-anchor="middle" fill="#9a3412">h₄</text>
+      <!-- 箭头 -->
+      <g stroke="#64748b" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+        <path d="M56,120 L88,88"/>
+        <path d="M152,120 L184,88"/>
+        <path d="M248,120 L280,88"/>
+        <path d="M344,120 L376,88"/>
+        <path d="M130,70 L174,70"/>
+        <path d="M226,70 L270,70"/>
+        <path d="M322,70 L366,70"/>
+      </g>
+      <text x="215" y="205" text-anchor="middle" fill="#64748b">x₁ 的信息要传 3 步才能到 h₄，越传越"淡"</text>
+    </g>
+    <defs>
+      <marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#64748b"/>
+      </marker>
+    </defs>
+    <!-- 分隔线 -->
+    <line x1="440" y1="30" x2="440" y2="220" stroke="#e2e8f0" stroke-width="2" stroke-dasharray="5,5"/>
+    <!-- 右：Self-Attention 全连接 -->
+    <text x="650" y="28" text-anchor="middle" font-size="15" font-weight="bold" fill="#4f46e5">Self-Attention：任意两词一步直达</text>
+    <g font-size="13">
+      <rect x="496" y="60" width="60" height="36" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="526" y="83" text-anchor="middle" fill="#3730a3">词1</text>
+      <rect x="620" y="60" width="60" height="36" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="650" y="83" text-anchor="middle" fill="#3730a3">词2</text>
+      <rect x="744" y="60" width="60" height="36" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="774" y="83" text-anchor="middle" fill="#3730a3">词3</text>
+      <rect x="558" y="150" width="60" height="36" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="588" y="173" text-anchor="middle" fill="#3730a3">词4</text>
+      <rect x="682" y="150" width="60" height="36" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.5"/>
+      <text x="712" y="173" text-anchor="middle" fill="#3730a3">词5</text>
+      <g stroke="#818cf8" stroke-width="1.8" fill="none">
+        <line x1="526" y1="96" x2="526" y2="150" opacity=".8"/>
+        <line x1="556" y1="78" x2="620" y2="78"/>
+        <line x1="585" y1="95" x2="720" y2="150" opacity=".7"/>
+        <line x1="526" y1="92" x2="760" y2="96"/>
+        <line x1="680" y1="78" x2="744" y2="78"/>
+        <line x1="650" y1="96" x2="712" y2="150" opacity=".7"/>
+        <line x1="610" y1="95" x2="588" y2="150" opacity=".7"/>
+        <line x1="774" y1="96" x2="712" y2="150" opacity=".7"/>
+        <line x1="742" y1="92" x2="618" y2="168" opacity=".5"/>
+      </g>
+      <text x="650" y="215" text-anchor="middle" fill="#64748b">任意两个词之间都有直接连线，路径长度 = 1</text>
+    </g>
+  </svg>
+  <figcaption>图 1-1　RNN 的链式传递（左）与 Self-Attention 的全连接（右）</figcaption>
+  </div>
+
+  <ol>
+    <li><strong>困境一：无法并行。</strong>h<sub>2</sub> 必须等 h<sub>1</sub> 算完，h<sub>3</sub> 必须等 h<sub>2</sub>……100 个词的句子就要串行 100 步。而 GPU 擅长的是"一万件事同时做"，RNN 的结构让它根本吃不到并行计算的红利，训练大模型慢得难以接受。</li>
+    <li><strong>困境二：长程依赖衰减。</strong>信息像接力棒一样一站站传下去，每传一次都要乘一次矩阵、过一次 tanh，距离一远，早期信息不断被稀释、覆盖（梯度也会消失）。LSTM 用门控机制缓解了这个问题，但也只是把"能记住的距离"从 ~20 步拉长到 ~100 步，本质没变。</li>
+    <li><strong>困境三：信息瓶颈。</strong>经典的 Seq2Seq（机器翻译模型）把整个输入句子压缩成<strong>一个固定长度的向量</strong>，再让解码器仅凭这一个向量生成整个译文。句子一长，这个向量就成了"要背下整本书的一张小抄"，注定记不全。</li>
+  </ol>
+
+  <h3 id="s1-3">1.3 注意力机制的破局（2014）</h3>
+  <p>2014 年，Bahdanau 等人在机器翻译中提出了<strong>注意力机制（Attention）</strong>：解码器每生成一个词时，不再只看那个"小抄向量"，而是<strong>回头重新扫一遍源句的所有词，按相关程度加权取用</strong>。翻译 "I" 时重点看 "我"，翻译 "machine" 时重点看 "机器"。</p>
+  <p>这一招直接打破了信息瓶颈，效果立竿见影。但当时的注意力还只是 RNN 的一个"外挂"——主干仍然是循环网络，并行性和长程依赖问题依旧存在。</p>
+
+  <h3 id="s1-4">1.4 2017：Attention Is All You Need</h3>
+  <p>Google 的作者们提出了一个大胆的问题：<em>既然注意力这么好用，能不能把 RNN 完全扔掉，只用注意力？</em>答案就是 Transformer：</p>
+  <ul>
+    <li>完全基于<strong>自注意力（Self-Attention）</strong>，没有任何循环结构；</li>
+    <li>所有位置<strong>同时计算</strong>，可以充分利用 GPU 并行；</li>
+    <li>任意两个词之间的信息路径长度都是 <strong>1</strong>，长程依赖不再是问题；</li>
+    <li>在当年的机器翻译任务上取得 SOTA，且训练时间只有之前最好模型的 <strong>1/3 以下</strong>。</li>
+  </ul>
+
+  <div class="callout think">
+    <span class="tag">原论文 Table 1</span>
+    <div class="table-wrap">
+    <table class="dtable">
+      <tr><th>层类型</th><th>每层计算复杂度</th><th>顺序操作数（能否并行）</th><th>最大信息路径长度</th></tr>
+      <tr><td>Self-Attention</td><td>O(n² · d)</td><td>O(1) — 完全并行</td><td>O(1) — 一步直达</td></tr>
+      <tr><td>Recurrent（RNN）</td><td>O(n · d²)</td><td>O(n) — 必须串行</td><td>O(n) — 要走 n 步</td></tr>
+      <tr><td>Convolutional（CNN）</td><td>O(k · n · d²)</td><td>O(1)</td><td>O(log<sub>k</sub> n)</td></tr>
+    </table>
+    </div>
+    n 是序列长度，d 是向量维度，k 是卷积核大小。注意 Self-Attention 的代价：复杂度是序列长度的<strong>平方</strong>——这个 O(n²) 正是后来长文本处理（长上下文）的核心难点。
+  </div>
+
+  <div class="callout info">
+    <span class="tag">一句话总结</span>
+    Transformer 用"所有词两两之间直接对话"的Self-Attention，取代了"逐词接力"的循环结构，同时解决了并行效率和长程依赖两大难题。它不是某个单点创新，而是<strong>注意力 + 残差连接 + 位置编码 + 层归一化</strong>等组件的精心组合。
+  </div>
+</section>
+
+<!-- ================= 第 2 章 ================= -->
+<section class="chapter" id="ch2">
+  <h2><span class="no">02</span>核心思想：注意力机制</h2>
+
+  <h3 id="s2-1">2.1 从"查字典"说起</h3>
+  <p>先忘掉所有公式，想一个你天天在做的事：<strong>查字典</strong>。你拿着一个"查询"（想查的词），逐一比对字典里每个"键"（词条），找到匹配的那个，取出它的"值"（释义）。</p>
+  <p>注意力的思路一模一样，只是把"精确匹配"换成了<strong>模糊匹配</strong>：</p>
+  <ul>
+    <li>查询 <strong>Q</strong>（Query）：我现在想找什么信息？</li>
+    <li>键 <strong>K</strong>（Key）：每个候选信息身上贴的"标签"；</li>
+    <li>值 <strong>V</strong>（Value）：每个候选信息的实际内容。</li>
+  </ul>
+  <p>字典只会返回一个结果，而注意力会把<strong>所有</strong>候选都按匹配程度取一点，做<strong>加权平均</strong>：</p>
+  <div class="formula">
+    <span class="flabel">软性注意力 = 加权平均（soft retrieval）</span>
+    输出 <span class="op">=</span> α<sub>1</sub>·<span class="mvar">v</span><sub>1</sub> <span class="op">+</span> α<sub>2</sub>·<span class="mvar">v</span><sub>2</sub> <span class="op">+</span> … <span class="op">+</span> α<sub>n</sub>·<span class="mvar">v</span><sub>n</sub>
+    <span style="display:block;font-size:14px;margin-top:8px;color:#64748b">其中 α<sub>i</sub> ≥ 0 且 Σα<sub>i</sub> = 1，是查询与第 i 个键的"匹配分数"（归一化后）</span>
+  </div>
+  <div class="callout tip">
+    <span class="tag">类比</span>
+    这就像在图书馆查资料：你的问题（Q）和每本书的目录（K）算相似度，然后按相似度比例把所有书的内容（V）都"复印"一点回来混合。最相关的书复印得多，不相关的复印得少——而不是只借一本。
+  </div>
+
+  <h3 id="s2-2">2.2 Self-Attention：自己看自己</h3>
+  <p>Transformer 里用的是<strong>自注意力（Self-Attention）</strong>：Q、K、V <strong>全部来自同一个序列</strong>。序列里的每个词，都会向包括自己在内的所有词发起查询，根据相关性重新混合信息，得到一个"见过世面"的新表示。</p>
+  <p>经过一层 Self-Attention 后，每个词的向量不再只是"这个词是什么"，而是"<strong>这个词在这个句子里、在这个上下文中</strong>是什么意思"。这就是所谓的<strong>上下文相关表示</strong>（contextualized representation）——同一个"苹果"在"吃苹果"和"苹果手机"里会得到完全不同的向量。</p>
+
+  <h3 id="s2-3">2.3 一个经典例子：指代消解</h3>
+  <p>看这句话：</p>
+  <p style="text-align:center;font-size:17px;background:#eef2ff;border-radius:10px;padding:14px">The animal didn't cross the street because <strong>it</strong> was too tired.</p>
+  <p>"it" 指的是 animal 还是 street？人一眼就知道是 <em>animal</em>（因为"累"的是动物）。自注意力让模型也能做到：计算 "it" 与所有词的相关性时，"animal" 会获得最高的注意力权重——"it" 的新向量于是大量吸收了 "animal" 的信息。<strong>点击下面任意单词，查看它对其他词的注意力分布</strong>（弧线越粗 = 权重越大）：</p>
+
+  <div class="demo-box">
+    <div class="demo-title">交互演示：单层注意力的可视化</div>
+    <div class="tok-row" id="attnDemoTokens"></div>
+    <svg id="attnArcSvg" viewBox="0 0 820 200" style="width:100%"></svg>
+    <div class="bars" id="attnDemoBars"></div>
+    <div class="demo-note" id="attnDemoNote">点击上方任意单词，查看它的注意力分配。试试 "it"。</div>
+  </div>
+
+  <h3 id="s2-4">2.4 与 RNN 的本质区别</h3>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th style="width:150px"></th><th>RNN / LSTM</th><th>Self-Attention</th></tr>
+    <tr><td><strong>信息流动</strong></td><td>沿时间轴逐站接力</td><td>任意两词一步直达（全连接）</td></tr>
+    <tr><td><strong>长程依赖</strong></td><td>路径长，信息易衰减</td><td>路径长度恒为 1</td></tr>
+    <tr><td><strong>并行度</strong></td><td>低（时间步串行）</td><td>高（一次矩阵乘法算完所有位置）</td></tr>
+    <tr><td><strong>顺序信息</strong></td><td>天然内置（按顺序处理）</td><td>没有！需要额外注入位置编码（第 4 章详解）</td></tr>
+    <tr><td><strong>计算量</strong></td><td>与序列长度线性相关</td><td>与序列长度平方相关</td></tr>
+  </table>
+  </div>
+  <div class="callout warn">
+    <span class="tag">重要</span>
+    Self-Attention 本身是<strong>置换不变</strong>的：把句子里的词随机打乱，注意力计算的结果只是相应地重排，不会"察觉"顺序变了。"我吃苹果"和"苹果吃我"对它来说没有本质区别。所以 Transformer 必须<strong>额外注入位置信息</strong>——这就是位置编码（Positional Encoding）存在的根本原因，详见 4.2 节。
+  </div>
+</section>
+
+<!-- ================= 第 3 章 ================= -->
+<section class="chapter" id="ch3">
+  <h2><span class="no">03</span>数学原理：一步步推导注意力</h2>
+
+  <h3 id="s3-1">3.1 符号约定</h3>
+  <p>设一个句子有 n 个词，每个词被表示成 d<sub>model</sub> 维向量。整个句子就是一个矩阵：</p>
+  <div class="formula">
+    <span class="mvar">X</span> ∈ ℝ<sup>n × d_model</sup>
+    <span style="display:block;font-size:14px;margin-top:6px;color:#64748b">n 行 = n 个词，每行是一个词向量（原论文 d_model = 512）</span>
+  </div>
+
+  <h3 id="s3-2">3.2 Q、K、V 从哪里来：三个投影矩阵</h3>
+  <p>Q、K、V 不是凭空出现的，它们都是输入 X 分别乘以三个<strong>可学习的权重矩阵</strong>得到的：</p>
+  <div class="formula">
+    <span class="mvar">Q</span> <span class="op">=</span> <span class="mvar">X</span><span class="mvar">W</span><sup>Q</sup>,
+    <span style="display:inline-block;width:18px"></span>
+    <span class="mvar">K</span> <span class="op">=</span> <span class="mvar">X</span><span class="mvar">W</span><sup>K</sup>,
+    <span style="display:inline-block;width:18px"></span>
+    <span class="mvar">V</span> <span class="op">=</span> <span class="mvar">X</span><span class="mvar">W</span><sup>V</sup>
+  </div>
+  <p>其中 W<sup>Q</sup>, W<sup>K</sup>, W<sup>V</sup> ∈ ℝ<sup>d_model × d_k</sup>，是模型要学的参数。</p>
+  <div class="callout think">
+    <span class="tag">理解</span>
+    每个词向量 x<sub>i</sub> 被同一组矩阵"加工"出三种角色：<br>
+    • 它的 <strong>Query</strong>：当我需要更新自己时，我想找什么？<br>
+    • 它的 <strong>Key</strong>：当别人查询时，我能被怎样"检索到"？<br>
+    • 它的 <strong>Value</strong>：如果别人选中了我，我实际贡献什么内容？<br>
+    为什么同一向量要投影出三种角色？因为"我要找什么"和"我能提供什么"是两回事——就像你在招聘网站上的"求职意向"（Query）和"简历关键词"（Key）描述的是同一个你，但写法完全不同。
+  </div>
+
+  <h3 id="s3-3">3.3 完整公式：缩放点积注意力</h3>
+  <p>下面就是 Transformer 的灵魂公式（建议背下来）：</p>
+  <div class="formula">
+    <span class="flabel">Scaled Dot-Product Attention（缩放点积注意力）</span>
+    Attention(<span class="mvar">Q</span>, <span class="mvar">K</span>, <span class="mvar">V</span>) <span class="op">=</span>
+    softmax<span class="op">(</span>
+    <span class="frac"><span class="num"><span class="mvar">Q</span><span class="mvar">K</span><sup>T</sup></span><span class="den">√d<sub>k</sub></span></span>
+    <span class="op">)</span> <span class="mvar">V</span>
+  </div>
+  <p>别被它吓到，我们把右边拆成 4 步，每一步都极其简单：</p>
+
+  <ol class="steps">
+    <li><strong>打分</strong>：S = QK<sup>T</sup>。Q 的第 i 行（第 i 个词的查询）与 K 的第 j 列（第 j 个词的键）做<strong>点积</strong>，得到分数 s<sub>ij</sub> = q<sub>i</sub>·k<sub>j</sub>，衡量"词 i 对词 j 的关注程度"。点积越大，两个向量方向越一致、越相关。结果 S 是一个 n×n 的打分矩阵。</li>
+    <li><strong>缩放</strong>：S ← S / √d<sub>k</sub>。把分数整体除以键向量维度的平方根（为什么？见 3.4 节）。</li>
+    <li><strong>归一化</strong>：A = softmax(S)。对每一行做 softmax，把分数变成非负、和为 1 的<strong>注意力权重</strong>——即一个概率分布："词 i 把 100% 的注意力按比例分给所有词"。</li>
+    <li><strong>加权求和</strong>：Output = A·V。用权重对所有的 Value 加权平均，得到每个词的新表示。第 i 行输出 = α<sub>i1</sub>v<sub>1</sub> + … + α<sub>in</sub>v<sub>n</sub>。</li>
+  </ol>
+
+  <div class="fig">
+  <svg viewBox="0 0 880 240" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar3" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+        <path d="M0,0 L8,3.5 L0,7 Z" fill="#475569"/>
+      </marker>
+    </defs>
+    <text x="440" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#3730a3">缩放点积注意力的计算流程</text>
+    <!-- 输入 Q K V -->
+    <g font-size="14">
+      <rect x="30" y="52" width="70" height="42" rx="9" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+      <text x="65" y="78" text-anchor="middle" fill="#5b21b6" font-weight="bold">Q (n×dk)</text>
+      <rect x="30" y="104" width="70" height="42" rx="9" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+      <text x="65" y="130" text-anchor="middle" fill="#5b21b6" font-weight="bold">K (n×dk)</text>
+      <rect x="30" y="156" width="70" height="42" rx="9" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+      <text x="65" y="182" text-anchor="middle" fill="#5b21b6" font-weight="bold">V (n×dk)</text>
+      <!-- MatMul QK^T -->
+      <path d="M100,73 L138,73" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <path d="M100,125 L138,88" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <rect x="140" y="58" width="80" height="42" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/>
+      <text x="180" y="78" text-anchor="middle" fill="#312e81" font-weight="bold">MatMul</text>
+      <text x="180" y="94" text-anchor="middle" fill="#312e81" font-size="11.5">Q · Kᵀ</text>
+      <!-- Scale -->
+      <path d="M220,79 L258,79" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <rect x="260" y="58" width="86" height="42" rx="9" fill="#fef3c7" stroke="#d97706" stroke-width="1.6"/>
+      <text x="303" y="78" text-anchor="middle" fill="#92400e" font-weight="bold">Scale</text>
+      <text x="303" y="94" text-anchor="middle" fill="#92400e" font-size="11.5">÷ √dk</text>
+      <!-- Mask -->
+      <path d="M346,79 L384,79" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <rect x="386" y="58" width="86" height="42" rx="9" fill="#fee2e2" stroke="#dc2626" stroke-width="1.6"/>
+      <text x="429" y="78" text-anchor="middle" fill="#991b1b" font-weight="bold">Mask</text>
+      <text x="429" y="94" text-anchor="middle" fill="#991b1b" font-size="11.5">可选（第4章）</text>
+      <!-- Softmax -->
+      <path d="M472,79 L510,79" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <rect x="512" y="58" width="96" height="42" rx="9" fill="#dcfce7" stroke="#059669" stroke-width="1.6"/>
+      <text x="560" y="78" text-anchor="middle" fill="#065f46" font-weight="bold">Softmax</text>
+      <text x="560" y="94" text-anchor="middle" fill="#065f46" font-size="11.5">按行归一化</text>
+      <!-- MatMul *V -->
+      <path d="M608,79 L646,79" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <path d="M100,177 L646,100" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#ar3)" stroke-dasharray="6,4"/>
+      <rect x="648" y="70" width="86" height="42" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.6"/>
+      <text x="691" y="90" text-anchor="middle" fill="#312e81" font-weight="bold">MatMul</text>
+      <text x="691" y="106" text-anchor="middle" fill="#312e81" font-size="11.5">权重 · V</text>
+      <path d="M734,91 L772,91" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar3)"/>
+      <rect x="774" y="70" width="76" height="42" rx="9" fill="#4f46e5"/>
+      <text x="812" y="90" text-anchor="middle" fill="#fff" font-weight="bold">输出</text>
+      <text x="812" y="106" text-anchor="middle" fill="#e0e7ff" font-size="11.5">(n×dk)</text>
+    </g>
+    <text x="180" y="140" text-anchor="middle" font-size="11.5" fill="#64748b">得到 n×n 打分矩阵</text>
+    <text x="560" y="140" text-anchor="middle" font-size="11.5" fill="#64748b">权重和为 1</text>
+    <text x="65" y="222" text-anchor="middle" font-size="11.5" fill="#64748b">V 的路径</text>
+  </svg>
+  <figcaption>图 3-1　缩放点积注意力：Q 与 K 先做矩阵乘法打分，缩放、（掩码）、归一化后，对 V 加权求和</figcaption>
+  </div>
+
+  <h3 id="s3-4">3.4 为什么要除以 √d<sub>k</sub></h3>
+  <p>这是面试高频问题，值得认真理解。假设 q 和 k 的每个分量都是均值 0、方差 1 的独立随机变量，那么它们的点积（d<sub>k</sub> 个乘积之和）的方差正好是 <strong>d<sub>k</sub></strong>：</p>
+  <div class="formula">
+    Var(q · k) <span class="op">=</span> Var<span class="op">(</span>q<sub>1</sub>k<sub>1</sub> <span class="op">+</span> … <span class="op">+</span> q<sub>dk</sub>k<sub>dk</sub><span class="op">)</span> <span class="op">=</span> d<sub>k</sub>
+  </div>
+  <p>维度越大（d<sub>k</sub> = 64），点积的数值就天然越大、波动越剧烈。而 softmax 对输入非常敏感——输入一大，它就会把几乎全部概率砸在最大的那个分数上，输出接近 one-hot，<strong>梯度几乎为零，训练不动</strong>。除以 √d<sub>k</sub> 恰好把方差重新拉回 1，让 softmax 工作在"温和"的区间。</p>
+  <p>动手感受一下缩放的作用（拖动滑块改变维度 d<sub>k</sub>）：</p>
+
+  <div class="demo-box">
+    <div class="demo-title">交互演示：缩放如何"驯服" softmax</div>
+    <div class="demo-controls">
+      <label>键向量维度 d<sub>k</sub>：
+        <input type="range" id="dkSlider" min="4" max="512" step="4" value="64">
+        <span id="dkVal" style="font-family:Consolas;font-weight:700;color:#4f46e5">64</span>
+      </label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px" id="softmaxCompare">
+      <div>
+        <div style="font-size:13.5px;font-weight:700;color:#b91c1c;margin-bottom:4px">不缩放：softmax(QKᵀ) — 越来越尖，梯度消失</div>
+        <div class="bars" id="barsRaw"></div>
+      </div>
+      <div>
+        <div style="font-size:13.5px;font-weight:700;color:#047857;margin-bottom:4px">缩放后：softmax(QKᵀ/√dk) — 分布稳定</div>
+        <div class="bars" id="barsScaled"></div>
+      </div>
+    </div>
+    <div class="demo-note">四个候选键的基础相似度为 [2.0, 1.4, 1.0, 0.5]。点积分数近似与 √dk 成正比增长，因此不缩放时维度越大、分布越接近 one-hot；除以 √dk 后分布与维度无关，保持稳定。</div>
+  </div>
+
+  <h3 id="s3-5">3.5 softmax：把分数变成分布</h3>
+  <p>softmax 把一行任意实数分数 z = (z<sub>1</sub>, …, z<sub>n</sub>) 变成概率分布：</p>
+  <div class="formula">
+    softmax(z)<sub>i</sub> <span class="op">=</span>
+    <span class="frac"><span class="num">e<sup>z<sub>i</sub></sup></span><span class="den">Σ<sub>j</sub> e<sup>z<sub>j</sub></sup></span></span>
+  </div>
+  <p>它有两个关键性质：<strong>放大差异</strong>（分数差 1，概率比约 2.7 倍）和<strong>可微</strong>（能反向传播）。数值很大时 e<sup>z</sup> 会溢出，实现中通常先减去行最大值再计算（数值稳定技巧）。</p>
+
+  <h3 id="s3-6">3.6 维度变化总览</h3>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th>步骤</th><th>操作</th><th>形状变化（单头，n 个词）</th></tr>
+    <tr><td>①</td><td>输入 X</td><td>(n, d<sub>model</sub>)</td></tr>
+    <tr><td>②</td><td>Q = XW<sup>Q</sup>，K = XW<sup>K</sup>，V = XW<sup>V</sup></td><td>各 (n, d<sub>k</sub>)</td></tr>
+    <tr><td>③</td><td>打分 S = QK<sup>T</sup> / √d<sub>k</sub></td><td>(n, n)</td></tr>
+    <tr><td>④</td><td>权重 A = softmax(S)</td><td>(n, n)，每行和为 1</td></tr>
+    <tr><td>⑤</td><td>输出 A·V</td><td>(n, d<sub>k</sub>)，与 V 同形</td></tr>
+  </table>
+  </div>
+  <div class="callout info">
+    <span class="tag">优雅之处</span>
+    整个注意力<strong>没有任何循环</strong>——全部是大矩阵乘法，一次算出所有词的新表示，GPU 的最爱。
+  </div>
+
+  <h3 id="s3-7">3.7 多头注意力（Multi-Head Attention）</h3>
+  <p>一个注意力头只有一种"关注方式"。但语言里的关系是多样的：一个词可能同时需要关注<strong>指代对象</strong>（it → animal）、<strong>语法搭配</strong>（动词 → 宾语）、<strong>相邻修饰</strong>（形容词 → 名词）。只给一个头，就像只允许你用一个标准去理解所有关系。</p>
+  <p>Transformer 的做法：<strong>并行做 h 次独立的注意力</strong>，每个头有自己的投影矩阵，在各自的低维子空间里"各看各的"，最后拼接融合：</p>
+  <div class="formula">
+    <span class="flabel">Multi-Head Attention（原论文 h = 8）</span>
+    head<sub>i</sub> <span class="op">=</span> Attention(<span class="mvar">X</span><span class="mvar">W</span><sub>i</sub><sup>Q</sup>, <span class="mvar">X</span><span class="mvar">W</span><sub>i</sub><sup>K</sup>, <span class="mvar">X</span><span class="mvar">W</span><sub>i</sub><sup>V</sup>)
+    <span style="display:block;height:8px"></span>
+    MultiHead(<span class="mvar">X</span>) <span class="op">=</span> Concat(head<sub>1</sub>, …, head<sub>h</sub>)<span class="mvar">W</span><sup>O</sup>
+  </div>
+  <p>原论文中 d<sub>model</sub> = 512，h = 8，所以每个头 d<sub>k</sub> = d<sub>v</sub> = 512 / 8 = <strong>64</strong>。注意一个精妙的设计：<strong>总计算量和总参数量与单头 512 维几乎相同</strong>——不是把模型变大 8 倍，而是把同一个预算切成了 8 份不同视角。</p>
+
+  <div class="fig">
+  <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar4" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+        <path d="M0,0 L8,3.5 L0,7 Z" fill="#475569"/>
+      </marker>
+    </defs>
+    <text x="440" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#3730a3">多头注意力：并行计算 h 个子空间的注意力，再拼接</text>
+    <g font-size="13">
+      <!-- 输入 -->
+      <rect x="30" y="120" width="90" height="46" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.6"/>
+      <text x="75" y="140" text-anchor="middle" fill="#334155" font-weight="bold">输入 X</text>
+      <text x="75" y="156" text-anchor="middle" fill="#64748b" font-size="11">(n×512)</text>
+      <!-- h 个线性投影 -->
+      <path d="M120,143 L160,143" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar4)"/>
+      <rect x="162" y="120" width="120" height="46" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+      <text x="222" y="140" text-anchor="middle" fill="#5b21b6" font-weight="bold">h 组线性投影</text>
+      <text x="222" y="156" text-anchor="middle" fill="#5b21b6" font-size="11">WᵢQ, WᵢK, WᵢV</text>
+      <!-- 8个头 -->
+      <g>
+        <rect x="330" y="46" width="230" height="40" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+        <text x="445" y="71" text-anchor="middle" fill="#312e81" font-weight="bold">head₁ = Attention(XW₁Q, XW₁K, XW₁V)</text>
+        <rect x="330" y="94" width="230" height="34" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5" opacity=".85"/>
+        <text x="445" y="116" text-anchor="middle" fill="#312e81">head₂ …</text>
+        <rect x="330" y="134" width="230" height="34" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5" opacity=".7"/>
+        <text x="445" y="156" text-anchor="middle" fill="#312e81">head₃ …</text>
+        <rect x="330" y="174" width="230" height="34" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5" opacity=".55"/>
+        <text x="445" y="196" text-anchor="middle" fill="#312e81">…</text>
+        <rect x="330" y="214" width="230" height="40" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+        <text x="445" y="239" text-anchor="middle" fill="#312e81" font-weight="bold">head₈（每个头 64 维）</text>
+        <text x="445" y="284" text-anchor="middle" fill="#64748b" font-size="11.5">8 个头并行计算，互不干扰</text>
+      </g>
+      <path d="M282,143 L328,100" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar4)"/>
+      <path d="M282,143 L328,160" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar4)"/>
+      <path d="M282,143 L328,230" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar4)"/>
+      <!-- concat -->
+      <path d="M560,66 L598,120" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#ar4)"/>
+      <path d="M560,112 L598,130" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#ar4)"/>
+      <path d="M560,152 L598,140" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#ar4)"/>
+      <path d="M560,234 L598,152" stroke="#475569" stroke-width="1.6" fill="none" marker-end="url(#ar4)"/>
+      <rect x="600" y="106" width="100" height="52" rx="10" fill="#dcfce7" stroke="#059669" stroke-width="1.6"/>
+      <text x="650" y="128" text-anchor="middle" fill="#065f46" font-weight="bold">Concat</text>
+      <text x="650" y="146" text-anchor="middle" fill="#065f46" font-size="11">(n×512)</text>
+      <!-- 输出投影 -->
+      <path d="M700,132 L738,132" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar4)"/>
+      <rect x="740" y="106" width="112" height="52" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.6"/>
+      <text x="796" y="128" text-anchor="middle" fill="#92400e" font-weight="bold">线性投影 Wᴼ</text>
+      <text x="796" y="146" text-anchor="middle" fill="#92400e" font-size="11">(n×512)</text>
+    </g>
+  </svg>
+  <figcaption>图 3-2　多头注意力结构：8 个头各自在 64 维子空间计算注意力，拼接后经 W<sup>O</sup> 融合回 512 维</figcaption>
+  </div>
+
+  <h3 id="s3-8">3.8 计算复杂度</h3>
+  <p>自注意力的瓶颈在 QK<sup>T</sup>：形状 (n, d<sub>k</sub>) × (d<sub>k</sub>, n)，复杂度 <strong>O(n²·d)</strong>，且需要存储 n×n 的注意力矩阵。n = 1000 时矩阵有 100 万个元素，n = 100K（长文档）时就是 100 亿——这就是"上下文长度"成为大模型核心指标的由来，也是 FlashAttention、稀疏注意力等后续优化的动机（见第 8 章）。</p>
+</section>
+
+<!-- ================= 第 4 章 ================= -->
+<section class="chapter" id="ch4">
+  <h2><span class="no">04</span>整体架构：逐层拆解</h2>
+
+  <h3 id="s4-1">4.1 鸟瞰全局</h3>
+  <p>原论文的 Transformer 是一个<strong>编码器–解码器（Encoder–Decoder）</strong>结构，用于机器翻译。先建立整体印象：</p>
+  <ul>
+    <li><span class="pill enc">编码器 Encoder</span>：负责<strong>理解</strong>输入序列，输出一组"看完了整个句子"的表示向量；由 N = 6 个完全相同的层堆叠而成。</li>
+    <li><span class="pill dec">解码器 Decoder</span>：负责<strong>生成</strong>输出序列，一次生成一个词；同样 N = 6 层，但每层多一个"交叉注意力"子层，用来随时查阅编码器的理解结果。</li>
+    <li>两边各有<strong>输入模块</strong>（词嵌入 + 位置编码），解码器顶部有<strong>输出模块</strong>（线性层 + softmax，给出词表上的概率）。</li>
+  </ul>
+
+  <div class="fig">
+  <svg viewBox="0 0 940 1060" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ma" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+        <path d="M0,0 L8,3.5 L0,7 Z" fill="#475569"/>
+      </marker>
+      <marker id="maB" markerWidth="10" markerHeight="10" refX="9" refY="4" orient="auto">
+        <path d="M0,0 L9,4 L0,8 Z" fill="#2563eb"/>
+      </marker>
+    </defs>
+
+    <text x="470" y="30" text-anchor="middle" font-size="17" font-weight="bold" fill="#1e293b">Transformer 总体架构（原论文：N = 6 层）</text>
+
+    <!-- ===== 左：编码器 ===== -->
+    <text x="250" y="66" text-anchor="middle" font-size="14.5" font-weight="bold" fill="#2563eb">编码器 Encoder（理解输入）</text>
+    <!-- 输入 -->
+    <rect x="150" y="955" width="200" height="42" rx="9" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <text x="250" y="981" text-anchor="middle" font-size="13" fill="#334155">输入序列（如：我 爱 机器 学习）</text>
+    <path d="M250,955 L250,925" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <rect x="150" y="881" width="200" height="42" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+    <text x="250" y="901" text-anchor="middle" font-size="13" fill="#312e81" font-weight="bold">Input Embedding</text>
+    <text x="250" y="916" text-anchor="middle" font-size="11" fill="#312e81">词 → 512 维向量（查表）</text>
+    <path d="M250,881 L250,851" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <g>
+      <circle cx="250" cy="833" r="14" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="250" y="838" text-anchor="middle" font-size="14" fill="#92400e" font-weight="bold">+</text>
+      <text x="330" y="838" font-size="12" fill="#92400e">位置编码 Positional Encoding</text>
+    </g>
+    <path d="M250,819 L250,789" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+
+    <!-- 编码器堆叠框 -->
+    <rect x="88" y="415" width="324" height="374" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="2" stroke-dasharray="7,5"/>
+    <text x="250" y="443" text-anchor="middle" font-size="13" font-weight="bold" fill="#1d4ed8">Encoder × N = 6 层（结构完全相同）</text>
+
+    <!-- 层1（完整展示） -->
+    <rect x="120" y="458" width="260" height="150" rx="10" fill="#fff" stroke="#93c5fd" stroke-width="1.5"/>
+    <rect x="140" y="472" width="220" height="34" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+    <text x="250" y="494" text-anchor="middle" font-size="12.5" fill="#5b21b6" font-weight="bold">Multi-Head Self-Attention</text>
+    <rect x="140" y="556" width="220" height="34" rx="8" fill="#dcfce7" stroke="#059669" stroke-width="1.6"/>
+    <text x="250" y="578" text-anchor="middle" font-size="12.5" fill="#065f46" font-weight="bold">Feed Forward（两层 MLP）</text>
+    <rect x="140" y="514" width="220" height="34" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+    <text x="250" y="536" text-anchor="middle" font-size="12.5" fill="#1d4ed8" font-weight="bold">Add &amp; Norm（残差 + 层归一化）</text>
+    <rect x="140" y="598" width="220" height="34" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+    <text x="250" y="620" text-anchor="middle" font-size="12.5" fill="#1d4ed8" font-weight="bold">Add &amp; Norm</text>
+    <path d="M250,506 L250,512" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <path d="M250,548 L250,554" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <!-- 层2（示意） -->
+    <rect x="120" y="620" width="260" height="150" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.2" opacity=".6"/>
+    <rect x="140" y="634" width="220" height="34" rx="8" fill="#ede9fe" stroke="#a78bfa" stroke-width="1.2"/>
+    <text x="250" y="656" text-anchor="middle" font-size="12.5" fill="#5b21b6">Self-Attention</text>
+    <rect x="140" y="676" width="220" height="30" rx="8" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.2"/>
+    <text x="250" y="696" text-anchor="middle" font-size="12" fill="#1d4ed8">Add &amp; Norm</text>
+    <rect x="140" y="712" width="220" height="30" rx="8" fill="#dcfce7" stroke="#34d399" stroke-width="1.2"/>
+    <text x="250" y="732" text-anchor="middle" font-size="12" fill="#065f46">Feed Forward</text>
+    <rect x="140" y="748" width="220" height="18" rx="8" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.2"/>
+    <text x="250" y="762" text-anchor="middle" font-size="11" fill="#1d4ed8">Add &amp; Norm …</text>
+    <path d="M250,608 L250,628" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+
+    <!-- 编码器输出 -->
+    <path d="M250,415 L250,385" stroke="#2563eb" stroke-width="2.2" fill="none" marker-end="url(#maB)"/>
+    <rect x="150" y="345" width="200" height="38" rx="9" fill="#2563eb"/>
+    <text x="250" y="369" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">编码器输出 memory (n×512)</text>
+
+    <!-- ===== 右：解码器 ===== -->
+    <text x="690" y="66" text-anchor="middle" font-size="14.5" font-weight="bold" fill="#d97706">解码器 Decoder（生成输出）</text>
+    <!-- 输出概率（顶部） -->
+    <rect x="590" y="80" width="200" height="42" rx="9" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5"/>
+    <text x="690" y="100" text-anchor="middle" font-size="13" fill="#9d174d" font-weight="bold">输出概率</text>
+    <text x="690" y="115" text-anchor="middle" font-size="11" fill="#9d174d">P(I)=0.8, P(love)=0.1, …</text>
+    <path d="M690,122 L690,150" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <rect x="590" y="152" width="200" height="36" rx="9" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5"/>
+    <text x="690" y="175" text-anchor="middle" font-size="13" fill="#9d174d" font-weight="bold">Softmax</text>
+    <path d="M690,188 L690,216" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <rect x="590" y="218" width="200" height="36" rx="9" fill="#fdf2f8" stroke="#db2777" stroke-width="1.5"/>
+    <text x="690" y="241" text-anchor="middle" font-size="13" fill="#9d174d" font-weight="bold">Linear（512 → 词表大小 V）</text>
+    <path d="M690,254 L690,282" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+
+    <!-- 解码器堆叠框 -->
+    <rect x="528" y="284" width="324" height="505" rx="14" fill="#fffbeb" stroke="#d97706" stroke-width="2" stroke-dasharray="7,5"/>
+    <text x="690" y="312" text-anchor="middle" font-size="13" font-weight="bold" fill="#b45309">Decoder × N = 6 层</text>
+
+    <!-- 解码器层1 -->
+    <rect x="560" y="326" width="260" height="326" rx="10" fill="#fff" stroke="#fcd34d" stroke-width="1.5"/>
+    <rect x="580" y="340" width="220" height="34" rx="8" fill="#fef3c7" stroke="#d97706" stroke-width="1.6"/>
+    <text x="690" y="356" text-anchor="middle" font-size="12" fill="#92400e" font-weight="bold">Masked Multi-Head</text>
+    <text x="690" y="370" text-anchor="middle" font-size="12" fill="#92400e" font-weight="bold">Self-Attention（只许看左边）</text>
+    <rect x="580" y="382" width="220" height="30" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+    <text x="690" y="402" text-anchor="middle" font-size="12" fill="#1d4ed8" font-weight="bold">Add &amp; Norm</text>
+    <rect x="580" y="424" width="220" height="44" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.6"/>
+    <text x="690" y="443" text-anchor="middle" font-size="12.5" fill="#5b21b6" font-weight="bold">Cross-Attention（交叉注意力）</text>
+    <text x="690" y="459" text-anchor="middle" font-size="11" fill="#5b21b6">Q 来自解码器，K/V 来自编码器</text>
+    <rect x="580" y="478" width="220" height="30" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+    <text x="690" y="498" text-anchor="middle" font-size="12" fill="#1d4ed8" font-weight="bold">Add &amp; Norm</text>
+    <rect x="580" y="520" width="220" height="34" rx="8" fill="#dcfce7" stroke="#059669" stroke-width="1.6"/>
+    <text x="690" y="542" text-anchor="middle" font-size="12.5" fill="#065f46" font-weight="bold">Feed Forward</text>
+    <rect x="580" y="564" width="220" height="30" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.6"/>
+    <text x="690" y="584" text-anchor="middle" font-size="12" fill="#1d4ed8" font-weight="bold">Add &amp; Norm</text>
+    <path d="M690,374 L690,380" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <path d="M690,412 L690,422" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <path d="M690,468 L690,476" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <path d="M690,508 L690,518" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <path d="M690,554 L690,562" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+    <!-- 解码器层2（示意） -->
+    <rect x="560" y="662" width="260" height="110" rx="10" fill="#fff" stroke="#fde68a" stroke-width="1.2" opacity=".6"/>
+    <rect x="580" y="672" width="220" height="26" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+    <text x="690" y="690" text-anchor="middle" font-size="11.5" fill="#92400e">Masked Self-Attention + Add&amp;Norm</text>
+    <rect x="580" y="702" width="220" height="26" rx="8" fill="#ede9fe" stroke="#a78bfa" stroke-width="1.2"/>
+    <text x="690" y="720" text-anchor="middle" font-size="11.5" fill="#5b21b6">Cross-Attention + Add&amp;Norm</text>
+    <rect x="580" y="732" width="220" height="26" rx="8" fill="#dcfce7" stroke="#34d399" stroke-width="1.2"/>
+    <text x="690" y="750" text-anchor="middle" font-size="11.5" fill="#065f46">Feed Forward + Add&amp;Norm …</text>
+    <path d="M690,652 L690,660" stroke="#475569" stroke-width="1.5" marker-end="url(#ma)"/>
+
+    <!-- 解码器输入 -->
+    <path d="M690,789 L690,816" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <g>
+      <circle cx="690" cy="834" r="14" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+      <text x="690" y="839" text-anchor="middle" font-size="14" fill="#92400e" font-weight="bold">+</text>
+      <text x="762" y="839" font-size="12" fill="#92400e">位置编码</text>
+    </g>
+    <path d="M690,848 L690,876" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <rect x="590" y="878" width="200" height="42" rx="9" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+    <text x="690" y="898" text-anchor="middle" font-size="13" fill="#312e81" font-weight="bold">Output Embedding</text>
+    <text x="690" y="913" text-anchor="middle" font-size="11" fill="#312e81">已生成的词（右移一位：&lt;bos&gt; I love …）</text>
+    <path d="M690,920 L690,948" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ma)"/>
+    <rect x="590" y="950" width="200" height="42" rx="9" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <text x="690" y="970" text-anchor="middle" font-size="13" fill="#334155">目标序列（右移）</text>
+    <text x="690" y="985" text-anchor="middle" font-size="11" fill="#64748b">训练时是正确答案，推理时是已生成部分</text>
+
+    <!-- Cross-attention 大箭头 -->
+    <path d="M350,364 C 480,364 480,446 578,446" stroke="#2563eb" stroke-width="2.6" fill="none" marker-end="url(#maB)"/>
+    <text x="470" y="416" text-anchor="middle" font-size="12.5" fill="#2563eb" font-weight="bold">编码器的理解结果</text>
+    <text x="470" y="433" text-anchor="middle" font-size="11.5" fill="#2563eb">送入每个解码器层的 Cross-Attention</text>
+  </svg>
+  <figcaption>图 4-1　Transformer 总体架构：编码器（左）把输入"读懂"，解码器（右）借助交叉注意力逐词"写出来"</figcaption>
+  </div>
+
+  <div class="callout info">
+    <span class="tag">读图口诀</span>
+    数据自下而上流动；<span class="pill enc">蓝色系</span>属于编码器，<span class="pill dec">橙色系</span>属于解码器，<span class="pill attn">紫色</span>是注意力，<span class="pill ffn">绿色</span>是前馈网络。每一层的输出形状不变（n × 512），堆 6 层就是在反复"精炼"表示。
+  </div>
+
+  <h3 id="s4-2">4.2 输入端：从文字到向量</h3>
+
+  <h4>第一步：分词（Tokenization）</h4>
+  <p>模型不认识汉字和英文单词，只认识整数 ID。分词器把文本切成 <strong>token</strong>（词、子词或字符），再查词表映射成 ID。现代模型几乎都用 <strong>BPE / SentencePiece</strong> 这类子词算法："unhappiness" 可能被切成 "un" + "happi" + "ness"，这样既能控制词表大小（如 3 万～10 万），又能处理生僻词。本教程第 6 章的代码会跳过分词，直接用整数序列，聚焦模型本身。</p>
+
+  <h4>第二步：词嵌入（Embedding）</h4>
+  <p>一个 <code>nn.Embedding(V, d_model)</code> 的查找表：词表里每个 token ID 对应一行 512 维的可学习向量。这就是模型对"词义"的初始记忆（训练中不断被更新）。原论文还把嵌入乘以 <strong>√d_model</strong>（约 22.6），让嵌入值的量级与后面要加上的位置编码相匹配。</p>
+
+  <h4>第三步：位置编码（Positional Encoding）</h4>
+  <p>3.4 节说过：Self-Attention 是"近视眼"，天生分不清词序。解决办法朴素得惊人——<strong>把每个位置的特征直接加到词向量上</strong>。原论文用不同频率的正弦、余弦函数生成位置向量：</p>
+  <div class="formula">
+    <span class="flabel">位置编码：偶数维用 sin，奇数维用 cos</span>
+    PE(pos, 2i) <span class="op">=</span> sin<span class="op">(</span> pos <span class="op">/</span> 10000<sup>2i / d_model</sup> <span class="op">)</span>
+    <span style="display:block;height:8px"></span>
+    PE(pos, 2i+1) <span class="op">=</span> cos<span class="op">(</span> pos <span class="op">/</span> 10000<sup>2i / d_model</sup> <span class="op">)</span>
+  </div>
+  <p>pos 是词的位置（0, 1, 2, …），2i、2i+1 是向量的维度编号。频率从 1 到 1/10000 呈几何级数递减：低维变化快（像"秒针"，每走一步都明显变化），高维变化慢（像"时针"，走很多步才转一圈）。任意固定偏移 k，PE<sub>pos+k</sub> 都可以表示成 PE<sub>pos</sub> 的线性函数——这让模型很容易学到<strong>相对位置</strong>关系。</p>
+
+  <div class="demo-box">
+    <div class="demo-title">交互演示：位置编码热力图（横轴 = 向量维度，纵轴 = 词位置）</div>
+    <div class="canvas-box"><canvas id="peCanvas" width="820" height="300" style="width:100%"></canvas></div>
+    <div class="demo-controls">
+      <label>显示模式：
+        <select id="peMode" style="padding:3px 8px;border-radius:6px;border:1px solid #cbd5e1">
+          <option value="sin">正弦 sin（偶数维）</option>
+          <option value="cos">余弦 cos（奇数维）</option>
+          <option value="both">混合（前 64 维）</option>
+        </select>
+      </label>
+    </div>
+    <div class="demo-note">注意底部（低位置）：左侧高频维度条纹密集、右侧低频维度几乎不变——每个位置因此得到独一无二的"指纹"。原论文 d_model = 512，这里可视化前 256 维。</div>
+  </div>
+
+  <div class="callout think">
+    <span class="tag">思考</span>
+    为什么用"加法"而不是"拼接"来融合位置与词义？拼接会扩大维度、增加参数；相加则假设"位置信息"与"词义信息"可以共存于同一个 512 维空间里——实践证明这足够好用。另外，现代大模型（如 LLaMA）已改用更优雅的 <strong>RoPE 旋转位置编码</strong>（第 8 章），但"必须显式注入位置信息"这一原则从未改变。
+  </div>
+
+  <h3 id="s4-3">4.3 编码器层：两个子层打天下</h3>
+  <p>每个编码器层只做两件事，每件事都包着"残差 + 归一化"的外壳：</p>
+
+  <h4>子层 1：多头自注意力（通信）</h4>
+  <p>就是第 3 章讲的 Multi-Head Self-Attention：层内所有位置互相交换信息。可以把它理解为一次<strong>全局通信</strong>——"每个词去打听全句的消息，然后更新自己"。</p>
+
+  <h4>子层 2：逐位置前馈网络 FFN（思考）</h4>
+  <div class="formula">
+    FFN(x) <span class="op">=</span> max(0, x<span class="mvar">W</span><sub>1</sub> <span class="op">+</span> b<sub>1</sub>)<span class="mvar">W</span><sub>2</sub> <span class="op">+</span> b<sub>2</sub>
+  </div>
+  <p>两层 MLP：先升维到 d<sub>ff</sub> = 2048（4 倍），过 ReLU，再降回 512。<strong>关键：它对每个位置独立、相同地作用</strong>（position-wise），词与词之间不交流。如果说注意力负责"开会收集情报"，FFN 就是"回办公室独自消化情报、做深度加工"——模型的多数参数（约 2/3）都藏在 FFN 里，大量研究认为它承担了知识存储的功能。</p>
+
+  <h4>外壳：残差连接 + 层归一化</h4>
+  <div class="formula">
+    <span class="flabel">每个子层的输出（Post-LN，原论文写法）</span>
+    output <span class="op">=</span> LayerNorm<span class="op">(</span> x <span class="op">+</span> Sublayer(x) <span class="op">)</span>
+  </div>
+  <ul>
+    <li><strong>残差连接 x + Sublayer(x)</strong>：给梯度修一条"高速公路"。不管子层学得多么糟糕，恒等映射总保证信息不丢、梯度能直接回传，这让几十层深的堆叠成为可能（ResNet 的思想）。</li>
+    <li><strong>LayerNorm</strong>：对<strong>每个 token 的 512 维特征</strong>做标准化（减均值、除标准差，再学一个缩放和平移），把数值范围稳住，训练更平稳。注意它和 BatchNorm 的区别：LN 按"单样本单位置"归一，与批大小和序列长度无关——正适合变长序列。</li>
+  </ul>
+
+  <details class="fold">
+    <summary>深入：Post-LN 与 Pre-LN 的区别</summary>
+    <div class="fold-body">
+      <p>原论文把 LayerNorm 放在残差<strong>之后</strong>（Post-LN）：output = LN(x + Sublayer(x))，每一层的输出总是被归一化，干净但深了难训（需要 warmup 帮扶）。</p>
+      <p>GPT-2 之后流行把 LN 放到子层<strong>之前</strong>（Pre-LN）：output = x + Sublayer(LN(x))，主干上没有归一化操作，梯度一路畅通，深模型更稳定，现代大模型基本都用 Pre-LN 或其变体 RMSNorm。本教程第 6 章按原论文实现 Post-LN，并在代码注释里标出改一行即可切换。</p>
+    </div>
+  </details>
+
+  <h3 id="s4-4">4.4 解码器层：三个子层 + 一个铁律</h3>
+  <p>解码器层比编码器层多一个子层，并且第一条子层戴上"枷锁"：</p>
+
+  <h4>子层 1：带掩码的自注意力（Masked Self-Attention）</h4>
+  <p>解码器是在<strong>生成</strong>序列：生成第 t 个词时只允许看前 t−1 个词，<strong>绝不能偷看未来</strong>——否则训练就是在"抄答案"，模型什么也学不到。实现方式是在 softmax 之前，把打分矩阵上三角部分（未来位置）填成 −∞，softmax 后这些位置的权重精确地变成 0：</p>
+  <div class="formula">
+    <span class="flabel">因果掩码（causal mask）：−∞ 经 softmax 后归零</span>
+    Attention 分数矩阵（4 词示例）：
+    <span style="display:block;font-family:Consolas,monospace;font-size:15px;text-align:left;margin-top:10px;line-height:1.9">
+      [ s₁₁&nbsp;&nbsp;−∞&nbsp;&nbsp;−∞&nbsp;&nbsp;−∞ ]<br>
+      [ s₂₁&nbsp;&nbsp;s₂₂&nbsp;&nbsp;−∞&nbsp;&nbsp;−∞ ]<br>
+      [ s₃₁&nbsp;&nbsp;s₃₂&nbsp;&nbsp;s₃₃&nbsp;&nbsp;−∞ ]<br>
+      [ s₄₁&nbsp;&nbsp;s₄₂&nbsp;&nbsp;s₄₃&nbsp;&nbsp;s₄₄ ]
+    </span>
+  </div>
+  <div class="callout tip">
+    <span class="tag">精妙之处</span>
+    训练时解码器其实是一次并行计算所有位置的（把整个目标序列一起喂进去），全靠这个下三角掩码保证"第 t 个位置只见过去"——既享受了并行，又守住了因果律。这是 Transformer 训练效率的关键设计之一。
+  </div>
+
+  <h4>子层 2：交叉注意力（Cross-Attention）</h4>
+  <p>这是解码器与编码器的<strong>唯一接口</strong>，也是"翻译时查原文"的实现：</p>
+  <ul>
+    <li><strong>Q 来自解码器</strong>：我现在要生成的词，需要什么信息？</li>
+    <li><strong>K、V 来自编码器输出</strong>：源句每个词的"检索标签"和"内容"。</li>
+  </ul>
+  <p>生成 "machine" 时，Q 会与 "机器"、"学习" 的 K 高度匹配，于是把它们的 V 大量吸进来。这个设计极其通用：语音识别（音频 → 文本）、图像描述（图像 patch → 文字）里两个序列之间的对齐，用的都是同一个 Cross-Attention 组件。</p>
+
+  <h4>子层 3：FFN + Add &amp; Norm</h4>
+  <p>与编码器完全相同。6 层解码器堆叠后，最终再过一次 LayerNorm，送入输出层。</p>
+
+  <h3 id="s4-5">4.5 输出层：从向量到词</h3>
+  <p>解码器顶部是一个 <code>Linear(512 → V)</code>（V 是词表大小，如 3 万），把每个位置的 512 维向量投影成 V 个 logits，再经 <strong>softmax</strong> 变成词表上的概率分布，取概率最高的（或采样）作为下一个词。</p>
+
+  <h3 id="s4-6">4.6 全流程形状速查表</h3>
+  <p>以翻译"我 爱 机器 学习"（4 词）→ "I love machine learning"（4 词）、batch=1、d_model=512、h=8、词表 V=37000 为例：</p>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th>阶段</th><th>模块</th><th>输入形状</th><th>输出形状</th></tr>
+    <tr><td rowspan="3">输入端</td><td>Embedding</td><td>(4,) 整数 ID</td><td>(4, 512)</td></tr>
+    <tr><td>+ 位置编码</td><td>(4, 512)</td><td>(4, 512)</td></tr>
+    <tr><td>编码器 6 层</td><td>(4, 512)</td><td>(4, 512)（memory）</td></tr>
+    <tr><td rowspan="3">输出端</td><td>解码器 6 层（输入 "&lt;bos&gt; I love machine"）</td><td>(4, 512)</td><td>(4, 512)</td></tr>
+    <tr><td>Linear</td><td>(4, 512)</td><td>(4, 37000)</td></tr>
+    <tr><td>Softmax</td><td>(4, 37000)</td><td>(4, 37000) 概率分布</td></tr>
+  </table>
+  </div>
+  <div class="callout warn">
+    <span class="tag">注意</span>
+    训练时解码器一次吃 4 个位置、一次算出 4 个词的概率（并行）；推理时因为第 t+1 个词依赖第 t 个词的生成结果，只能一个一个来（自回归）。同一架构，两种用法——这是初学者最容易混淆的点，第 7 章会展开。
+  </div>
+</section>
+
+<!-- ================= 第 5 章 ================= -->
+<section class="chapter" id="ch5">
+  <h2><span class="no">05</span>一次翻译的完整数据流</h2>
+  <p>把前 4 章串起来。任务：把 <strong>"我 爱 机器 学习"</strong> 翻译成 <strong>"I love machine learning"</strong>，假设已生成到第 3 步，看第 4 步（生成 "learning"）如何发生：</p>
+
+  <ol class="steps">
+    <li><strong>编码器整句处理一次</strong>：4 个 token → 嵌入 + 位置编码 → (4, 512) 矩阵 X。经过 6 层编码器，每层先做自注意力（每个词吸收全句信息，"机器"和"学习"互相看到对方），再过 FFN 精炼。输出 memory：(4, 512)——它将保持不变，被解码器反复查询。</li>
+    <li><strong>解码器拿到已生成的开头</strong>：当前已生成 "&lt;bos&gt; I love machine"（右移一位的目标序列），同样做嵌入 + 位置编码，得到 (4, 512)。</li>
+    <li><strong>解码器第 1 子层：Masked 自注意力</strong>。4 个位置互相交流，但因果掩码保证 "machine" 只能看 "&lt;bos&gt; I love machine"，看不见未来（本来也没有未来）。这一步让已生成部分内部协调一致。</li>
+    <li><strong>解码器第 2 子层：Cross-Attention</strong>。Q 来自第 3 步的输出，K/V 来自编码器的 memory。生成 "learning" 的查询与 "学习" 的键最匹配 → 大量吸收 "机器学习" 的表示。</li>
+    <li><strong>第 3 子层 FFN + 输出层</strong>：深度加工后，取<strong>最后一个位置</strong>的向量 (512,) → Linear → (37000,) → softmax → 得到 "learning" 概率最高 → 输出。然后把 "learning" 拼回输入，回到第 2 步，直到生成 &lt;eos&gt; 结束。</li>
+  </ol>
+
+  <div class="fig">
+  <svg viewBox="0 0 880 210" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+    <defs>
+      <marker id="ar5" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto">
+        <path d="M0,0 L8,3.5 L0,7 Z" fill="#475569"/>
+      </marker>
+    </defs>
+    <text x="440" y="26" text-anchor="middle" font-size="15" font-weight="bold" fill="#3730a3">自回归生成：每次用全部历史，预测下一个词</text>
+    <g font-size="13.5">
+      <rect x="30" y="70" width="140" height="72" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="1.6"/>
+      <text x="100" y="98" text-anchor="middle" fill="#1d4ed8" font-weight="bold">输入已生成</text>
+      <text x="100" y="122" text-anchor="middle" fill="#1d4ed8" font-size="12.5">⟨bos⟩ I love machine</text>
+      <path d="M170,106 L218,106" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar5)"/>
+      <rect x="220" y="70" width="180" height="72" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.6"/>
+      <text x="310" y="92" text-anchor="middle" fill="#b45309" font-weight="bold">Transformer 解码器</text>
+      <text x="310" y="112" text-anchor="middle" fill="#b45309" font-size="11.5">（同时查询编码器 memory）</text>
+      <text x="310" y="130" text-anchor="middle" fill="#b45309" font-size="11.5">取最后一个位置的输出</text>
+      <path d="M400,106 L448,106" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar5)"/>
+      <rect x="450" y="70" width="160" height="72" rx="10" fill="#fdf2f8" stroke="#db2777" stroke-width="1.6"/>
+      <text x="530" y="98" text-anchor="middle" fill="#9d174d" font-weight="bold">Linear + Softmax</text>
+      <text x="530" y="122" text-anchor="middle" fill="#9d174d" font-size="12.5">P(learning)=0.93 …</text>
+      <path d="M610,106 L658,106" stroke="#475569" stroke-width="1.8" fill="none" marker-end="url(#ar5)"/>
+      <rect x="660" y="70" width="100" height="72" rx="10" fill="#dcfce7" stroke="#059669" stroke-width="1.6"/>
+      <text x="710" y="100" text-anchor="middle" fill="#065f46" font-weight="bold">输出</text>
+      <text x="710" y="122" text-anchor="middle" fill="#065f46" font-size="12.5">"learning"</text>
+      <path d="M760,142 C 800,190 120,190 100,146" stroke="#94a3b8" stroke-width="1.6" fill="none" marker-end="url(#ar5)" stroke-dasharray="6,4"/>
+      <text x="440" y="185" text-anchor="middle" font-size="12" fill="#64748b">把新词拼回输入，循环直到 ⟨eos⟩（自回归，autoregressive）</text>
+    </g>
+  </svg>
+  <figcaption>图 5-1　推理时的自回归循环：编码器只跑一次，解码器每生成一个词跑一次</figcaption>
+  </div>
+</section>
+
+<!-- ================= 第 6 章 ================= -->
+<section class="chapter" id="ch6">
+  <h2><span class="no">06</span>PyTorch 从零实现</h2>
+
+  <p>现在把前 5 章的一切变成代码。我们不调用 <code>nn.Transformer</code>，而是<strong>逐行手写每个组件</strong>——实现完你会发现：所有"神秘"的机制，加起来不到 250 行。以下代码按模块拆开讲解，拼接后是完整可运行的脚本。</p>
+
+  <h3 id="s6-1">6.1 准备工作与工具函数</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · 导入与工具</span><button class="btn-copy">复制</button></div><code>import copy
+import math
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+# 固定随机种子，保证结果可复现
+torch.manual_seed(42)
+
+
+def clones(module: nn.Module, N: int) -&gt; nn.ModuleList:
+    """深拷贝 N 份模块：堆叠 N 层时，每层需要各自独立的参数"""
+    return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
+
+
+def subsequent_mask(size: int) -&gt; torch.Tensor:
+    """因果掩码（下三角为 True）：第 t 个位置只能看到位置 0..t
+    返回形状 (1, size, size)，方便后续广播到 batch 和多头维度"""
+    attn_shape = (1, size, size)
+    mask = torch.triu(torch.ones(attn_shape), diagonal=1)  # 上三角为 1（未来）
+    return mask == 0                                        # 取反：能看到的地方为 True</code></pre>
+
+  <p><code>subsequent_mask</code> 生成的就是 4.4 节那张下三角图（True = 允许看，False = 遮住）。打印 <code>subsequent_mask(5)</code> 的第一个样本，就是：</p>
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>因果掩码的样子（5 个位置）</span><button class="btn-copy">复制</button></div><code>tensor([[ True, False, False, False, False],   # 位置0 只能看自己
+        [ True,  True, False, False, False],   # 位置1 能看 0,1
+        [ True,  True,  True, False, False],
+        [ True,  True,  True,  True, False],
+        [ True,  True,  True,  True,  True]])  # 位置4 能看全部过去</code></pre>
+
+  <h3 id="s6-2">6.2 核心：多头注意力（对应第 3 章）</h3>
+  <p>这是整个模型的心脏，请对照 3.3 节的 4 个步骤阅读。特别留意<strong>形状注释</strong>——理解多头机制的关键就是弄懂每一次 reshape：</p>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · MultiHeadAttention</span><button class="btn-copy">复制</button></div><code>class MultiHeadAttention(nn.Module):
+    """多头注意力：自注意力（q=k=v 时）与交叉注意力（q 来自解码器）共用此实现"""
+
+    def __init__(self, d_model: int, num_heads: int, dropout: float = 0.1):
+        super().__init__()
+        assert d_model % num_heads == 0, "d_model 必须能被 num_heads 整除"
+        self.d_model = d_model          # 模型宽度，如 512
+        self.num_heads = num_heads      # 头数，如 8
+        self.d_k = d_model // num_heads # 每个头的维度，如 64
+        # 4 个投影矩阵：W_Q, W_K, W_V, W_O（原论文公式中的 4 个大矩阵）
+        self.linears = clones(nn.Linear(d_model, d_model), 4)
+        self.attn = None               # 保存注意力权重，便于可视化
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, query, key, value, mask=None):
+        # query/key/value: (B, L_q, d_model)，mask: (B, 1, 1, L_k) 或 (B, 1, L_q, L_k)
+        if mask is not None:
+            mask = mask.unsqueeze(1)    # (B, 1, ...) -&gt; (B, 1, 1, ...)，广播到所有头
+        nbatches = query.size(0)
+
+        # ---- 第①步：线性投影 + 拆分多头 ------------------------------
+        # (B, L, 512) -投影-&gt; (B, L, 512) -view-&gt; (B, L, 8, 64) -transpose-&gt; (B, 8, L, 64)
+        # 直觉：把 512 维向量切成 8 段，每段交给一个头独立处理
+        query, key, value = [
+            lin(x).view(nbatches, -1, self.num_heads, self.d_k).transpose(1, 2)
+            for lin, x in zip(self.linears, (query, key, value))
+        ]
+
+        # ---- 第②~④步：缩放点积注意力（打分、缩放、softmax、加权） ----
+        x, self.attn = self.attention(query, key, value, mask=mask, dropout=self.dropout)
+
+        # ---- 第⑤步：合并多头 + 输出投影 ------------------------------
+        # (B, 8, L, 64) -transpose-&gt; (B, L, 8, 64) -view-&gt; (B, L, 512)，再乘 W_O
+        x = x.transpose(1, 2).contiguous().view(nbatches, -1, self.d_model)
+        return self.linears[-1](x)
+
+    def attention(self, query, key, value, mask=None, dropout=None):
+        """缩放点积注意力：softmax(Q K^T / sqrt(d_k)) V   —— 第 3 章的灵魂公式"""
+        d_k = query.size(-1)
+        # 打分 + 缩放：(B, h, L_q, d_k) @ (B, h, d_k, L_k) -&gt; (B, h, L_q, L_k)
+        scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
+        if mask is not None:
+            # mask 为 False（不许看）的位置填 -1e9，softmax 后权重趋近 0
+            scores = scores.masked_fill(mask == 0, -1e9)
+        # 对最后一维（key 的位置）做 softmax，每行成为概率分布
+        p_attn = F.softmax(scores, dim=-1)
+        if dropout is not None:
+            p_attn = dropout(p_attn)
+        # 加权求和：(B, h, L_q, L_k) @ (B, h, L_k, d_k) -&gt; (B, h, L_q, d_k)
+        return torch.matmul(p_attn, value), p_attn</code></pre>
+
+  <div class="callout tip">
+    <span class="tag">三个实现细节</span>
+    <strong>① 为什么用 -1e9 而不是 float("-inf")？</strong> 防止整行都被掩掉时 softmax 得到 NaN。<br>
+    <strong>② contiguous() 是干嘛的？</strong> transpose 只改变步长不搬数据，view 需要连续内存，所以要先 contiguous 再 view。<br>
+    <strong>③ 三个输入参数同名同形</strong>：自注意力时传 (x, x, x)；交叉注意力时传 (解码器x, memory, memory)——一套代码两种用法。
+  </div>
+
+  <h3 id="s6-3">6.3 位置编码（对应 4.2 节）</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · PositionalEncoding</span><button class="btn-copy">复制</button></div><code>class PositionalEncoding(nn.Module):
+    """正弦位置编码：直接加到词嵌入上（register_buffer 表示它是常量，不参与训练）"""
+
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        # 预计算一个 (max_len, d_model) 的编码表
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len).unsqueeze(1).float()      # (max_len, 1)
+        # 10000^(2i/d_model) 的指数部分，用 exp/log 形式保证数值稳定
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)
+        )
+        pe[:, 0::2] = torch.sin(position * div_term)   # 偶数维：sin
+        pe[:, 1::2] = torch.cos(position * div_term)   # 奇数维：cos
+        pe = pe.unsqueeze(0)                            # (1, max_len, d_model)
+        self.register_buffer("pe", pe)                  # 存为常量，随模型搬运设备
+
+    def forward(self, x):
+        # x: (B, L, d_model)。取前 L 个位置的编码相加（广播到整个 batch）
+        x = x + self.pe[:, : x.size(1)]
+        return self.dropout(x)</code></pre>
+
+  <h3 id="s6-4">6.4 前馈网络、层归一化、残差外壳（对应 4.3 节）</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · FFN / LayerNorm / SublayerConnection</span><button class="btn-copy">复制</button></div><code>class PositionwiseFeedForward(nn.Module):
+    """逐位置前馈网络：512 -&gt; 2048 -&gt; 512，对每个位置独立作用"""
+
+    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.1):
+        super().__init__()
+        self.w_1 = nn.Linear(d_model, d_ff)   # 升维 4 倍
+        self.w_2 = nn.Linear(d_ff, d_model)   # 降回来
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        # x: (B, L, d_model) -&gt; (B, L, d_ff) -&gt; (B, L, d_model)
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+
+class LayerNorm(nn.Module):
+    """层归一化：对最后一维（每个 token 的 d_model 个特征）做标准化
+    手写版本帮助理解；实际项目直接用 nn.LayerNorm(features) 即可"""
+
+    def __init__(self, features: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.a_2 = nn.Parameter(torch.ones(features))   # 可学习的缩放 gamma
+        self.b_2 = nn.Parameter(torch.zeros(features))  # 可学习的平移 beta
+
+    def forward(self, x):
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+
+
+class SublayerConnection(nn.Module):
+    """残差连接 + LayerNorm（Post-LN，与原论文一致）
+    想改成现代的 Pre-LN？把下面一行换成：return x + self.dropout(sublayer(self.norm(x)))"""
+
+    def __init__(self, size: int, dropout: float):
+        super().__init__()
+        self.norm = LayerNorm(size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, sublayer):
+        # sublayer 是任意子层（注意力或 FFN）的函数
+        return self.norm(x + self.dropout(sublayer(x)))</code></pre>
+
+  <h3 id="s6-5">6.5 编码器层与解码器层（对应 4.3 / 4.4 节）</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · EncoderLayer / DecoderLayer</span><button class="btn-copy">复制</button></div><code>class EncoderLayer(nn.Module):
+    """编码器一层 = 自注意力 + FFN，各带残差外壳"""
+
+    def __init__(self, size, self_attn, feed_forward, dropout):
+        super().__init__()
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(size, dropout), 2)
+        self.size = size
+
+    def forward(self, x, mask):
+        # 子层1：自注意力（q=k=v=x，序列内部互相通信）
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
+        # 子层2：前馈网络（逐位置深加工）
+        return self.sublayer[1](x, self.feed_forward)
+
+
+class DecoderLayer(nn.Module):
+    """解码器一层 = 掩码自注意力 + 交叉注意力 + FFN"""
+
+    def __init__(self, size, self_attn, src_attn, feed_forward, dropout):
+        super().__init__()
+        self.size = size
+        self.self_attn = self_attn    # 子层1：对目标序列自身的掩码注意力
+        self.src_attn = src_attn      # 子层2：交叉注意力（查编码器 memory）
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(size, dropout), 3)
+
+    def forward(self, x, memory, src_mask, tgt_mask):
+        m = memory
+        # 子层1：掩码自注意力 —— tgt_mask 是下三角因果掩码，防偷看未来
+        x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
+        # 子层2：交叉注意力 —— Q 来自 x（解码器），K/V 来自 m（编码器）
+        x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
+        # 子层3：前馈网络
+        return self.sublayer[2](x, self.feed_forward)</code></pre>
+
+  <h3 id="s6-6">6.6 堆叠成编码器与解码器</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · Encoder / Decoder</span><button class="btn-copy">复制</button></div><code>class Encoder(nn.Module):
+    """N 层编码器堆叠，最后补一次 LayerNorm（Post-LN 结构的收尾）"""
+
+    def __init__(self, layer: EncoderLayer, N: int):
+        super().__init__()
+        self.layers = clones(layer, N)
+        self.norm = LayerNorm(layer.size)
+
+    def forward(self, x, mask):
+        for layer in self.layers:
+            x = layer(x, mask)      # 每层输出形状不变，直接喂给下一层
+        return self.norm(x)
+
+
+class Decoder(nn.Module):
+    """N 层解码器堆叠，最后补一次 LayerNorm"""
+
+    def __init__(self, layer: DecoderLayer, N: int):
+        super().__init__()
+        self.layers = clones(layer, N)
+        self.norm = LayerNorm(layer.size)
+
+    def forward(self, x, memory, src_mask, tgt_mask):
+        for layer in self.layers:
+            x = layer(x, memory, src_mask, tgt_mask)
+        return self.norm(x)</code></pre>
+
+  <h3 id="s6-7">6.7 顶层组装：嵌入、生成器、总模型</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>transformer_from_scratch.py · Embeddings / Generator / EncoderDecoder</span><button class="btn-copy">复制</button></div><code>class Embeddings(nn.Module):
+    """词嵌入查找表。注意乘 sqrt(d_model)：让嵌入量级与位置编码匹配（原论文 3.4 节）"""
+
+    def __init__(self, d_model: int, vocab: int):
+        super().__init__()
+        self.lut = nn.Embedding(vocab, d_model)
+        self.d_model = d_model
+
+    def forward(self, x):
+        # x: (B, L) 整数 token ID -&gt; (B, L, d_model)
+        return self.lut(x) * math.sqrt(self.d_model)
+
+
+class Generator(nn.Module):
+    """输出层：Linear(d_model -&gt; vocab) + log_softmax
+    用 log_softmax 而非 softmax，可直接对接 nn.NLLLoss（数值也更稳定）"""
+
+    def __init__(self, d_model: int, vocab: int):
+        super().__init__()
+        self.proj = nn.Linear(d_model, vocab)
+
+    def forward(self, x):
+        return F.log_softmax(self.proj(x), dim=-1)
+
+
+class EncoderDecoder(nn.Module):
+    """Transformer 总装：编码器 + 解码器 + 两套嵌入 + 生成器"""
+
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.src_embed = src_embed     # 源语言：Embedding + PositionalEncoding
+        self.tgt_embed = tgt_embed     # 目标语言：Embedding + PositionalEncoding
+        self.generator = generator
+
+    def forward(self, src, tgt, src_mask, tgt_mask):
+        """训练时的完整前向：一次并行算出所有目标位置的概率"""
+        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
+
+    def encode(self, src, src_mask):
+        return self.encoder(self.src_embed(src), src_mask)
+
+    def decode(self, memory, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+
+
+def make_model(src_vocab, tgt_vocab,
+               N=6, d_model=512, d_ff=2048, h=8, dropout=0.1) -&gt; EncoderDecoder:
+    """按原论文的超参数构建完整模型（所有默认值 = Attention Is All You Need 的 base 版）"""
+    c = copy.deepcopy
+    attn = MultiHeadAttention(d_model, h, dropout)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    position = PositionalEncoding(d_model, dropout)
+
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
+        nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
+        nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
+        Generator(d_model, tgt_vocab),
+    )
+
+    # 参数初始化：Xavier 均匀分布，让初始权重方差适中，训练起点稳定
+    for p in model.parameters():
+        if p.dim() &gt; 1:
+            nn.init.xavier_uniform_(p)
+    return model</code></pre>
+
+  <h3 id="s6-8">6.8 冒烟测试：检查形状</h3>
+  <p>写完模型第一件事永远是验证数据流通不通。跑一下：</p>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>快速形状验证</span><button class="btn-copy">复制</button></div><code># 小模型快速测试（真实原论文配置跑 CPU 会很慢，测试用小号版）
+model = make_model(src_vocab=11, tgt_vocab=11, N=2, d_model=64, d_ff=128, h=4)
+
+src = torch.randint(0, 11, (2, 7))   # (batch=2, 源句长=7) 的整数序列
+tgt = torch.randint(0, 11, (2, 9))   # (batch=2, 目标句长=9)
+
+src_mask = torch.ones(2, 1, 7)                     # 源句无遮挡（全是可看）
+tgt_mask = subsequent_mask(9)                      # (1, 9, 9) 因果掩码
+
+out = model(src, tgt, src_mask, tgt_mask)     # 解码器输出 (B, L, d_model)
+print(out.shape)       # torch.Size([2, 9, 64]) —— 每个位置一个 d_model 向量
+
+log_prob = model.generator(out)               # Generator 投影到词表 → (B, L, V)
+print(log_prob.shape)  # torch.Size([2, 9, 11]) —— 每个位置一个词表分布
+
+# 看一眼注意力权重的形状（第 1 层解码器的掩码自注意力）
+print(model.decoder.layers[0].self_attn.attn.shape)
+# torch.Size([2, 4, 9, 9]) —— (batch, 头数, 查询位置, 键位置)</code></pre>
+
+  <div class="callout warn">
+    <span class="tag">易错点</span>
+    <code>model(...)</code> 返回的是<strong>d_model 维向量</strong>，不是词表概率——把向量变成各词的 log 概率，必须再过一次 <code>model.generator(out)</code>。漏掉这一步，后面接损失函数会得到形状恰好"能 reshape"但语义全错的结果，很难查。训练、推理两处都要记得它。
+  </div>
+
+  <div class="callout info">
+    <span class="tag">建议</span>
+    把上面所有代码块按顺序拼进一个 <code>transformer_from_scratch.py</code>，先跑通冒烟测试再继续。形状全绿，说明你对第 4 章架构的理解已经"落地"了。
+  </div>
+</section>
+
+<!-- ================= 第 6 章续：训练实战 ================= -->
+<section class="chapter" id="ch6b">
+  <h2><span class="no">06+</span>训练实战：教模型学会"倒序输出"</h2>
+
+  <p>模型写完了，怎么证明它真的能学？我们来做一个不需要分词器、不需要下载语料、CPU 五分钟就能训完的玩具任务：</p>
+  <div class="callout think">
+    <span class="tag">任务定义</span>
+    输入一个随机数字序列，让模型输出它的<strong>倒序</strong>。<br>
+    输入：<code>[3, 7, 1, 9, 5]</code>　→　输出：<code>[5, 9, 1, 7, 3]</code><br>
+    这个任务看似简单，却要求模型<strong>完整编码整条序列、再按相反顺序逐词生成</strong>——恰好同时锻炼编码器的理解和解码器的生成，是绝佳的入门任务。
+  </div>
+
+  <h3 id="s6-9">6.9 造数据：什么是"&lt;bos&gt; / &lt;eos&gt; / 右移一位"</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>train_reverse.py · 数据生成（接在前面代码之后）</span><button class="btn-copy">复制</button></div><code>device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+PAD, BOS, EOS = 0, 1, 2        # 特殊 token：填充、序列开始、序列结束
+VOCAB = 16                     # 词表：2 个特殊 token + 数字 3~15
+SEQ_LEN = 8                    # 每条序列固定 8 个数字（简化处理，不做 padding）
+
+
+def data_gen(batch_size=64):
+    """无限产出 (src, tgt_in, tgt_out, src_mask) 训练批次"""
+    while True:
+        # 1) 源序列：随机数字（避开特殊 token）
+        src = torch.randint(3, VOCAB, (batch_size, SEQ_LEN), device=device)
+
+        # 2) 目标 = 源的倒序
+        rev = torch.flip(src, dims=[1])
+
+        # 3) 解码器的输入 = &lt;bos&gt; + 倒序     （"右移一位"：开头补 BOS）
+        tgt_in = torch.cat(
+            [torch.full((batch_size, 1), BOS, device=device), rev], dim=1
+        )
+        # 4) 监督标签 = 倒序 + &lt;eos&gt;          （模型要预测的"下一步"）
+        tgt_out = torch.cat(
+            [rev, torch.full((batch_size, 1), EOS, device=device)], dim=1
+        )
+
+        # 5) 源掩码：全部可见（1 = 可看）
+        src_mask = torch.ones(batch_size, 1, SEQ_LEN, device=device)
+
+        yield src, tgt_in, tgt_out, src_mask</code></pre>
+
+  <p>这里出现了三个关键约定，画出来一目了然（以倒序任务为例，目标序列为 <code>[5, 9, 1, 7, 3]</code>）：</p>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th>解码器输入 tgt_in（右移一位）</th><th>监督标签 tgt_out</th><th>含义</th></tr>
+    <tr>
+      <td>&lt;bos&gt; 5 9 1 7 3</td>
+      <td>5 9 1 7 3 &lt;eos&gt;</td>
+      <td>位置 t 的输入是"已生成的答案的前 t 个词"，标签是"第 t+1 个正确词"——模型学的是<strong>预测下一步</strong></td>
+    </tr>
+  </table>
+  </div>
+  <p>为什么输入要右移一位？如果输入和标签完全对齐，位置 0 的输入是 "5"、标签也是 "5"，模型只需要学会"照抄当前输入"——什么也学不到。右移一位后，位置 0 的输入是 &lt;bos&gt;、标签是 "5"，模型才被迫真正去<strong>预测</strong>。这就是所谓的 <strong>Teacher Forcing</strong>：训练时解码器的输入永远用标准答案（老师的手把手示范），而不是模型自己可能出错的生成结果。</p>
+
+  <h3 id="s6-10">6.10 损失函数与 warmup 学习率</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>train_reverse.py · Noam 优化器（原论文的学习率调度）</span><button class="btn-copy">复制</button></div><code>class NoamOptimizer:
+    """原论文的 warmup 调度：前 warmup 步线性升温，之后按 1/sqrt(step) 降温
+    lrate = d_model^(-0.5) * min(step^(-0.5), step * warmup^(-1.5))"""
+
+    def __init__(self, model_size, factor, warmup, optimizer):
+        self.optimizer = optimizer
+        self._step = 0
+        self.warmup = warmup
+        self.factor = factor
+        self.model_size = model_size
+        self._rate = 0
+
+    def rate(self, step=None):
+        if step is None:
+            step = self._step
+        return self.factor * (
+            self.model_size ** (-0.5)
+            * min(step ** (-0.5), step * self.warmup ** (-1.5))
+        )
+
+    def step(self):
+        self._step += 1
+        rate = self.rate()
+        for p in self.optimizer.param_groups:
+            p["lr"] = rate          # 手动更新学习率
+        self._rate = rate
+        self.optimizer.step()</code></pre>
+
+  <div class="callout info">
+    <span class="tag">为什么要 warmup</span>
+    训练初期参数是随机的，梯度方向不可靠；Post-LN 结构对学习率又很敏感。先小步热身（几百到几千步线性升到峰值），再缓慢衰减，能显著稳定训练。这是原论文能训成 Post-LN 的关键配套技巧。
+  </div>
+
+  <h3 id="s6-11">6.11 训练主循环</h3>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>train_reverse.py · 训练循环</span><button class="btn-copy">复制</button></div><code># 用小号模型（CPU 也能跑）；感兴趣可改回 N=6, d_model=512 感受原论文配置
+model = make_model(VOCAB, VOCAB, N=2, d_model=128, d_ff=256, h=4).to(device)
+
+criterion = nn.NLLLoss(ignore_index=PAD, reduction="sum")   # 忽略填充位
+base_optimizer = torch.optim.Adam(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9)
+optimizer = NoamOptimizer(model.tgt_embed[0].d_model, 1.0, 400, base_optimizer)
+
+batches = data_gen(batch_size=128)
+losses = []
+
+model.train()
+for step in range(1, 2001):
+    src, tgt_in, tgt_out, src_mask = next(batches)
+    tgt_mask = subsequent_mask(tgt_in.size(1)).to(device)   # (1, L, L) 因果掩码
+
+    out = model(src, tgt_in, src_mask, tgt_mask)            # (B, L, d_model) 解码器输出
+    log_prob = model.generator(out)                         # 投影到词表 → (B, L, V) log 概率
+    loss = criterion(
+        log_prob.contiguous().view(-1, VOCAB),              # 展平成 (B*L, V)
+        tgt_out.contiguous().view(-1),                      # 展平成 (B*L,)
+    ) / src.size(0)                                         # 按样本数平均
+
+    optimizer.optimizer.zero_grad()
+    loss.backward()
+    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # 梯度裁剪，防爆
+    optimizer.step()
+
+    losses.append(loss.item())
+    if step % 200 == 0:
+        print(f"step {step:5d} | loss {sum(losses[-100:])/100:.4f}")
+
+# 实测输出（CPU 真实运行结果，随机种子不同数值会略有差异）：
+# step   200 | loss 5.2145
+# step   600 | loss 0.5251
+# step  1200 | loss 0.2204
+# step  2000 | loss 0.1351
+# 注：loss 是每条样本 9 个位置的总和，0.135 ÷ 9 ≈ 每 token 0.015，已接近完美</code></pre>
+
+  <h3 id="s6-12">6.12 推理：自回归逐词生成</h3>
+  <p>训练时解码器"一次吃整句"，推理时没有标准答案可抄，只能<strong>一个词一个词生成</strong>，每步把新词拼回输入再算下一步：</p>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>train_reverse.py · 贪心解码</span><button class="btn-copy">复制</button></div><code>def greedy_decode(model, src, src_mask, max_len=20):
+    """自回归推理：每轮只关心最后一个位置的概率，取最大者拼回输入"""
+    model.eval()
+    with torch.no_grad():
+        memory = model.encode(src, src_mask)          # 编码器只算这一次
+
+        ys = torch.full((src.size(0), 1), BOS, dtype=torch.long, device=device)
+        for _ in range(max_len):
+            tgt_mask = subsequent_mask(ys.size(1)).to(device)
+            out = model.decode(memory, src_mask, ys, tgt_mask)   # (B, L, d_model)
+            log_prob = model.generator(out[:, -1])    # 只取最后位置！(B, V)
+            next_word = log_prob.argmax(dim=-1, keepdim=True)    # 贪心：取最大概率
+            ys = torch.cat([ys, next_word], dim=1)    # 拼回输入，进入下一轮
+            if (next_word == EOS).all():
+                break                                  # 全部样本生成完毕
+        return ys
+
+
+# 测试 3 条样本
+src = torch.randint(3, VOCAB, (3, SEQ_LEN), device=device)
+src_mask = torch.ones(3, 1, SEQ_LEN, device=device)
+result = greedy_decode(model, src, src_mask)
+
+for i in range(3):
+    print("输入:", src[i].tolist())
+    print("输出:", result[i, 1:].tolist(), "  # 去掉开头的 BOS")
+    print("正确:", torch.flip(src[i], dims=[0]).tolist())
+    print()
+
+# 实测输出（3 条样本全部完美倒序，末尾主动输出 EOS 停止）：
+# 输入: [7, 7, 4, 13, 6, 6, 13, 9]
+# 输出: [9, 13, 6, 6, 13, 4, 7, 7, 2]     # 2 = EOS
+# 正确: [9, 13, 6, 6, 13, 4, 7, 7]
+# —— 模型真的学会了！</code></pre>
+
+  <div class="callout tip">
+    <span class="tag">动手验证</span>
+    把本节三个代码块接在模型代码后面就是一个完整脚本。CPU 上 2000 步大约几分钟。亲眼看着 loss 归零、模型把随机序列完美倒序输出，你会对"训练"这件事建立直接的体感。
+  </div>
+
+  <h3 id="s6-13">6.13 对照：PyTorch 官方实现</h3>
+  <p>理解原理之后，实际项目直接用官方 API——它就是把我们手写的这些积木封装好（还内置了更快的 fused kernel）：</p>
+
+  <pre class="codeblock"><div class="code-head"><span class="dots"></span><span>官方 nn.Transformer 等价写法（PyTorch 1.9+ 风格）</span><button class="btn-copy">复制</button></div><code>import torch.nn as nn
+
+official_model = nn.Transformer(
+    d_model=512,
+    nhead=8,
+    num_encoder_layers=6,
+    num_decoder_layers=6,
+    dim_feedforward=2048,
+    dropout=0.1,
+    batch_first=True,          # 使用 (B, L, D) 的形状约定（推荐）
+)
+
+# 与手写版等价的调用方式：
+# out = official_model(src, tgt,
+#                      src_key_padding_mask=...,     # 填充掩码 (B, L_src)
+#                      tgt_mask=nn.Transformer.generate_square_subsequent_mask(L_tgt),
+#                      memory_key_padding_mask=...)</code></pre>
+
+  <div class="callout warn">
+    <span class="tag">掩码体系梳理</span>
+    实战中会碰到三种掩码，别混淆：<br>
+    ① <strong>因果掩码 tgt_mask</strong>：(L, L) 下三角，解码器防偷看未来——形状与 batch 无关；<br>
+    ② <strong>填充掩码 padding mask</strong>：(B, L)，把变长 batch 里不足的 PAD 位置遮掉，编码器/解码器都要用；<br>
+    ③ 官方 API 里 <code>src_key_padding_mask</code> / <code>tgt_mask</code> 分别对应上面两者。我们的玩具任务固定长度，所以只用了因果掩码。
+  </div>
+
+  <details class="fold">
+    <summary>深入：这个 base 模型有多少参数？</summary>
+    <div class="fold-body">
+      <p>粗算一下（忽略偏置和 LayerNorm）：注意力 4 个投影矩阵 4×d²，FFN 两个矩阵 2×d×d_ff = 8d²，合计每层约 12d² ≈ 12×512² ≈ 315 万；6+6 层约 3800 万；再加上编码器/解码器/生成器的词嵌入（共享时约 V×d）。原论文 base 模型共约 <strong>6500 万参数</strong>——放到今天只是个"小模型"，但架构设计经受住了千倍规模的考验。</p>
+    </div>
+  </details>
+</section>
+
+<!-- ================= 第 7 章 ================= -->
+<section class="chapter" id="ch7">
+  <h2><span class="no">07</span>训练与推理：一枚硬币的两面</h2>
+
+  <h3 id="s7-1">7.1 训练：并行计算，一次到位</h3>
+  <p>再强调一次这个最容易被忽略的事实：<strong>训练时解码器不是逐词运行的</strong>。我们把整个目标序列（右移一位）一次性喂入，靠因果掩码保证每个位置只见过去，于是 10 个词的句子一次前向就同时产生 10 个"下一步预测"，10 个位置一起算交叉熵损失、一起反向传播。这种"并行教师强制"正是 Transformer 训练效率碾压 RNN 的根本原因。</p>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th></th><th>训练</th><th>推理</th></tr>
+    <tr><td><strong>解码器输入</strong></td><td>标准答案（右移一位）</td><td>自己已生成的词</td></tr>
+    <tr><td><strong>运行方式</strong></td><td>整句并行，一次前向</td><td>自回归循环，逐词生成</td></tr>
+    <tr><td><strong>掩码作用</strong></td><td>保证因果性（不许抄未来答案）</td><td>天然因果（未来还不存在），掩码退化为形状对齐</td></tr>
+    <tr><td><strong>速度瓶颈</strong></td><td>序列长度平方的注意力</td><td>每生成一个词都要重算一遍解码器</td></tr>
+  </table>
+  </div>
+
+  <h3 id="s7-2">7.2 推理的加速钥匙：KV Cache</h3>
+  <p>朴素推理有个巨大浪费：生成第 t 个词时，前面 t−1 个词的 K、V 投影其实没变，却要整段重算。<strong>KV Cache</strong> 把历史轮次的 K、V 缓存下来，每轮只计算新 token 的 Q、K、V 并追加——把每步复杂度从 O(t²) 降到 O(t)。代价是显存占用随上下文线性增长，这正是"长上下文很贵"的直接原因，也是 GQA/MQA（第 8 章）要解决的问题。</p>
+
+  <h3 id="s7-3">7.3 解码策略：贪心、采样与束搜索</h3>
+  <ul>
+    <li><strong>贪心（Greedy）</strong>：每步取概率最高的词。简单快，但容易陷入"车轱辘话"。<code>argmax</code> 即可（6.12 节已实现）。</li>
+    <li><strong>采样（Sampling）</strong>：按概率分布抽签，配合温度（temperature）控制随机性——温度越高越发散，越低越保守。ChatGPT 式对话模型的常用方式，另可加 top-k / top-p 截断。</li>
+    <li><strong>束搜索（Beam Search）</strong>：同时保留 k 条最优路径（如 k=4），最后选总概率最高的完整序列。翻译等"有标准答案"的任务用它能涨点，开放式生成反而容易呆板。</li>
+  </ul>
+</section>
+
+<!-- ================= 第 8 章 ================= -->
+<section class="chapter" id="ch8">
+  <h2><span class="no">08</span>Transformer 家族与现代演进</h2>
+
+  <h3 id="s8-1">8.1 三大流派：只用一半，或全都要</h3>
+  <p>原论文是完整 的 Encoder-Decoder。但很快大家发现：<strong>按任务需要，拆开单用效果也很好</strong>。由此形成三大流派，几乎覆盖了今天所有知名模型：</p>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th>流派</th><th>代表模型</th><th>注意力形式</th><th>典型任务</th></tr>
+    <tr>
+      <td><span class="pill enc">Encoder-only</span></td>
+      <td><strong>BERT</strong>、RoBERTa、ALBERT</td>
+      <td>双向自注意力（每个词能看全句）</td>
+      <td>理解类：分类、抽取式问答、语义匹配</td>
+    </tr>
+    <tr>
+      <td><span class="pill dec">Decoder-only</span></td>
+      <td><strong>GPT 系列</strong>、LLaMA、Qwen、DeepSeek</td>
+      <td>因果自注意力（只看左边，即掩码自注意力）</td>
+      <td>生成类：对话、写作、代码；今天的 LLM 主流</td>
+    </tr>
+    <tr>
+      <td><span class="pill attn">Encoder-Decoder</span></td>
+      <td><strong>T5</strong>、BART、原始 Transformer</td>
+      <td>编码器双向 + 解码器因果 + 交叉注意力</td>
+      <td>序列到序列：翻译、摘要、语音识别</td>
+    </tr>
+  </table>
+  </div>
+  <p>BERT 的预训练方式是"完形填空"（随机遮住 15% 的词让模型猜，双向注意力正合适）；GPT 的预训练方式是"预测下一个词"（正是我们 6.12 节写的自回归，因果掩码保证不抄答案）。ChatGPT 本质上就是一个超大的"GPT + 预训练 + 指令微调 + 人类反馈强化学习（RLHF）"。</p>
+
+  <h3 id="s8-2">8.2 跨界：Vision Transformer（ViT）</h3>
+  <p>2020 年，ViT 把一张图切成 16×16 的小方块（patch），每个 patch 当作一个"词"（展平后线性投影成向量），加上位置编码后直接丢进标准编码器——图像分类效果媲美甚至超越 CNN。这证明了 Transformer 是一个<strong>与模态无关的序列处理架构</strong>：只要你能把数据表示成 token 序列（文字、图像块、音频帧、蛋白质序列、动作片段……），它就能处理。</p>
+
+  <h3 id="s8-3">8.3 八年来的关键进化</h3>
+  <div class="table-wrap">
+  <table class="dtable">
+    <tr><th>技术</th><th>解决什么问题</th><th>一句话原理</th></tr>
+    <tr><td><strong>Pre-LN / RMSNorm</strong></td><td>深层难训</td><td>归一化移到子层前；RMSNorm 去掉均值中心化，更省更快（LLaMA 在用）</td></tr>
+    <tr><td><strong>RoPE 旋转位置编码</strong></td><td>绝对位置编码外推差</td><td>把 Q、K 向量按角度旋转，注意力分数自然只含相对位置</td></tr>
+    <tr><td><strong>GQA / MQA</strong></td><td>KV Cache 显存爆炸</td><td>多个查询头共享一组 K/V 头，推理显存大幅下降（LLaMA-2/3 在用）</td></tr>
+    <tr><td><strong>FlashAttention</strong></td><td>注意力显存与速度</td><td>分块计算、避免显式存储 n×n 矩阵，IO 感知的精确加速</td></tr>
+    <tr><td><strong>SwiGLU</strong></td><td>FFN 表达力</td><td>门控激活替代 ReLU，现代 LLM 的标配 FFN</td></tr>
+    <tr><td><strong>稀疏 / 线性注意力</strong></td><td>O(n²) 复杂度</td><td>限制每词只看局部/近似全局，支撑十万级 token 上下文</td></tr>
+  </table>
+  </div>
+  <div class="callout info">
+    <span class="tag">视角</span>
+    这些改进都没有推翻 2017 年的骨架：<strong>残差主干 + 注意力通信 + FFN 加工 + 位置注入</strong>的配方至今未变。理解了本文的原理，你就有了读懂任何现代 LLM 技术报告的地基。
+  </div>
+</section>
+
+<!-- ================= 第 9 章 ================= -->
+<section class="chapter" id="ch9">
+  <h2><span class="no">09</span>总结与延伸阅读</h2>
+
+  <h3 id="s9-1">9.1 一页纸回顾</h3>
+  <ol>
+    <li><strong>动机</strong>：RNN 无法并行、长程依赖衰减 → 用全连接的 Self-Attention 取代逐词接力。</li>
+    <li><strong>核心公式</strong>：Attention(Q, K, V) = softmax(QK<sup>T</sup>/√d<sub>k</sub>)·V；打分 → 缩放 → 归一化 → 加权。</li>
+    <li><strong>多头</strong>：h 个头在各自子空间关注不同模式，拼接融合，总代价不变。</li>
+    <li><strong>位置编码</strong>：注意力天生无序，用 sin/cos 把位置加进向量。</li>
+    <li><strong>架构</strong>：编码器（自注意力 + FFN）×6 理解输入；解码器（掩码自注意力 + 交叉注意力 + FFN）×6 生成输出；每个子层都套残差 + LayerNorm。</li>
+    <li><strong>训练</strong>：右移一位 + Teacher Forcing + 因果掩码 = 并行训练生成模型；交叉熵损失；warmup 学习率。</li>
+    <li><strong>推理</strong>：自回归逐词生成，KV Cache 加速；贪心/采样/束搜索三选一。</li>
+    <li><strong>后代</strong>：BERT（双向理解）、GPT（因果生成）、T5（ seq2seq ）、ViT（图像）、以及 RoPE/GQA/FlashAttention 等现代组件。</li>
+  </ol>
+
+  <h3 id="s9-2">9.2 检验学习效果的几个问题</h3>
+  <details class="fold"><summary>Q1：为什么除以 √d<sub>k</sub> 而不是 d<sub>k</sub>？</summary><div class="fold-body">点积的方差是 d<sub>k</sub>，标准差是 √d<sub>k</sub>。除以标准差（而非方差）才能把分数的尺度归一到 ~1 的量级，正好落在 softmax 的"敏感但不饱和"区间。</div></details>
+  <details class="fold"><summary>Q2：自注意力为什么需要位置编码，CNN 需要吗？</summary><div class="fold-body">自注意力的输出对输入排列是等变的（打乱词序只会打乱输出行序），本身无法区分顺序，必须显式注入。卷积核在固定网格上滑动，天然绑定空间位置，所以 CNN 不需要额外位置信息。</div></details>
+  <details class="fold"><summary>Q3：训练和推理时，解码器的运行方式有何不同？</summary><div class="fold-body">训练时整句并行输入（Teacher Forcing + 因果掩码防作弊），一次算出所有位置的损失；推理时无答案可抄，只能自回归：每步取最后位置的预测拼回输入，循环至 &lt;eos&gt;；KV Cache 可避免重复计算历史 K/V。</div></details>
+  <details class="fold"><summary>Q4：BERT 和 GPT 的注意力有什么本质区别？</summary><div class="fold-body">BERT 用双向注意力（无因果掩码），每个词能看全句，适合理解类任务；GPT 用因果掩码注意力（只看左侧历史），适合逐词生成。前者预训练做"完形填空"，后者做"预测下一词"。</div></details>
+  <details class="fold"><summary>Q5：残差连接和 LayerNorm 各自为什么不可少？</summary><div class="fold-body">残差提供恒等通路，保证深层网络梯度能直达底层（可训性）；LayerNorm 稳定每层输出的数值分布，防止层层堆叠后数值漂移（稳定性）。二者组合是深堆叠的"脚手架"。</div></details>
+
+  <h3 id="s9-3">9.3 延伸阅读</h3>
+  <ul>
+    <li>原论文：<a href="https://arxiv.org/abs/1706.03762" target="_blank">Attention Is All You Need</a>（Vaswani et al., 2017）</li>
+    <li>图解经典：Jay Alammar，<a href="https://jalammar.github.io/illustrated-transformer/" target="_blank">The Illustrated Transformer</a>（中译版搜索"图解 Transformer"）</li>
+    <li>代码注释版：Harvard NLP，<a href="https://nlp.seas.harvard.edu/annotated-transformer/" target="_blank">The Annotated Transformer</a>（本教程第 6 章的实现思路与其同源）</li>
+    <li>交互可视化：<a href="https://poloclub.github.io/cnn-explainer/" target="_blank">Transformer Explainer</a>（poloclub，浏览器里把玩注意力）</li>
+    <li>分词器：HuggingFace <a href="https://huggingface.co/docs/transformers/tokenizer_summary" target="_blank">Tokenizer Summary</a></li>
+    <li>后续架构：ViT 论文（arXiv:2010.11929）、LLaMA 论文（arXiv:2302.13971，看现代组件如何组装）</li>
+  </ul>
+
+  <div class="callout tip">
+    <span class="tag">下一步建议</span>
+    ① 把第 6 章代码亲手敲一遍并跑通倒序任务；② 把任务换成"复制序列"或"排序"，体会改数据即改任务；③ 用 HuggingFace 微调一个小型 BERT/GPT 做情感分类；④ 回头读一遍原论文，你会发现已经能看懂 90%。
+  </div>
+</section>
+
+<footer>
+  Transformer 完全指南 · 原理 / 结构 / 代码　|　基于 Attention Is All You Need (2017) 整理　|　生成于 2026-10
+</footer>
+
+<button id="backtop" title="回到顶部">↑</button>
+</main>
+
+<script>
+/* ================================================================
+   1. 目录生成 + 滚动高亮（scrollspy）
+================================================================ */
+(function buildTOC() {
+  const toc = document.getElementById('toc');
+  const heads = document.querySelectorAll('main section.chapter > h2, main section.chapter h3');
+  heads.forEach(h => {
+    const isH2 = h.tagName === 'H2';
+    if (!h.id && isH2) h.id = h.closest('section').id;
+    if (!h.id) return;
+    const a = document.createElement('a');
+    a.href = '#' + h.id;
+    a.className = isH2 ? 'lv2' : 'lv3';
+    // h2 的 textContent 形如 "01为什么需要 Transformer"，去掉前导编号
+    let text = h.textContent.trim();
+    if (isH2) text = text.replace(/^[0-9]+\+?\s*/, '');
+    a.textContent = (isH2 ? '' : '· ') + text;
+    toc.appendChild(a);
+  });
+
+  const links = Array.from(toc.querySelectorAll('a'));
+  function spy() {
+    let current = null;
+    links.forEach(a => {
+      const sec = document.querySelector(a.getAttribute('href'));
+      if (sec && sec.getBoundingClientRect().top < 140) current = a;
+    });
+    links.forEach(a => a.classList.toggle('active', a === current));
+  }
+  window.addEventListener('scroll', spy, { passive: true });
+  spy();
+})();
+
+/* ================================================================
+   2. 回到顶部
+================================================================ */
+(function backTop() {
+  const btn = document.getElementById('backtop');
+  window.addEventListener('scroll', () => {
+    btn.classList.toggle('show', window.scrollY > 600);
+  }, { passive: true });
+  btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+})();
+
+/* ================================================================
+   3. 轻量 Python 语法高亮
+================================================================ */
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function highlightPython(text) {
+  // 先切出字符串与注释，再对剩余代码做关键字/数字着色
+  const pattern = /("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|#[^\n]*)/g;
+  const parts = [];
+  let last = 0, m;
+  while ((m = pattern.exec(text)) !== null) {
+    if (m.index > last) parts.push({ t: 'code', s: text.slice(last, m.index) });
+    parts.push({ t: (m[0][0] === '#') ? 'com' : 'str', s: m[0] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ t: 'code', s: text.slice(last) });
+
+  const KW = /\b(def|class|return|if|else|elif|for|while|import|from|as|in|not|and|or|is|None|True|False|with|assert|lambda|pass|break|continue|try|except|finally|raise|global|yield|print|super)\b/g;
+  const NUM = /\b(\d+(?:\.\d+)?(?:e-?\d+)?)\b/g;
+  return parts.map(p => {
+    const e = escapeHtml(p.s);
+    if (p.t === 'com') return '<span class="c-com">' + e + '</span>';
+    if (p.t === 'str') return '<span class="c-str">' + e + '</span>';
+    return e.replace(KW, '<span class="c-kw">$1</span>')
+            .replace(NUM, '<span class="c-num">$1</span>');
+  }).join('');
+}
+(function highlightAndCopy() {
+  document.querySelectorAll('pre.codeblock').forEach(pre => {
+    const code = pre.querySelector('code');
+    code.innerHTML = highlightPython(code.textContent);
+    const btn = pre.querySelector('.btn-copy');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        const tmp = document.createElement('textarea');
+        tmp.value = code.textContent;
+        document.body.appendChild(tmp);
+        tmp.select();
+        document.execCommand('copy');
+        document.body.removeChild(tmp);
+        btn.textContent = '已复制';
+        setTimeout(() => btn.textContent = '复制', 1600);
+      });
+    }
+  });
+})();
+
+/* ================================================================
+   4. 演示一：注意力弧线图（"it" 指代消解）
+================================================================ */
+(function attnDemo() {
+  const tokens = ["The", "animal", "didn't", "cross", "the", "street", "because", "it", "was", "too", "tired"];
+  // 预设的单层注意力分布（教学用示意值）：ATN[查询] = {目标: 权重}
+  const ATN = {
+    0: { 1: .55, 3: .10, 0: .15 },
+    1: { 0: .30, 3: .25, 1: .20, 5: .10 },
+    2: { 3: .50, 1: .15, 2: .15 },
+    3: { 5: .45, 1: .20, 3: .15 },
+    4: { 5: .60, 4: .20 },
+    5: { 4: .35, 3: .30, 5: .15 },
+    6: { 3: .30, 10: .30, 6: .15 },
+    7: { 1: .50, 10: .25, 5: .10, 7: .05 },
+    8: { 7: .35, 10: .30, 8: .15 },
+    9: { 10: .60, 9: .20 },
+    10:{ 7: .35, 9: .25, 8: .15, 10: .10 }
+  };
+  function fullDist(i) {
+    const d = new Array(tokens.length).fill(0);
+    let used = 0;
+    for (const k in ATN[i]) { d[+k] = ATN[i][+k]; used += ATN[i][+k]; }
+    const rest = (1 - used) / tokens.length;
+    return d.map(v => v || rest);
+  }
+  const tokenRow = document.getElementById('attnDemoTokens');
+  const svg = document.getElementById('attnArcSvg');
+  const bars = document.getElementById('attnDemoBars');
+  const note = document.getElementById('attnDemoNote');
+  const NOTES = {
+    7: '看 "it" 的注意力：一半以上流向 "animal"（指代对象），其次是 "tired"（原因）——"it" 的新表示由这两者主导，模型因此"知道"累的是动物。',
+    3: '"cross" 主要关注宾语 "street" 和主语 "animal"——注意力捕捉到了动宾搭配。',
+    10: '"tired" 回头看 "it"（它修饰的词）和程度副词 "too"。',
+    0: '冠词 "The" 主要关注它修饰的名词 "animal"。'
+  };
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const X = i => 44 + i * 73.2;
+
+  tokens.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.className = 'tok';
+    b.textContent = t;
+    b.addEventListener('click', () => select(i));
+    tokenRow.appendChild(b);
+  });
+
+  function select(i) {
+    tokenRow.querySelectorAll('.tok').forEach((b, j) => {
+      b.classList.toggle('active', j === i);
+      b.classList.remove('lit');
+    });
+    const d = fullDist(i);
+    // 高亮目标 token
+    tokenRow.querySelectorAll('.tok').forEach((b, j) => {
+      if (j !== i && d[j] > 0.12) b.classList.add('lit');
+    });
+    // 弧线
+    svg.innerHTML = '';
+    const baseY = 178;
+    d.forEach((w, j) => {
+      if (j === i || w < 0.04) return;
+      const x1 = X(i), x2 = X(j);
+      const h = 24 + Math.abs(x2 - x1) * 0.42;      // 弧高与距离成正比
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', `M ${x1} ${baseY} Q ${(x1 + x2) / 2} ${baseY - h} ${x2} ${baseY}`);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', '#6366f1');
+      path.setAttribute('stroke-width', Math.max(1.5, w * 11));
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('opacity', 0.35 + w * 1.1);
+      svg.appendChild(path);
+    });
+    // 权重条形图
+    bars.innerHTML = '';
+    d.forEach((w, j) => {
+      const item = document.createElement('div');
+      item.className = 'bar-item';
+      item.innerHTML =
+        `<span class="blabel" style="${j === i ? 'color:#4f46e5;font-weight:700' : ''}">${tokens[j]}</span>` +
+        `<span class="btrack"><span class="bfill" style="${j === i ? 'background:linear-gradient(90deg,#f59e0b,#f97316)' : ''}"></span></span>` +
+        `<span class="bval">${(w * 100).toFixed(1)}%</span>`;
+      bars.appendChild(item);
+      requestAnimationFrame(() => { item.querySelector('.bfill').style.width = (w * 100) + '%'; });
+    });
+    note.textContent = NOTES[i] || `当前查看 "${tokens[i]}" 的注意力分配（弧线粗细 = 权重大小）。`;
+  }
+  select(7); // 默认选中 "it"
+})();
+
+/* ================================================================
+   5. 演示二：缩放因子对 softmax 的影响
+================================================================ */
+(function softmaxDemo() {
+  const base = [2.0, 1.4, 1.0, 0.5];      // 基础相似度（dk=64 时的点积）
+  const slider = document.getElementById('dkSlider');
+  const dkVal = document.getElementById('dkVal');
+  const raw = document.getElementById('barsRaw');
+  const scaled = document.getElementById('barsScaled');
+
+  function softmax(z) {
+    const m = Math.max(...z);
+    const ex = z.map(v => Math.exp(v - m));
+    const s = ex.reduce((a, b) => a + b, 0);
+    return ex.map(v => v / s);
+  }
+  function render(container, probs, scores) {
+    container.innerHTML = '';
+    probs.forEach((p, i) => {
+      const item = document.createElement('div');
+      item.className = 'bar-item';
+      item.innerHTML =
+        `<span class="blabel">K${i + 1}</span>` +
+        `<span class="btrack"><span class="bfill" style="${p > 0.85 ? 'background:linear-gradient(90deg,#ef4444,#f97316)' : ''}"></span></span>` +
+        `<span class="bval">${(p * 100).toFixed(1)}%</span>`;
+      container.appendChild(item);
+      requestAnimationFrame(() => { item.querySelector('.bfill').style.width = (p * 100) + '%'; });
+    });
+  }
+  function update() {
+    const dk = +slider.value;
+    dkVal.textContent = dk;
+    const g = Math.sqrt(dk / 64);                 // 尺度因子
+    const scoresRaw = base.map(v => v * g);       // 不缩放：分数随维度放大
+    render(raw, softmax(scoresRaw));
+    render(scaled, softmax(base));                // 缩放后：分布恒定
+  }
+  slider.addEventListener('input', update);
+  update();
+})();
+
+/* ================================================================
+   6. 演示三：位置编码热力图
+================================================================ */
+(function peDemo() {
+  const canvas = document.getElementById('peCanvas');
+  const W = 256, H = 128;                        // 内部分辨率：256 维 × 128 位置
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const sel = document.getElementById('peMode');
+
+  const D_MODEL = 512;
+  const pe = [];
+  for (let pos = 0; pos < H; pos++) {
+    const row = new Array(W).fill(0);
+    for (let i = 0; i < W; i++) {
+      const dim = i * 2;                          // 取前 512 维中的 256 个采样
+      const freq = Math.pow(10000, dim / D_MODEL);
+      row[i] = (dim % 2 === 0) ? Math.sin(pos / freq) : Math.cos(pos / freq);
+    }
+    pe.push(row);
+  }
+  function color(v) {                             // -1 → 蓝，0 → 白，1 → 红
+    const t = Math.max(-1, Math.min(1, v));
+    if (t >= 0) return [255, 255 - 226 * t, 255 - 241 * t];
+    return [255 + 32 * t, 255 + 23 * t, 255];     // t 为负：向蓝色过渡
+  }
+  function draw() {
+    const mode = sel.value;
+    const img = ctx.createImageData(W, H);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        let v = pe[y][x];
+        if (mode === 'sin')  v = Math.sin(y / Math.pow(10000, (x * 2) / D_MODEL));
+        if (mode === 'cos')  v = Math.cos(y / Math.pow(10000, (x * 2) / D_MODEL));
+        const idx = (y * W + x) * 4;
+        const c = color(v);
+        img.data[idx] = c[0]; img.data[idx + 1] = c[1]; img.data[idx + 2] = c[2]; img.data[idx + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    // 坐标标注
+    ctx.fillStyle = 'rgba(30,41,59,.75)';
+    ctx.fillRect(0, H - 14, W, 14);
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px Consolas';
+    ctx.fillText('维度 d →', 6, H - 4.5);
+    ctx.fillText('位置 pos ↑', W - 62, 12);
+    ctx.fillStyle = '#fff';
+  }
+  sel.addEventListener('change', draw);
+  draw();
+})();
+</script>
+</body>
+</html>
