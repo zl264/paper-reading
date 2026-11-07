@@ -1,0 +1,1693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAD 详解：Geometry Attention Distillation for Consistent Video Generation</title>
+<style>
+:root{
+  --bg:#f7f7fa; --fg:#24292f; --muted:#5a6070;
+  --accent:#5845e6; --accent-2:#7c6cf0; --accent-soft:#eeecfc; --accent-deep:#4636c4;
+  --border:#e3e4ec; --card:#ffffff;
+  --code-bg:#0d1117; --code-head:#161b22; --code-fg:#e6edf3;
+  --tk-c:#8b949e; --tk-k:#ff7b72; --tk-s:#a5d6ff; --tk-n:#79c0ff; --tk-d:#d2a8ff; --tk-f:#d2a8ff; --tk-b:#ffa657;
+  --note-bg:#eff6ff; --note-bd:#3b82f6;
+  --warn-bg:#fffbeb; --warn-bd:#d97706;
+  --tip-bg:#ecfdf5; --tip-bd:#10b981;
+  --danger-bg:#fef2f2; --danger-bd:#ef4444;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth; scroll-padding-top:24px;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+}
+/* ---------- 布局 ---------- */
+.layout{display:flex; min-height:100vh;}
+.toc{
+  position:fixed; top:0; left:0; bottom:0; width:284px;
+  background:#ffffff; border-right:1px solid var(--border);
+  overflow-y:auto; padding:28px 18px 40px; z-index:10;
+}
+.toc-title{font-size:15px; font-weight:700; color:var(--accent-deep); padding:0 10px 14px; letter-spacing:.5px;}
+.toc a{
+  display:block; padding:5px 10px; margin:1px 0; border-radius:7px;
+  color:var(--muted); text-decoration:none; font-size:13.5px; line-height:1.45;
+  border-left:3px solid transparent; transition:all .15s ease;
+}
+.toc a:hover{color:var(--accent); background:var(--accent-soft);}
+.toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
+.content{
+  margin-left:284px; width:calc(100% - 284px);
+  max-width:960px; padding:56px 56px 80px;
+}
+@media (max-width:1180px){
+  .toc{display:none;}
+  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+}
+/* ---------- 标题 ---------- */
+.doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
+.doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
+h1{font-size:36px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+.doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:680px;}
+.doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
+.doc-meta span{
+  font-size:12.5px; color:var(--accent-deep); background:var(--accent-soft);
+  border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
+}
+h2{
+  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  display:flex; align-items:baseline; gap:14px;
+}
+h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
+h2::after{content:""; display:block;}
+.ch-intro{color:var(--muted); font-size:15.5px; margin:8px 0 24px; border-left:3px solid var(--accent-2); padding-left:14px;}
+h3{
+  font-size:20px; font-weight:700; margin:40px 0 14px; padding-left:12px;
+  border-left:4px solid var(--accent); line-height:1.4;
+}
+h4{font-size:16.5px; font-weight:700; margin:28px 0 10px; color:#383e4c;}
+p{margin:14px 0;}
+strong{font-weight:700; color:#1a1f2b;}
+em{font-style:normal; background:linear-gradient(transparent 62%, #e8e2ff 62%); font-weight:600;}
+ul,ol{padding-left:26px; margin:12px 0;}
+li{margin:7px 0;}
+hr{border:none; border-top:1px solid var(--border); margin:36px 0;}
+a{color:var(--accent); text-decoration:none;}
+a:hover{text-decoration:underline;}
+/* ---------- 行内代码 ---------- */
+code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Cascadia Code",Menlo,monospace;
+  font-size:.86em; background:var(--accent-soft); color:var(--accent-deep);
+  padding:2px 6px; border-radius:5px; white-space:nowrap;
+}
+/* ---------- 代码块 ---------- */
+.codeblock{margin:20px 0; border-radius:11px; overflow:hidden; border:1px solid #262b36; box-shadow:0 6px 24px rgba(15,17,32,.10);}
+.codehead{
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232833;
+}
+.codehead .fname{color:#9aa4b2; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;}
+.codehead .lang{color:#6e7681; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;}
+pre{
+  background:var(--code-bg); color:var(--code-fg); overflow-x:auto;
+  padding:16px 18px; font-size:13.5px; line-height:1.65; tab-size:4;
+}
+pre code{background:none; color:inherit; padding:0; font-size:inherit; white-space:pre; border-radius:0;}
+.tk-c{color:var(--tk-c); font-style:italic;}
+.tk-k{color:var(--tk-k);}
+.tk-s{color:var(--tk-s);}
+.tk-n{color:var(--tk-n);}
+.tk-d{color:var(--tk-d);}
+.tk-f{color:var(--tk-f);}
+.tk-b{color:var(--tk-b);}
+/* ---------- 表格 ---------- */
+.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(20,22,40,.06);}
+.tbl th{
+  background:#f0eefb; color:#3b3480; text-align:left; padding:10px 14px;
+  font-weight:700; border-bottom:2px solid #ddd6f5; font-size:13.5px; white-space:nowrap;
+}
+.tbl td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:#faf9ff;}
+.tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px; text-align:right;}
+.tbl .ctr{text-align:center;}
+.tbl .hl td{background:var(--accent-soft);}
+/* ---------- 提示框 ---------- */
+.callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
+.callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
+.callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
+.callout.note .co-title{color:#1d4ed8;}
+.callout.warn{background:var(--warn-bg); border-color:var(--warn-bd); color:#713f12;}
+.callout.warn .co-title{color:#b45309;}
+.callout.tip{background:var(--tip-bg); border-color:var(--tip-bd); color:#064e3b;}
+.callout.tip .co-title{color:#047857;}
+.callout p{margin:6px 0;}
+/* ---------- 公式 ---------- */
+.formula{
+  background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
+  text-align:center; padding:18px 20px; margin:22px 0;
+  font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
+  overflow-x:auto;
+}
+.formula .eqno{float:right; color:#9a93c9; font-size:14px; font-family:ui-monospace,Consolas,monospace;}
+.formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted); text-align:left;}
+/* ---------- 指标卡 ---------- */
+.stat-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px; margin:24px 0;}
+.stat{
+  background:#fff; border:1px solid var(--border); border-radius:12px; padding:16px 18px;
+  box-shadow:0 1px 3px rgba(20,22,40,.05);
+}
+.stat .s-val{font-size:26px; font-weight:800; color:var(--accent-deep); font-family:ui-monospace,Consolas,monospace;}
+.stat .s-val .up{color:#0a8a4a;} .stat .s-val .down{color:#c53030;}
+.stat .s-label{font-size:13px; color:var(--muted); margin-top:4px; line-height:1.5;}
+/* ---------- 张量形状流 ---------- */
+.flow{
+  background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+  margin:20px 0; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:2.1;
+  overflow-x:auto; white-space:nowrap;
+}
+.flow b{color:var(--accent-deep); font-weight:700;}
+.flow .arr{color:#b08c00; font-weight:700; margin:0 6px;}
+.flow .tag{color:var(--muted); font-size:11.5px; margin-left:8px;}
+/* ---------- 图 ---------- */
+.figure{margin:26px 0; text-align:center;}
+.figure svg{max-width:100%; height:auto; display:block; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:12px;}
+.figcap{margin-top:10px; font-size:13.5px; color:var(--muted); line-height:1.6; text-align:left;}
+.figcap b{color:var(--fg);}
+.grid2{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:24px 0;}
+@media (max-width:860px){ .grid2{grid-template-columns:1fr;} }
+footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">GAD 论文详解</div>
+  <a href="#ch1">1. 论文速览</a>
+  <a href="#ch2">2. 背景与动机</a>
+  <a href="#ch3">3. 预备知识</a>
+  <a href="#ch4">4. 关键观察：注意力里的几何歧义</a>
+  <a href="#ch5">5. GAD 方法总览</a>
+  <a href="#ch6">6. 组件一：置信度感知的教师对应</a>
+  <a href="#ch7">7. 组件二：噪声时间步路由</a>
+  <a href="#ch8">8. 组件三：学生对应监督</a>
+  <a href="#ch9">9. 整体训练流程</a>
+  <a href="#ch10">10. 实现细节与超参汇总</a>
+  <a href="#ch11">11. 实验与结果</a>
+  <a href="#ch12">12. 代码详解：从公式到实现</a>
+  <a href="#ch13">13. 局限性与未来方向</a>
+  <a href="#ch14">14. 参考资料与结语</a>
+</nav>
+
+<main class="content">
+
+<header class="doc-header">
+  <div class="doc-kicker">Paper Walkthrough · Video Diffusion × 3D Geometry</div>
+  <h1>GAD：几何注意力蒸馏<br>《Geometry Attention Distillation for Consistent Video Generation》全解</h1>
+  <p class="doc-sub">从「视频模型的注意力找不到对应点」这一观察出发，到用 VGGT-Ω 的几何注意力当老师、按噪声水平路由蒸馏层，再到公式级、代码级的完整拆解。</p>
+  <div class="doc-meta">
+    <span>arXiv:2610.18779</span>
+    <span>2026-10-13</span>
+    <span>清华 · 阿里高德 AMAP · BIGAI</span>
+    <span>教师：VGGT-Ω 1B</span>
+    <span>学生：Wan2.1 / Wan2.2</span>
+    <span>训练：32 × A800</span>
+  </div>
+</header>
+
+<!-- ================================================================ -->
+<section id="ch1">
+<h2><span class="ch-no">01</span>论文速览</h2>
+<p class="ch-intro">一分钟版本：GAD 是一个「只影响训练、不改推理」的注意力蒸馏框架——把几何基础模型 VGGT-Ω 注意力中的跨帧对应关系，蒸馏进视频扩散模型的注意力里，让模型在长镜头与动态场景中都保持几何一致。</p>
+
+<div class="callout tip">
+  <span class="co-title">TL;DR</span>
+  <p>视频扩散模型（Wan 等）生成的短视频很漂亮，但<strong>跨帧无法可靠地"认出"同一个场景元素</strong>——注意力的响应常常散落在多个区域，即使画面结构已经清晰。GAD 的做法：在训练时用<strong>冻结的几何模型 VGGT-Ω 的注意力</strong>提取"哪个 token 对应哪一帧的哪个 token"，以带置信度权重的软目标去监督视频模型自己的注意力；由于场景结构在高噪声时于<strong>深层</strong>形成、低噪声时于<strong>浅层</strong>形成，蒸馏层随噪声时间步动态路由（L5 / L15 / L25）。训完后推理流程<strong>零改动、零额外开销</strong>，而跨帧匹配准确率在两个长程基准上至少提升 30%。</p>
+</div>
+
+<h3>1.1 要解决什么问题</h3>
+<p>视频扩散模型在<strong>长时间范围内保持场景几何</strong>（视角变化后墙面还直不直、窗户还在不在原处）和<strong>运动中保持物体结构</strong>（人物转身后帽子还是那顶帽子、四肢不融化和消失）上表现很差。这两类一致性是交互式世界模型、机器人规划、自动驾驶仿真等下游应用的前提——它们要求生成的视频是一个"时间上连贯的环境"，而不是一堆漂亮的单帧。</p>
+
+<h3>1.2 核心思路</h3>
+<ul>
+  <li><strong>诊断</strong>：对 Wan2.2 5B 的（层 × 去噪时间步）网格做"目标帧特征 PCA + 源查询注意力读出"的联合分析，发现 (a) 注意力即使到结构已清晰时仍然分散；(b) 场景结构形成的"深度"随噪声水平移动——高噪声在深层、低噪声在浅层。</li>
+  <li><strong>药方</strong>：从一个"天生擅长多视角匹配"的几何基础模型（VGGT-Ω）里拿对应关系当监督信号——不是对齐特征、不是投影点云，而是直接监督注意力的<strong>对应关系</strong>。</li>
+  <li><strong>三个工程要点</strong>：① 教师注意力要"按全部输入帧联合归一化"，这样每个目标帧分到的总注意力质量（attention mass）就能当可靠性权重——被遮挡/出画的对应，质量极低，权重趋零；② 蒸馏层按噪声时间步路由到"结构正在形成"的那一层；③ 成对（pairwise）+ 轨迹（trackwise）两种互补的采样监督，前者管帧内空间判别，后者管跨时间覆盖。</li>
+</ul>
+
+<h3>1.3 结果一图流</h3>
+<div class="stat-grid">
+  <div class="stat"><div class="s-val"><span class="up">+30%</span> <span style="font-size:15px">以上</span></div><div class="s-label">跨帧匹配命中率 M<sub>rate</sub>（Wan2.2 5B，RealEstate10K 与 DL3DV-10K 双基准，相对 Wan 基线）</div></div>
+  <div class="stat"><div class="s-val"><span class="down">−49%</span></div><div class="s-label">相机旋转误差 R<sub>dist</sub>：9.57° → 4.89°（Wan2.2 5B @ DL3DV-10K，15 秒长程生成）</div></div>
+  <div class="stat"><div class="s-val">7 / 7</div><div class="s-label">Wan2.1 14B 上全部七项指标（FID/FVD/CLIP + 四项几何）均为全场最佳</div></div>
+  <div class="stat"><div class="s-val">0 开销</div><div class="s-label">推理不加任何模块：峰值显存完全一致，运行时间差异在抖动范围内</div></div>
+</div>
+
+<h3>1.4 论文贡献（原文归纳）</h3>
+<ol>
+  <li><strong>分析</strong>：首次系统刻画视频模型注意力的"几何歧义"现象，以及场景结构形成深度对噪声水平的依赖（noise-dependent shift）；这些观察直接催生了"在结构形成处蒸馏"的设计。</li>
+  <li><strong>方法</strong>：提出 GAD——一个把几何对应知识迁移进视频注意力的蒸馏框架，包含置信度感知的教师对应、噪声时间步路由的层选择、pairwise/trackwise 双监督。</li>
+  <li><strong>实验</strong>：在全部三个视频底座（Wan2.1 1.3B、Wan2.2 5B、Wan2.1 14B）上，长程场景一致性与动态时间一致性均获提升；不同生成长度（5/10/15 秒）均有几何收益；且不增加任何推理模块。</li>
+</ol>
+
+<div class="callout note">
+  <span class="co-title">阅读本文的正确姿势</span>
+  <p>第 2–4 章是"为什么"（问题、预备知识、关键观察），第 5–9 章是"是什么"（方法逐步拆解，公式全部对应论文编号 Eq.1–11），第 10–11 章是"做得怎么样"（超参 + 全部实验表），第 12 章是"怎么写代码"（官方代码尚未发布，本章给出严格按论文公式与超参复现的参考实现）。文中公式编号与论文一致，方便对照原文。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch2">
+<h2><span class="ch-no">02</span>背景与动机</h2>
+<p class="ch-intro">一致性不是新问题，但以往的方案都在"给模型喂几何信息"上做文章；GAD 指出真正的缺口在"模型自己会不会建立跨帧关联"。</p>
+
+<h3>2.1 一致性为什么难</h3>
+<p>视频扩散模型（如 Wan）以 DiT 为主干，对<strong>整段视频的全部 latent token 做全局自注意力</strong>。理论上，第 40 帧某个墙面 token 的 query 可以去 attend 第 1 帧同一面墙的 key——这正是"信息跨帧交换"的通道。但注意力是靠数据隐式学出来的：<strong>没有任何机制保证 query 会落在"几何上对应"的 key 上</strong>。实践中它经常被外观相似（同色墙面、重复纹理）或语义相似（"窗户" attend 到别的窗户）的区域吸引，导致：</p>
+<ul>
+  <li><strong>几何漂移</strong>：镜头推拉后，场景布局逐渐走样——门框倾斜、地板弯曲；</li>
+  <li><strong>结构退化与物体消失</strong>：物体运动或遮挡后重新出现时结构崩坏，甚至凭空消失；</li>
+  <li>时间越长、视角变化越大，误差累积越严重。</li>
+</ul>
+
+<h3>2.2 已有方案与它们的缺口</h3>
+<table class="tbl">
+  <tr><th>路线</th><th>代表工作</th><th>做法</th><th>缺口</th></tr>
+  <tr><td>相机感知位置编码</td><td>CamCo、CameraCtrl 类</td><td>把相机位姿编进 RoPE / 位置先验，让注意力偏向几何上应关联的位置</td><td>只是"偏置"，不保证注意力真的连到同一场景元素</td></tr>
+  <tr><td>显式几何条件</td><td>Voyager、Gen3C、Uni3C</td><td>渲染深度/点云/网格作为条件输入，或逐段用几何缓存约束生成</td><td>继承重建与重投影误差；动态场景更难处理；推理链路复杂、开销大</td></tr>
+  <tr><td>历史条件生成</td><td>Voyager、自回归式方案</td><td>用已生成内容作为条件继续生成，维持上下文</td><td>误差逐段累积；同样不保证帧间关联的几何正确性</td></tr>
+  <tr><td>几何感知特征对齐</td><td>GF（Geometry Forcing）、Gen3R</td><td>把几何模型的特征/表示对齐进视频模型</td><td>特征级对齐施加了超出"几何一致"所需的表示约束，可能束缚生成能力</td></tr>
+</table>
+<p>论文的判断是：这些方案都在<strong>给输入或表示加几何信息</strong>，但没有一个直接回答——<em>视频模型的注意力，能不能可靠地把第 i 帧的某个位置和第 j 帧的对应位置连起来？</em>而这个能力恰恰是跨帧信息交换、进而是一致结构形成的基石。</p>
+
+<h3>2.3 GAD 的切入角度</h3>
+<p>与其继续"喂几何"，不如<strong>直接监督注意力本身建立正确的对应</strong>。这需要回答三个子问题，正好对应方法三组件：</p>
+<ol>
+  <li><strong>谁来当老师？</strong>——几何基础模型（VGGT-Ω）的注意力天然编码了跨视角/跨时间的对应，且对静态表面与运动物体都有效（第 4.2 节）；但老师的输出也有不可靠的时候，需要置信度过滤（第 6 章）。</li>
+  <li><strong>在哪一层教？</strong>——结构形成区随噪声移动，蒸馏层必须跟着噪声时间步路由（第 7 章）。</li>
+  <li><strong>怎么教？</strong>——不是让学生复现老师的完整注意力分布（那会过度约束），而是只教"对应位置应该被匹配到"，用带置信度权重的软目标 + 成对/轨迹两种监督（第 8 章）。</li>
+</ol>
+<div class="callout tip">
+  <span class="co-title">一句话对比</span>
+  <p>特征对齐类方法（GF、Gen3R）说"你的特征要长得像几何模型的特征"；GAD 说"<strong>你的注意力要指对地方</strong>，特征随你怎么长"。对应关系被迁移，表示自由度被保留——这是它不伤生成质量（FID/FVD 反而更好）的关键。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch3">
+<h2><span class="ch-no">03</span>预备知识</h2>
+<p class="ch-intro">四块地基：Wan 的流匹配视频 DiT、多头注意力、几何基础模型 VGGT-Ω、注意力蒸馏。熟悉读者可跳到第 4 章。</p>
+
+<h3>3.1 Wan 视频扩散模型：DiT + 流匹配</h3>
+<p>Wan2.1/2.2 把视频压进 latent 空间后，用 Diffusion Transformer（DiT）去噪。主干组件：3D RoPE（时间 + 空间旋转位置编码）、adaLN（时间步等条件注入 LayerNorm）、以及最重要的——<strong>全部帧 token 拼在一起做全局自注意力</strong>。GAD 训练的三个底座规格：</p>
+<table class="tbl">
+  <tr><th>底座</th><th class="ctr">DiT 参数</th><th class="ctr">层数</th><th class="ctr">832×480 下空间网格</th><th>说明</th></tr>
+  <tr><td>Wan2.1 1.3B</td><td class="ctr num">1.3B</td><td class="ctr num">30</td><td class="ctr num">30 × 52</td><td>稠密 DiT，T2V/I2V</td></tr>
+  <tr><td>Wan2.2 5B</td><td class="ctr num">5B</td><td class="ctr num">30</td><td class="ctr num">15 × 26</td><td>高压缩 VAE（4×32×32），TI2V</td></tr>
+  <tr><td>Wan2.1 14B</td><td class="ctr num">14B</td><td class="ctr num">40</td><td class="ctr num">30 × 52</td><td>旗舰规格</td></tr>
+</table>
+<p>训练目标是流匹配（Flow Matching）。记干净 latent 为 z₀，噪声 ε ∼ 𝒩(0, I)，插值系数 s = t/1000 ∈ [0,1]（t ∈ [0,1000] 为模型噪声时间步，越大越噪）：</p>
+<div class="formula">
+  z<sub>t</sub> = (1 − s)·z₀ + s·ε，&nbsp;&nbsp;&nbsp; v<sub>θ</sub>(z<sub>t</sub>, t, 𝐜) ≈ ε − z₀
+  <span class="eqno">（关于 s 的速度）</span>
+</div>
+<p>模型学的是"从噪声指向数据"的速度场；推理时沿它积分即可还原 z₀。GAD 完整保留该目标（论文 Eq.11，见第 9 章），只在其上叠加注意力蒸馏损失。条件 𝐜 在本文场景中为<strong>首帧图像 + 文本 + 目标相机轨迹</strong>（相机可控生成）。</p>
+
+<h3>3.2 多头注意力：Q、K 与"跨帧关联"在哪产生</h3>
+<p>某层 ℓ 某头 h 中，token 序列经归一化与 RoPE 后得到 query 𝐪 与 key 𝐤，注意力权重为 softmax(⟨𝐪, 𝐤⟩/√d)。视频 DiT 里 token 按 (帧, 空间位置) 排布，因此<strong>帧 i 的空间 token u（记 a=(i,u)）对帧 j 的空间 token v 的注意力分数</strong>，就是最原生的"跨帧关联"度量。GAD 的蒸馏不改注意力计算本身，而是让学生在"匹配分布"上与教师对应看齐——学生用的原始材料，正是每头的 ⟨𝐪, 𝐤⟩/√d 分数（Eq.10，第 8 章）。</p>
+
+<h3>3.3 几何基础模型：VGGT 与 VGGT-Ω</h3>
+<p>VGGT 系列是"前馈式几何重建"模型：一次前向同时输出多视角的相机参数、深度图、点图（pointmap）与 2D 轨迹。架构上，图像 patch 化后进入 Transformer，其中<strong>全局注意力层（global attention）让所有帧的 patch token 互相看</strong>——为了做好重建，这些注意力头必须学会"跨视角找同一块表面/同一个物体部位"。这正是 GAD 想借的先验。</p>
+<p>本文用的教师是 <strong>VGGT-Ω 1B 的 512 分辨率检查点</strong>（facebookresearch/vggt-omega）。论文对其探测后发现一个重要现象：<strong>不同头有明显分工</strong>——层 13 头 0 只擅长静态 token；层 12 头 12 只擅长动态 token；而<strong>层 13 头 10 两者兼顾</strong>，最终被选为唯一的标签提取头（零起点编号，详见第 6.4 节）。</p>
+
+<h3>3.4 注意力蒸馏与最相近的先行者 CAMEO</h3>
+<p>知识蒸馏不只能对齐特征，也能对齐注意力图或 token 间关系（relational KD）。在扩散模型里已有特征对齐、token 关系蒸馏等做法。与 GAD 最接近的是 <strong>CAMEO</strong>：它用静态 3D 点图导出的对应关系去监督一个固定注意力层，改善新视角合成。GAD 与它的三点本质区别：</p>
+<table class="tbl">
+  <tr><th></th><th>CAMEO</th><th>GAD</th></tr>
+  <tr><td>对应来源</td><td>静态点图的循环投影（假设静态场景）</td><td>几何模型注意力本身（静态表面 + 运动物体部位均可）</td></tr>
+  <tr><td>可靠性处理</td><td>无</td><td>目标帧注意力质量 → 置信度加权，遮挡/出画自动降权</td></tr>
+  <tr><td>监督层</td><td>固定一层</td><td>按噪声时间步路由（L5 / L15 / L25），对准结构形成区</td></tr>
+</table>
+<div class="callout note">
+  <span class="co-title">投影式标签为什么不行</span>
+  <p>"用深度 + 相机把源像素反投影到 3D、再投到目标视角"是构造对应标签的经典做法（CAMEO 即如此），但它假设<strong>静态场景</strong>，运动物体上完全失效；在细结构与邻近表面处，深度误差与 token 离散化还会把不同表面对到一起。论文用这种标签做"选头评估"（第 6.4 节）尚可，做训练标签则不行——而直接读 VGGT-Ω 的注意力，相当于利用模型学到的跨视角一致性，绕开了静态假设。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch4">
+<h2><span class="ch-no">04</span>关键观察：注意力里的几何歧义</h2>
+<p class="ch-intro">方法的一切设计都能追溯到两个实验观察：① 视频注意力认不出对应点；② 结构形成的深度随噪声移动。本章复现论文第 3 节的分析逻辑。</p>
+
+<h3>4.1 实验设计：PCA × 注意力的联合网格</h3>
+<p>论文用 Wan2.2 5B 在 RealEstate10K 上生成 81 帧、832×480 的视频（50 步采样、CFG=5、shift=5、seed=0），沿完整去噪轨迹收集两类可视化：</p>
+<ul>
+  <li><strong>目标帧特征 PCA</strong>：每个 (层, 去噪步) 组合，取目标帧（latent 帧 10）的 block 输出特征，把空间 token 投影到前 3 个主成分显示成 RGB——它回答"这一层这一步，模型内部是否已经长出可辨认的场景结构"。</li>
+  <li><strong>注意力读出</strong>：固定源查询（首 latent 帧的 (x,y)=(14,8)，26×15 网格），每头的点积分数在<strong>全部视频 key</strong> 上做 softmax，截取目标帧切片后对头取平均——它回答"这个查询在目标帧里看哪儿"。</li>
+</ul>
+<p>两个可视化沿 (层 1–30 × 去噪时间步 1000→0) 排成网格，就得到论文 Fig. 2(a) 的全景图。</p>
+
+<h3>4.2 三个区域：结构形成的"移动带"</h3>
+<div class="figure">
+<svg viewBox="0 0 880 400" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC,Microsoft YaHei,sans-serif">
+  <defs>
+    <linearGradient id="gNoise" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e5e7eb"/><stop offset="1" stop-color="#f3f4f6"/>
+    </linearGradient>
+    <linearGradient id="gForm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fecaca"/><stop offset="1" stop-color="#fee2e2"/>
+    </linearGradient>
+    <linearGradient id="gEst" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d1fae5"/><stop offset="1" stop-color="#ecfdf5"/>
+    </linearGradient>
+  </defs>
+  <!-- 标题 -->
+  <text x="440" y="26" text-anchor="middle" font-size="15" font-weight="700" fill="#24292f">DiT 层 × 去噪时间步：三个区域与 GAD 的路由</text>
+  <!-- 绘图区 -->
+  <g transform="translate(70,50)">
+    <rect x="0" y="0" width="760" height="270" fill="url(#gEst)"/>
+    <rect x="0" y="0" width="560" height="270" fill="url(#gNoise)"/>
+    <polygon points="140,0 460,0 760,270 440,270" fill="url(#gForm)" stroke="#ef4444" stroke-width="2" stroke-dasharray="7 4"/>
+    <!-- 网格线 -->
+    <g stroke="#ffffff" stroke-width="1" opacity=".7">
+      <line x1="95" y1="0" x2="95" y2="270"/><line x1="190" y1="0" x2="190" y2="270"/><line x1="285" y1="0" x2="285" y2="270"/>
+      <line x1="380" y1="0" x2="380" y2="270"/><line x1="475" y1="0" x2="475" y2="270"/><line x1="570" y1="0" x2="570" y2="270"/>
+      <line x1="665" y1="0" x2="665" y2="270"/>
+      <line x1="0" y1="54" x2="760" y2="54"/><line x1="0" y1="108" x2="760" y2="108"/><line x1="0" y1="162" x2="760" y2="162"/><line x1="0" y1="216" x2="760" y2="216"/>
+    </g>
+    <!-- 区域文字 -->
+    <text x="200" y="40" font-size="13.5" font-weight="700" fill="#6b7280">噪声主导区</text>
+    <text x="200" y="60" font-size="11.5" fill="#6b7280">PCA 无结构 · 注意力散乱</text>
+    <text x="330" y="200" font-size="14" font-weight="800" fill="#b91c1c" transform="rotate(19 330 200)">结构形成区（红带）</text>
+    <text x="348" y="222" font-size="11.5" fill="#b91c1c" transform="rotate(19 348 222)">结构初现 · 注意力开始响应对应区域</text>
+    <text x="600" y="240" font-size="13.5" font-weight="700" fill="#047857">结构建立区</text>
+    <text x="600" y="258" font-size="11.5" fill="#047857">布局清晰 · 但关联未必几何正确</text>
+    <!-- 路由标记 -->
+    <g font-size="12" font-weight="700">
+      <rect x="380" y="6" width="190" height="26" rx="6" fill="#4636c4"/>
+      <text x="475" y="24" text-anchor="middle" fill="#fff">t ≥ 950 → 蒸馏 L25（深层）</text>
+      <rect x="285" y="120" width="95" height="26" rx="6" fill="#7c6cf0"/>
+      <text x="332" y="138" text-anchor="middle" fill="#fff">850≤t&lt;950 → L15</text>
+      <rect x="60" y="238" width="150" height="26" rx="6" fill="#a5b4fc"/>
+      <text x="135" y="256" text-anchor="middle" fill="#1e1b4b">t &lt; 850 → 蒸馏 L5（浅层）</text>
+    </g>
+  </g>
+  <!-- 坐标轴 -->
+  <g font-size="12" fill="#5a6070">
+    <text x="70" y="342" text-anchor="middle">t=1000</text>
+    <text x="450" y="342" text-anchor="middle">t=500</text>
+    <text x="830" y="342" text-anchor="middle">t=0</text>
+    <text x="450" y="362" text-anchor="middle" font-weight="700">去噪时间步（越大越噪）→ 结构形成带从深层（左上）滑向浅层（右下）</text>
+    <text x="58" y="58" text-anchor="end">深层 L29</text>
+    <text x="58" y="318" text-anchor="end">浅层 L0</text>
+    <line x1="66" y1="50" x2="66" y2="320" stroke="#9ca3af" stroke-width="1.5"/>
+    <line x1="66" y1="320" x2="838" y2="320" stroke="#9ca3af" stroke-width="1.5"/>
+  </g>
+</svg>
+<p class="figcap"><b>图 4-1（对应论文 Fig. 2(a) 概念重绘）：</b>横轴为去噪时间步、纵轴为 DiT 层深。红色斜带即"结构形成区"——高噪声时出现在深层，低噪声时出现在浅层。GAD 的蒸馏层沿这条带路由：t≥950 用 L25、850≤t&lt;950 用 L15、t&lt;850 用 L5，始终贴着"结构正在形成"的位置施加对应监督（路由配置见第 7 章）。</p>
+</div>
+
+<p>网格分析揭示了三个定性区域：</p>
+<ul>
+  <li><strong>噪声主导区</strong>（左上灰区）：PCA 特征里几乎看不出场景结构，注意力响应散落一地——没有结构基础，监督无从谈起。</li>
+  <li><strong>结构形成区</strong>（红带）：可辨认的场景结构开始出现，注意力也开始响应跨帧的对应区域，但<strong>竞争响应仍然很多</strong>。这是"有结构基础、关联尚未定型"的中间窗口——也是蒸馏最有价值的窗口。</li>
+  <li><strong>结构建立区</strong>（右下绿区）：布局已经清晰，跨帧关联看起来"成立"，但未必几何正确——此时再加指导，能改变的已经不多。</li>
+</ul>
+<div class="callout warn">
+  <span class="co-title">第一个关键观察（歧义性）</span>
+  <p>即使在结构建立区——PCA 特征已经能看清房间布局——注意力响应依然可能<strong>散布在多个区域</strong>（相似外观或相似语义的地方）。也就是说："画面成形"≠"注意力找到了对应点"。歧义的关联会把无关区域的信息混进来，正是几何漂移与结构退化的微观机制。</p>
+</div>
+<div class="callout warn">
+  <span class="co-title">第二个关键观察（深度随噪声移动）</span>
+  <p>结构形成区的位置不是固定的：<strong>高噪声时在深层形成，低噪声时在浅层形成</strong>。若把蒸馏钉死在一层（如 CAMEO），那么它只对某个噪声区间"踩在点上"，其余区间要么太早（噪声主导区）要么太晚（结构建立区）。这直接推出 GAD 的核心机制——<em>按噪声时间步路由监督层</em>。</p>
+</div>
+
+<h3>4.3 几何基础模型的注意力：现成的"对应老师"</h3>
+<p>对 VGGT-Ω 做同样探测（固定首帧查询、观察后续帧响应）：静态例子里，选定头的注意力始终聚焦在<strong>同一根栏杆</strong>上，跨视角变化不漂移；动态例子里，注意力跟着<strong>运动人物头顶的帽子</strong>走。说明几何模型的注意力头确实编码了"同一场景元素"的跨帧关联——静态表面与运动物体部位通吃。</p>
+<p>但老师也有不可靠的时候：<strong>当源 token 代表的内容在目标视角被遮挡或根本不在画面里时，注意力图仍可能出现一个清晰的峰</strong>（比如 attend 到外观相似的别处）。单看峰值位置会被骗——这催生了 GAD 的置信度设计：</p>
+<div class="callout tip">
+  <span class="co-title">目标帧注意力质量（target-frame attention mass）</span>
+  <p>教师注意力是在<strong>全部输入帧的全部 token（含特殊 token）上联合归一化</strong>的。于是"落到某个目标帧空间 patch token 上的总注意力"就是一个有意义的量：内容可见时质量高，被遮挡/出画时质量极低。<em>峰的位置告诉你"匹配在哪"，质量告诉你"这个匹配可不可信"。</em>（Eq.1 与 Eq.9，第 6 章。）</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch5">
+<h2><span class="ch-no">05</span>GAD 方法总览</h2>
+<p class="ch-intro">一个训练框架，两个角色，三个组件：冻结的几何教师离线产出"对应 + 置信度"缓存；可训练的视频学生在去噪时按噪声路由到指定层，用门控聚合的匹配分布去拟合软目标。</p>
+
+<div class="figure">
+<svg viewBox="0 0 900 500" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC,Microsoft YaHei,sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+      <polygon points="0 0, 8 3.5, 0 7" fill="#9a93c9"/>
+    </marker>
+    <marker id="arG" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto">
+      <polygon points="0 0, 8 3.5, 0 7" fill="#0a8a4a"/>
+    </marker>
+  </defs>
+  <text x="450" y="24" text-anchor="middle" font-size="15.5" font-weight="800" fill="#24292f">GAD 总体框架（重绘自论文 Fig. 3）</text>
+
+  <!-- ============ 左列：教师（离线） ============ -->
+  <text x="190" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#b45309">教师侧 · 离线一次性</text>
+  <g font-size="12" fill="#24292f">
+    <rect x="40" y="62" width="300" height="40" rx="8" fill="#fffbeb" stroke="#d97706"/>
+    <text x="190" y="80" text-anchor="middle" font-weight="700">干净训练视频（4n+1 帧，832×480）</text>
+    <text x="190" y="96" text-anchor="middle" fill="#713f12" font-size="11">RealEstate10K / DL3DV-10K / OmniWorld-Game</text>
+
+    <rect x="40" y="122" width="300" height="34" rx="8" fill="#fffbeb" stroke="#d97706"/>
+    <text x="190" y="144" text-anchor="middle">时间代表帧 [0, 2, 6, …, 4n−2] → n+1 个教师视图</text>
+
+    <rect x="40" y="176" width="300" height="52" rx="8" fill="#fff7ed" stroke="#ea580c" stroke-width="1.6"/>
+    <text x="190" y="197" text-anchor="middle" font-weight="700">VGGT-Ω 1B（冻结）</text>
+    <text x="190" y="215" text-anchor="middle" fill="#713f12" font-size="11">512 分辨率检查点 · 全局注意力 层13 / 头10</text>
+
+    <rect x="40" y="248" width="300" height="52" rx="8" fill="#fffbeb" stroke="#d97706"/>
+    <text x="190" y="268" text-anchor="middle">帧间注意力（全部帧全部 token 联合归一化）</text>
+    <text x="190" y="286" text-anchor="middle" fill="#713f12" font-size="11">对齐到学生网格得 Ā，缓存 (c, m) 而非整张注意力</text>
+
+    <rect x="40" y="320" width="300" height="58" rx="8" fill="#fef3c7" stroke="#b45309" stroke-width="1.6"/>
+    <text x="190" y="341" text-anchor="middle" font-weight="700">对应 + 置信度缓存</text>
+    <text x="190" y="359" text-anchor="middle" fill="#713f12" font-size="11">c=argmax（Eq.1）· w=f(m)（Eq.9）· y=3×3 高斯软目标</text>
+    <g stroke="#9a93c9" stroke-width="1.6" marker-end="url(#ar)">
+      <line x1="190" y1="102" x2="190" y2="120"/><line x1="190" y1="156" x2="190" y2="174"/>
+      <line x1="190" y1="228" x2="190" y2="246"/><line x1="190" y1="300" x2="190" y2="318"/>
+    </g>
+  </g>
+
+  <!-- 缓存 → 学生 -->
+  <path d="M 340 349 C 400 349, 410 210, 452 196" fill="none" stroke="#b45309" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#ar)"/>
+  <text x="392" y="300" font-size="11.5" fill="#b45309" font-weight="700" transform="rotate(-24 392 300)">提供监督目标</text>
+
+  <!-- ============ 右列：学生（训练） ============ -->
+  <text x="650" y="52" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4636c4">学生侧 · 每个训练步</text>
+  <g font-size="12" fill="#24292f">
+    <rect x="440" y="62" width="420" height="40" rx="8" fill="#eeecfc" stroke="#7c6cf0"/>
+    <text x="650" y="80" text-anchor="middle" font-weight="700">噪声 latent z<sub>t</sub> + 条件 𝐜（首帧 / 文本 / 相机轨迹）</text>
+    <text x="650" y="96" text-anchor="middle" fill="#4636c4" font-size="11">z<sub>t</sub>=(1−s)z₀+sε，s=t/1000，t∈[0,1000]</text>
+
+    <!-- DiT 层栈 -->
+    <rect x="440" y="122" width="420" height="88" rx="10" fill="#ffffff" stroke="#5845e6" stroke-width="1.6"/>
+    <text x="650" y="141" text-anchor="middle" font-weight="700">Wan DiT（可训练）</text>
+    <g font-size="10.5">
+      <rect x="456" y="150" width="60" height="18" rx="4" fill="#c7d2fe"/><text x="486" y="163" text-anchor="middle">L0…L4</text>
+      <rect x="520" y="150" width="34" height="18" rx="4" fill="#5845e6"/><text x="537" y="163" text-anchor="middle" fill="#fff" font-weight="700">L5</text>
+      <rect x="558" y="150" width="52" height="18" rx="4" fill="#c7d2fe"/><text x="584" y="163" text-anchor="middle">L6…L14</text>
+      <rect x="614" y="150" width="36" height="18" rx="4" fill="#5845e6"/><text x="632" y="163" text-anchor="middle" fill="#fff" font-weight="700">L15</text>
+      <rect x="654" y="150" width="52" height="18" rx="4" fill="#c7d2fe"/><text x="680" y="163" text-anchor="middle">L16…L24</text>
+      <rect x="710" y="150" width="36" height="18" rx="4" fill="#5845e6"/><text x="728" y="163" text-anchor="middle" fill="#fff" font-weight="700">L25</text>
+      <rect x="750" y="150" width="96" height="18" rx="4" fill="#c7d2fe"/><text x="798" y="163" text-anchor="middle">L26…L29</text>
+    </g>
+    <text x="650" y="192" text-anchor="middle" font-size="11.5" fill="#4636c4">噪声时间步路由 ℓ(t)（Eq.2）：t&lt;850→L5 · 850≤t&lt;950→L15 · t≥950→L25</text>
+
+    <rect x="440" y="228" width="200" height="44" rx="8" fill="#eeecfc" stroke="#7c6cf0"/>
+    <text x="540" y="247" text-anchor="middle" font-weight="700">捕获该层的 Q / K</text>
+    <text x="540" y="263" text-anchor="middle" fill="#4636c4" font-size="11">norm + RoPE 之后 · 不改前向</text>
+
+    <rect x="660" y="228" width="200" height="44" rx="8" fill="#eeecfc" stroke="#7c6cf0"/>
+    <text x="760" y="247" text-anchor="middle" font-weight="700">多头聚合门控 g<sub>φ</sub>（Eq.10）</text>
+    <text x="760" y="263" text-anchor="middle" fill="#4636c4" font-size="11">每层独立 MLP · 仅训练用 · 可训练</text>
+
+    <rect x="440" y="292" width="420" height="86" rx="10" fill="#f5f3ff" stroke="#5845e6" stroke-width="1.6"/>
+    <text x="650" y="312" text-anchor="middle" font-weight="800" fill="#4636c4">对应监督损失（在路由层计算）</text>
+    <text x="650" y="332" text-anchor="middle" font-size="11.5">𝓛<sub>pair</sub>（Eq.5–6）：成对帧 · 全帧候选 + Top-64 难负样本</text>
+    <text x="650" y="350" text-anchor="middle" font-size="11.5">𝓛<sub>track</sub>（Eq.7）：同一源 → 多目标帧 · 邻域 + 随机负样本</text>
+    <text x="650" y="368" text-anchor="middle" font-size="11.5">+ 𝓛<sub>FM</sub>（Eq.11）：原流匹配目标保持不变</text>
+    <g stroke="#9a93c9" stroke-width="1.6" marker-end="url(#ar)">
+      <line x1="650" y1="102" x2="650" y2="120"/>
+      <line x1="640" y1="210" x2="590" y2="226"/>
+      <line x1="640" y1="210" x2="720" y2="226"/>
+      <line x1="540" y1="272" x2="540" y2="290"/><line x1="760" y1="272" x2="760" y2="290"/>
+      <line x1="665" y1="250" x2="655" y2="262" stroke-dasharray="3 3"/>
+    </g>
+    <text x="672" y="252" font-size="10.5" fill="#5a6070">逐 query-key 分数 r</text>
+  </g>
+
+  <!-- 更新箭头 -->
+  <path d="M 650 378 L 650 404" stroke="#0a8a4a" stroke-width="2.4" marker-end="url(#arG)"/>
+  <text x="668" y="396" font-size="12" font-weight="700" fill="#0a8a4a">反向传播：只更新 DiT 与门控 MLP</text>
+
+  <!-- 底部：推理 -->
+  <rect x="40" y="416" width="820" height="56" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.6"/>
+  <text x="450" y="438" text-anchor="middle" font-size="12.5" font-weight="800" fill="#047857">推理：只用训练后的 DiT，原架构 · 原采样器 · 无教师 · 无缓存 · 无门控 MLP</text>
+  <text x="450" y="458" text-anchor="middle" font-size="11.5" fill="#064e3b">峰值显存与 Wan 基线完全一致（Table 2），运行时间差异在抖动范围内</text>
+</svg>
+<p class="figcap"><b>图 5-1：</b>GAD 训练框架。左侧教师流水线对每个训练 clip 只跑一次，产出 (对应位置 c, 注意力质量 m, 置信度 w, 软目标 y) 缓存；右侧学生在每个训练步根据噪声时间步 t 把蒸馏路由到 L5/L15/L25 之一，捕获该层归一化+RoPE 之后的 Q/K，用可训练的门控 MLP 聚合多头分数得到匹配分布 P，与软目标做带权交叉熵。一切附加组件（教师、缓存、门控）都只存在于训练阶段。</p>
+</div>
+
+<h3>5.1 符号表</h3>
+<table class="tbl">
+  <tr><th>符号</th><th>含义</th></tr>
+  <tr><td class="num">a = (i, u)</td><td>源 token：第 i 帧的空间位置 u（学生网格坐标）</td></tr>
+  <tr><td class="num">j</td><td>目标帧索引（j ≠ i）</td></tr>
+  <tr><td class="num">v</td><td>目标帧内的空间 token 位置</td></tr>
+  <tr><td class="num">Ā<sub>a,j</sub>(v)</td><td>教师注意力对齐到学生网格后，a 对 (j, v) 的权重（保留原帧质量）</td></tr>
+  <tr><td class="num">c<sub>a,j</sub>, m<sub>a,j</sub></td><td>候选对应位置（argmax）与目标帧注意力质量（Eq.1）</td></tr>
+  <tr><td class="num">w<sub>a,j</sub></td><td>可靠性权重 w = f(m)（Eq.9），χ<sub>a,j</sub>∈{0,1} 标记关系是否有效</td></tr>
+  <tr><td class="num">y<sub>a,j</sub>(v)</td><td>3×3 高斯软目标，在 𝒩(c<sub>a,j</sub>) 内归一化</td></tr>
+  <tr><td class="num">𝒩(c), Ω<sub>j</sub>, 𝒦</td><td>正样本邻域 / 目标帧全部空间 token / 候选集合</td></tr>
+  <tr><td class="num">r<sup>h</sup>, α, s, P</td><td>第 h 头 QK 分数 / 门控头权重 / 聚合 logits / 候选上的 softmax 分布（Eq.10）</td></tr>
+  <tr><td class="num">t, ℓ(t)</td><td>模型噪声时间步（0–1000）/ 路由到的监督层（Eq.2）</td></tr>
+  <tr><td class="num">𝓛<sub>corr</sub>, 𝓛<sub>pair</sub>, 𝓛<sub>track</sub>, 𝓛<sub>FM</sub></td><td>逐对应 CE（Eq.3）/ 成对损失（Eq.5）/ 轨迹损失（Eq.7）/ 流匹配损失（Eq.11）</td></tr>
+</table>
+
+<h3>5.2 三条设计原则</h3>
+<ol>
+  <li><strong>只教关系，不锁表示</strong>：监督对象是"注意力的匹配分布"，而不是中间特征本身——学生特征可以自由演化，只要对应位置被正确关联。这保住了生成质量（实验中 FID/FVD 还变好了）。</li>
+  <li><strong>置信度优先</strong>：老师的每个对应都带可靠性权重，不可靠的（遮挡、出画、低质量）自动降权甚至置零，避免"错教"。</li>
+  <li><strong>训练即插即用、推理零改动</strong>：所有附加结构（教师、缓存、门控 MLP）训完即弃，部署侧与原模型完全一致。</li>
+</ol>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch6">
+<h2><span class="ch-no">06</span>组件一：置信度感知的教师对应</h2>
+<p class="ch-intro">"老师给的每个对应，都要附带一个可信度。"本章覆盖论文 4.1 节与附录 B.1：从 VGGT-Ω 注意力到 (c, m, w, y) 四元组的完整流水线。</p>
+
+<h3>6.1 提取：读哪一层哪一头，怎么归一化</h3>
+<p>教师是<strong>冻结的 VGGT-Ω 1B（512 分辨率检查点）</strong>，吃<strong>干净视频帧</strong>。提取点固定为<strong>全局注意力 层 13 / 头 10</strong>（零起点编号；选头过程见 6.4）。关键归一化约定：</p>
+<ul>
+  <li>教师注意力在<strong>所有输入帧的全部 token（含特殊 token）上联合 softmax</strong>——这保证了"分配给单个目标帧的总质量"是有意义的量；</li>
+  <li>源 patch 查询先<strong>重采样到学生空间网格</strong>再做查询归一化；对每个目标帧，条件 patch 注意力图先空间重采样、再重归一化后取最大值；<strong>帧质量单独保留</strong>。</li>
+</ul>
+<p>论文用 Ā 表示"对齐后的条件图 × 保留质量"。于是对每个源 token a 与目标帧 j，直接缓存两个标量元组而非整张注意力矩阵（省内存的关键）：</p>
+<div class="formula">
+  c<sub>a,j</sub> = argmax<sub>v</sub> Ā<sub>a,j</sub>(v)，&nbsp;&nbsp;&nbsp;&nbsp; m<sub>a,j</sub> = Σ<sub>v</sub> Ā<sub>a,j</sub>(v)
+  <span class="eqno">Eq. 1</span>
+  <span class="note-below">c：候选对应位置（峰在哪）；m：目标帧注意力质量（这一帧总共分到多少注意力）。由于 Ā 的构造方式，对 Ā 求和与求 argmax 恰好还原缓存的质量与对应位置。</span>
+</div>
+
+<h3>6.2 与学生网格的时间 / 空间对齐</h3>
+<p><strong>时间轴</strong>：学生 latent 的时间轴是"每 4 帧取 1 个代表 + 首帧"的结构。对 4n+1 帧的 clip，教师输入帧取时间代表索引 <code>[0, 2, 6, …, 4n−2]</code>（读原视频时加上 clip 的源偏移），得到 n+1 个教师视图，与学生 latent 时间轴一一对齐。举例：81 帧 → 21 个教师视图；241 帧 → 61 个。</p>
+<p><strong>空间轴</strong>：832×480 分辨率下，学生网格为 30×52（Wan2.1 1.3B / 14B）或 15×26（Wan2.2 5B）。RGB 帧、相机内参与教师目标使用<strong>完全一致的裁剪与缩放几何</strong>。缓存元数据记录源帧、clip 偏移、网格与教师身份，加载时校验；若从长缓存中读取更短前缀，质量仍取原教师上下文计算的值、<strong>不</strong>按前缀重归一化。</p>
+
+<h3>6.3 置信度：把"质量"映射成"权重"</h3>
+<p>质量 m 跨越多个数量级，直接用会被极端值主导。论文的做法是——<strong>先收集人工可见性标注，再拟合一条 logistic 映射</strong>：</p>
+<ul>
+  <li><strong>标注协议</strong>：在 DL3DV 上（81 帧教师上下文）取 55 个场景（48 随机 + 7 个含细结构/遮挡/出画的难例），每页展示 1 个源 token 与来自 7 个时间区间的 7 个目标帧（与注意力质量无关地采样），标注者判断源内容"可见 / 不可见 / 不确定"（标注时看不到注意力统计）。共 803 次判断，剔除 230 个"不确定"，保留 573 对——401 可见 / 172 不可见。</li>
+  <li><strong>特征选择</strong>：比较三种注意力统计量的判别力——log₂质量、1−归一化注意力熵、Top-1 条件响应。按场景分组的 5 折交叉验证下，<strong>只用 log 质量的 logistic 回归 ROC-AUC 已达 0.903（30×52 网格）/ 0.932（15×26 网格）</strong>；加入熵与 Top-1 仅提升到 0.910 / 0.933。结论：<strong>质量单独就够了</strong>。</li>
+  <li><strong>拟合</strong>：在全部 573 条确定标注上做<strong>类别平衡</strong>的 logistic 回归（输入 x = log₂(max(m, ε))），写成 sigmoid((x−μ)/κ) 形式；γ 次幂是经验附加，进一步压低低置信关系。</li>
+</ul>
+<div class="formula">
+  w<sub>a,j</sub> = χ<sub>a,j</sub> · [ sigmoid( ( log₂( max(m<sub>a,j</sub>, ε) ) − μ ) / κ ) ]<sup>γ</sup>
+  <span class="eqno">Eq. 9</span>
+  <span class="note-below">χ∈{0,1}：缓存中该关系是否有效。ε = 2⁻²⁰（防 log 0）；γ = 2。<br>网格相关参数 (μ, κ)：30×52 → (−9.86777, 1.81857)；15×26 → (−9.75580, 1.59004)。该映射在静态 DL3DV 上拟合，静态/动态监督共用。</span>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 640 330" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC,Microsoft YaHei,sans-serif">
+  <text x="320" y="24" text-anchor="middle" font-size="14.5" font-weight="700" fill="#24292f">置信度权重曲线（30×52 网格参数，Eq.9 示意）</text>
+  <g transform="translate(60,44)">
+    <!-- 坐标系 -->
+    <line x1="0" y1="250" x2="520" y2="250" stroke="#9ca3af" stroke-width="1.5"/>
+    <line x1="0" y1="0" x2="0" y2="250" stroke="#9ca3af" stroke-width="1.5"/>
+    <!-- 参考线 -->
+    <line x1="0" y1="195" x2="520" y2="195" stroke="#e5e7eb" stroke-dasharray="4 4"/>
+    <line x1="304" y1="0" x2="304" y2="250" stroke="#fca5a5" stroke-dasharray="4 4"/>
+    <!-- 曲线 sigmoid((x-μ)/κ)^2, x=log2 m -->
+    <path d="M 0 250 C 60 250, 120 249.7, 180 249
+             C 220 248.2, 250 243, 280 231
+             C 300 219, 320 178, 340 130
+             C 360 86, 400 55, 460 43
+             C 490 40, 505 39, 520 38"
+          fill="none" stroke="#5845e6" stroke-width="3"/>
+    <!-- 标注 -->
+    <circle cx="304" cy="195" r="4.5" fill="#ef4444"/>
+    <text x="304" y="216" text-anchor="middle" font-size="11.5" fill="#b91c1c" font-weight="700">μ = −9.87（w = 0.25）</text>
+    <text x="316" y="240" font-size="11" fill="#6b7280">log₂m</text>
+    <text x="30" y="120" font-size="11.5" fill="#4636c4">m ≈ 2⁻¹² (≈2.4e−4)：w ≈ 0.06</text>
+    <text x="30" y="138" font-size="11.5" fill="#4636c4">内容被遮挡 / 出画 → 质量极低 → 权重趋零</text>
+    <text x="360" y="96" font-size="11.5" fill="#047857">m ≈ 2⁻⁶：w ≈ 0.80</text>
+    <text x="360" y="114" font-size="11.5" fill="#047857">内容清晰可见 → 权重接近 1</text>
+    <!-- 轴刻度 -->
+    <g font-size="11" fill="#5a6070">
+      <text x="0" y="268" text-anchor="middle">−20</text><text x="120" y="268" text-anchor="middle">−16</text>
+      <text x="240" y="268" text-anchor="middle">−12</text><text x="360" y="268" text-anchor="middle">−8</text>
+      <text x="480" y="268" text-anchor="middle">−4</text>
+      <text x="260" y="290" text-anchor="middle" font-weight="700">log₂( 目标帧注意力质量 m )</text>
+      <text x="-10" y="254" text-anchor="end">0</text><text x="-10" y="199" text-anchor="end">0.25</text>
+      <text x="-10" y="144" text-anchor="end">0.5</text><text x="-10" y="89" text-anchor="end">0.75</text>
+      <text x="-10" y="34" text-anchor="end">1</text>
+      <text x="-38" y="140" text-anchor="middle" transform="rotate(-90 -38 140)" font-weight="700">权重 w</text>
+    </g>
+  </g>
+</svg>
+<p class="figcap"><b>图 6-1：</b>Eq.9 的映射形状。横轴为 log₂ 质量（跨越数量级），纵轴为监督权重。γ=2 的幂次让低质量关系被进一步压低——人工标注拟合的"可见性概率"再平方，等效于对不可信目标更保守。论文的人体实验表明：这条简单的曲线，比"熵 / Top-1 响应"等更复杂的统计量都好用。</p>
+</div>
+
+<h3>6.4 选头：为什么是层 13 头 10</h3>
+<p>教师层-头对的挑选用<strong>参考对应标签</strong>做评估（注意：这些标签只用来选头，不进训练）：</p>
+<ul>
+  <li><strong>静态参考</strong>：随机 50 个 DL3DV 场景，用 VGGT-Ω 估计逐视角深度与相机（只保留高置信深度），构造"循环投影"标签——源像素反投影到 3D、投到目标视角落进某 token，再从该 token 中心反投回源视角；仅当双向都在界内、双向深度一致、回投位置足够近时保留（多样本时取循环误差最小者）。</li>
+  <li><strong>动态参考</strong>：TAPVid-DAVIS 30 个动态场景的官方真值点对应。</li>
+  <li><strong>评估</strong>：随机采样输入帧查询 token，遍历每个全局注意力层-头，取每头在各后续视图的最大响应位置与帧质量（Eq.1），与参考标签比对对应误差。</li>
+</ul>
+<p>结果：不同头分工显著——<strong>层13头0 静态好、动态差；层12头12 动态好、静态差</strong>；多数头两者皆差。<strong>层 13 头 10 在两类 token 上综合最佳</strong>，成为全部实验唯一使用的提取头。这也解释了为什么选头必须静态+动态双集评估：只用其一会被误导。</p>
+
+<h3>6.5 软目标：3×3 高斯邻域</h3>
+<p>老师的 argmax 也只是 token 级离散位置，存在小的定位误差。为容错，目标不做成 one-hot，而是在 c<sub>a,j</sub> 周围构造 <strong>3×3、σ=1（token 单位）的高斯邻域 𝒩(c<sub>a,j</sub>)</strong>：按 token 网格距离算权重，出界位置剔除，剩余归一化到和为 1，帧内其余位置为零：</p>
+<div class="formula">
+  y<sub>a,j</sub>(v) ∝ exp( −‖v − c<sub>a,j</sub>‖² / 2σ² )，v ∈ 𝒩(c<sub>a,j</sub>)，Σ<sub>v</sub> y<sub>a,j</sub>(v) = 1；&nbsp; σ = 1
+</div>
+<p>注意分工：<strong>y 说"该匹配到哪"，w 说"这条监督算几分"</strong>。y 保留的是教师导出的对应位置本身，而不是复现教师的完整注意力分布——后者会把教师自身的噪声模式也搬进学生。</p>
+
+<div class="callout tip">
+  <span class="co-title">设计取舍：为什么不直接 KL(教师注意力 ‖ 学生注意力)？</span>
+  <p>三个理由：① 教师注意力的完整分布包含大量与"对应"无关的模式（比如对特殊 token 的注意力），搬过来是过度约束；② 蒸馏目标是"关系知识"——位置对上即可，形状不必像；③ 分布级匹配会让学生的匹配分布被拉向教师的多峰歧义，而 GAD 实验证明（Table 5）置信度 + 软目标的组合显著优于不加权地全盘接受教师信号（不加权时 M<sub>rate</sub> 甚至低于基线）。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch7">
+<h2><span class="ch-no">07</span>组件二：噪声时间步路由</h2>
+<p class="ch-intro">"在结构正在形成的那一层施加监督。"这是把第 4 章的观察变成机制的一步，也是消融实验中收益最大的单一设计。</p>
+
+<h3>7.1 路由规则</h3>
+<p>设模型噪声时间步 t ∈ [0, 1000]（越大越噪），给定区间边界 0 = b₀ &lt; ⋯ &lt; b<sub>K</sub> = 1000，按时间步把样本路由到监督层：</p>
+<div class="formula">
+  ℓ(t) = l<sub>k</sub> &nbsp; 当 &nbsp; b<sub>k−1</sub> ≤ t &lt; b<sub>k</sub>，k = 1, …, K
+  <span class="eqno">Eq. 2</span>
+  <span class="note-below">K 个噪声区间，每区间指派一个学生层 l<sub>k</sub>；最后一个区间含 t = 1000。每个训练样本只在一层受监督。</span>
+</div>
+<p>论文在<strong>全部三个底座、静态与动态两种设定</strong>中用同一张路由表（层编号零起点；边界值归属更高噪声区间）：</p>
+<table class="tbl">
+  <tr><th>噪声区间</th><th class="ctr">监督层</th><th>直觉</th></tr>
+  <tr><td class="num">t &lt; 850（低噪声）</td><td class="ctr"><b>L5（浅层）</b></td><td>结构形成区已移到浅层，在那里教</td></tr>
+  <tr><td class="num">850 ≤ t &lt; 950（中噪声）</td><td class="ctr"><b>L15（中层）</b></td><td>结构形成区在中层</td></tr>
+  <tr><td class="num">t ≥ 950（高噪声）</td><td class="ctr"><b>L25（深层）</b></td><td>结构形成区在深层</td></tr>
+</table>
+<p>注意 t 是<strong>网络实际看到的模型噪声时间步</strong>（Wan 调度器应用噪声表之后的值），对应归一化插值系数 s = t/1000，而不是训练迭代的整数步号。路由发生在<strong>训练采样层面</strong>：每个样本抽一个 t，就确定了唯一的监督层。</p>
+
+<h3>7.2 为什么必须是"噪声 × 深度"二维对齐</h3>
+<p>固定层的三种选择（R2–R4：全程 L5 / L15 / L25）都能比基线好——说明对应监督本身有价值；但都显著劣于路由（R8）。更说明问题的是"错配"的三个变体：</p>
+<ul>
+  <li><strong>R5</strong>（只在 t≥900 用 L5）：高噪声时结构在深层形成，跑去浅层教 → 几乎白教；</li>
+  <li><strong>R6</strong>（只在 t&lt;900 用 L25）：低噪声时结构在浅层形成，在深层教 → 接近无效；</li>
+  <li><strong>R7</strong>（低噪声→L25、高噪声→L5，方向反着路由）→ 同样差。</li>
+</ul>
+<p><strong>只有"噪声越高、层越深"的正确方向路由（R8）拿到全部收益</strong>（R<sub>dist</sub> 4.89 vs 固定层最好 6.54，基线 9.57；完整数字见第 11.4 节）。这组消融是"结构形成带随噪声移动"这一观察最硬的证据。</p>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch8">
+<h2><span class="ch-no">08</span>组件三：学生对应监督</h2>
+<p class="ch-intro">两个子问题：学生拿什么当"匹配分布"（Eq.10 头聚合门控），以及这个分布怎么和软目标比对（Eq.3 逐对应 CE + pairwise/trackwise 两种聚合）。</p>
+
+<h3>8.1 学生的匹配分布：多头聚合门控</h3>
+<p>在路由层 ℓ(t)，取<strong>归一化 + RoPE 之后</strong>的每头 query/key。第 h 头的原始关系分数为点积：</p>
+<div class="formula">
+  r<sup>h</sup><sub>a,j</sub>(v) = ⟨𝐪<sup>ℓ,h</sup><sub>a</sub>, 𝐤<sup>ℓ,h</sup><sub>j,v</sub>⟩ / √d
+  <span class="eqno">Eq. 10（上）</span>
+</div>
+<p>哪些头擅长"几何匹配"因层而异，且训练中会漂移，所以不能手工固定头权重。GAD 借鉴 CAMEO，给每个监督层配一个<strong>轻量门控 MLP g<sub>φ</sub></strong>：以 H 维的头分数向量为输入，输出 H 维权重，对 query-key 对逐个计算：</p>
+<div class="formula">
+  𝜶<sub>a,j</sub>(v) = softmax( g<sub>φ</sub>( 𝐫<sub>a,j</sub>(v) ) )，&nbsp;&nbsp;
+  s<sub>a,j</sub>(v) = (1/τ) Σ<sub>h=1..H</sub> 𝜶<sup>h</sup><sub>a,j</sub>(v) · r<sup>h</sup><sub>a,j</sub>(v)，&nbsp;&nbsp;
+  P<sub>a,j</sub>(v | 𝒦) = exp s<sub>a,j</sub>(v) / Σ<sub>v′∈𝒦</sub> exp s<sub>a,j</sub>(v′)
+  <span class="eqno">Eq. 10（下）</span>
+  <span class="note-below">d：头维；H：头数；τ=1；g<sub>φ</sub>：H→4H→H 两层 MLP，GELU 激活，<strong>末层零初始化</strong>（初始时头权重均匀）。每个监督层一个独立门控。辅助 logits 与聚合在 FP32 中计算。门控作用于逐 query-key 分数，<strong>不替代</strong>生成用的注意力运算。</span>
+</div>
+<div class="callout note">
+  <span class="co-title">零初始化的妙处</span>
+  <p>末层线性零初始化 ⇒ 初始 α = softmax(0) = 均匀分布 ⇒ 初始的聚合分数就是"头平均"。蒸馏信号从头平均出发，让门控自己学着偏向几何能力强的头——一个平滑的、无先验偏置的起点，和 ControlNet 的零卷积、adaLN 的零初始化是同一类工程智慧。</p>
+</div>
+
+<h3>8.2 逐对应交叉熵</h3>
+<p>对每个源-目标帧关系 (a, j)，候选集合 𝒦 必须包含完整正样本邻域 𝒩(c<sub>a,j</sub>) ⊆ 𝒦。损失是软目标与学生在候选上的分布的交叉熵：</p>
+<div class="formula">
+  𝓛<sub>corr</sub>(a, j; 𝒦) = − Σ<sub>v∈𝒩(c<sub>a,j</sub>)</sub> y<sub>a,j</sub>(v) · log P<sub>a,j</sub>(v | 𝒦)
+  <span class="eqno">Eq. 3</span>
+  <span class="note-below">聚合多个 (a, j) 的逐对应损失时，用可靠性权重 w<sub>a,j</sub> 控制每条对应的相对贡献。</span>
+</div>
+
+<h3>8.3 成对监督（Pairwise）：管"帧内空间判别"</h3>
+<p><strong>采样</strong>：不重复地采样有效有向帧对（排除同帧对）；每对内从"有有效缓存对应"的 token 里不重复均匀采样源查询。每个选中的查询与目标帧<strong>全部空间 token Ω<sub>j</sub></strong> 比较——给足完整的空间备选，逼迫学生在整帧里做判别。预算不足时用掩码补齐。</p>
+<p><strong>难负样本项</strong>：softmax(·|Ω<sub>j</sub>) 已经隐式对比了全部 token，但论文再加一个显式的难负对比项——用学生自己的 logits 选出正邻域之外得分最高的 Top-K<sub>neg</sub> 个负样本：</p>
+<div class="formula">
+  Z<sup>+</sup><sub>a,j</sub> = Σ<sub>v∈𝒩(c<sub>a,j</sub>)</sub> y<sub>a,j</sub>(v) · exp s<sub>a,j</sub>(v)，&nbsp;&nbsp;&nbsp;
+  Z<sup>−</sup><sub>a,j</sub> = Σ<sub>v∈Top-K<sub>neg</sub>(Ω<sub>j</sub>∖𝒩)</sub> exp s<sub>a,j</sub>(v)，&nbsp;&nbsp;&nbsp;
+  𝓛<sub>hard</sub>(a, j) = − log ( Z<sup>+</sup><sub>a,j</sub> / (Z<sup>+</sup><sub>a,j</sub> + Z<sup>−</sup><sub>a,j</sub>) )
+  <span class="eqno">Eq. 6</span>
+  <span class="note-below">Top-K<sub>neg</sub> 用学生 logits 选，K<sub>neg</sub> = 64；难负系数 η = 0.1。正目标在有效网格邻域内归一化，无效边界位置剔除。</span>
+</div>
+<p><strong>成对损失的聚合</strong>（𝒫 为采样的有效关系集合）：</p>
+<div class="formula">
+  𝓛<sub>pair</sub> = Σ<sub>(a,j)∈𝒫</sub> w<sub>a,j</sub> · [ 𝓛<sub>corr</sub>(a, j; Ω<sub>j</sub>) + η · 𝓛<sub>hard</sub>(a, j) ] &nbsp;/&nbsp; Σ<sub>(a,j)∈𝒫</sub> w<sub>a,j</sub>
+  <span class="eqno">Eq. 5</span>
+  <span class="note-below">置信度加权平均：不可靠对应的损失权重自动被压低。</span>
+</div>
+
+<h3>8.4 轨迹监督（Trackwise）：管"跨时间覆盖"</h3>
+<p><strong>采样</strong>：先采样一个含合格源 token 的源帧；源 token 要求在<strong>至少两个其他帧</strong>有有效对应（这样才成"轨迹"）。每个源 a 匹配它<strong>全部</strong>有效目标帧 𝒥<sub>a</sub>（排除自身帧）。每个 (a, j) 的候选集 𝒦<sub>a,j</sub> = 正邻域 + 从邻域外不重复均匀采样的随机负样本——<strong>不用整帧全部 token</strong>，把算力花在时间维度上。</p>
+<div class="formula">
+  𝓛̄<sub>corr,a</sub> = Σ<sub>j∈𝒥<sub>a</sub></sub> w<sub>a,j</sub> · 𝓛<sub>corr</sub>(a, j; 𝒦<sub>a,j</sub>) / Σ<sub>j∈𝒥<sub>a</sub></sub> w<sub>a,j</sub>，&nbsp;&nbsp;&nbsp;
+  w̄<sub>a</sub> = (1/|𝒥<sub>a</sub>|) Σ<sub>j∈𝒥<sub>a</sub></sub> w<sub>a,j</sub>
+  <span class="eqno">Eq. 7（上）</span>
+  <span class="note-below">源内：先对目标帧做置信度加权平均；源间：以平均置信度 w̄<sub>a</sub> 为权重再平均（Eq. 7 下：𝓛<sub>track</sub> = Σ w̄<sub>a</sub>𝓛̄<sub>corr,a</sub> / Σ w̄<sub>a</sub>）。均匀置信度时每个源贡献其目标帧平均损失、与轨迹长短无关；非均匀时，不可靠目标帧在源内降权、平均置信度低的源整体降权。空集产生零辅助损失，实现中对分母做 clamp。</span>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" font-family="PingFang SC,Microsoft YaHei,sans-serif">
+  <defs>
+    <marker id="ar2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <polygon points="0 0, 7 3, 0 6" fill="#9a93c9"/>
+    </marker>
+  </defs>
+  <text x="440" y="24" text-anchor="middle" font-size="15" font-weight="800" fill="#24292f">两种互补的监督采样</text>
+  <!-- 左：pairwise -->
+  <g>
+    <text x="215" y="52" text-anchor="middle" font-size="13" font-weight="700" fill="#4636c4">Pairwise（成对）</text>
+    <!-- 源帧 -->
+    <rect x="60" y="66" width="130" height="90" rx="8" fill="#ffffff" stroke="#7c6cf0" stroke-width="1.6"/>
+    <text x="125" y="84" text-anchor="middle" font-size="12" font-weight="700">源帧 i</text>
+    <g fill="#5845e6">
+      <circle cx="95" cy="105" r="4"/><circle cx="120" cy="98" r="4"/><circle cx="142" cy="112" r="4"/>
+      <circle cx="105" cy="128" r="4"/><circle cx="135" cy="132" r="4"/>
+    </g>
+    <text x="125" y="152" text-anchor="middle" font-size="10.5" fill="#5a6070">采样 ≤256 个源查询</text>
+    <!-- 目标帧 -->
+    <rect x="240" y="66" width="130" height="90" rx="8" fill="#ffffff" stroke="#7c6cf0" stroke-width="1.6"/>
+    <text x="305" y="84" text-anchor="middle" font-size="12" font-weight="700">目标帧 j</text>
+    <g fill="#e5e7eb">
+      <circle cx="262" cy="100" r="3.2"/><circle cx="283" cy="100" r="3.2"/><circle cx="304" cy="100" r="3.2"/><circle cx="325" cy="100" r="3.2"/><circle cx="346" cy="100" r="3.2"/>
+      <circle cx="262" cy="116" r="3.2"/><circle cx="346" cy="116" r="3.2"/>
+      <circle cx="262" cy="132" r="3.2"/><circle cx="283" cy="132" r="3.2"/><circle cx="325" cy="132" r="3.2"/><circle cx="346" cy="132" r="3.2"/>
+    </g>
+    <circle cx="304" cy="116" r="5" fill="#10b981"/>
+    <g fill="none" stroke="#10b981" stroke-width="1.6">
+      <circle cx="283" cy="116" r="5"/><circle cx="325" cy="116" r="5"/><circle cx="304" cy="100" r="5"/><circle cx="304" cy="132" r="5"/>
+    </g>
+    <g fill="#ef4444"><circle cx="262" cy="116" r="4"/><circle cx="346" cy="100" r="4"/><circle cx="325" cy="100" r="4"/></g>
+    <text x="305" y="152" text-anchor="middle" font-size="10.5" fill="#5a6070">全部 token 做候选 + Top-64 难负</text>
+    <path d="M 192 110 L 236 110" stroke="#9a93c9" stroke-width="2" marker-end="url(#ar2)"/>
+    <text x="215" y="182" text-anchor="middle" font-size="11.5" fill="#24292f">≤32 个有向帧对 × 256 查询</text>
+    <text x="215" y="200" text-anchor="middle" font-size="11.5" fill="#047857" font-weight="700">→ 空间判别力</text>
+  </g>
+  <!-- 分隔线 -->
+  <line x1="440" y1="60" x2="440" y2="290" stroke="#e3e4ec" stroke-width="1.5"/>
+  <!-- 右：trackwise -->
+  <g>
+    <text x="655" y="52" text-anchor="middle" font-size="13" font-weight="700" fill="#b45309">Trackwise（轨迹）</text>
+    <rect x="480" y="66" width="100" height="90" rx="8" fill="#ffffff" stroke="#d97706" stroke-width="1.6"/>
+    <text x="530" y="84" text-anchor="middle" font-size="12" font-weight="700">源帧 i</text>
+    <circle cx="530" cy="112" r="5" fill="#5845e6"/>
+    <text x="530" y="152" text-anchor="middle" font-size="10.5" fill="#5a6070">1 个源 token</text>
+    <g>
+      <rect x="620" y="62" width="80" height="56" rx="8" fill="#ffffff" stroke="#d97706"/>
+      <text x="660" y="78" text-anchor="middle" font-size="11.5" font-weight="700">目标 j₁</text>
+      <circle cx="660" cy="100" r="4.5" fill="#10b981"/>
+      <g fill="#e5e7eb"><circle cx="638" cy="92" r="3"/><circle cx="682" cy="92" r="3"/><circle cx="638" cy="106" r="3"/><circle cx="682" cy="106" r="3"/></g>
+      <rect x="620" y="128" width="80" height="56" rx="8" fill="#ffffff" stroke="#d97706"/>
+      <text x="660" y="144" text-anchor="middle" font-size="11.5" font-weight="700">目标 j₂</text>
+      <circle cx="648" cy="166" r="4.5" fill="#10b981"/>
+      <g fill="#e5e7eb"><circle cx="626" cy="158" r="3"/><circle cx="670" cy="158" r="3"/><circle cx="690" cy="170" r="3"/></g>
+      <rect x="716" y="62" width="80" height="56" rx="8" fill="#ffffff" stroke="#d97706"/>
+      <text x="756" y="78" text-anchor="middle" font-size="11.5" font-weight="700">目标 j₃</text>
+      <circle cx="742" cy="100" r="4.5" fill="#10b981"/>
+      <g fill="#e5e7eb"><circle cx="726" cy="106" r="3"/><circle cx="762" cy="92" r="3"/><circle cx="782" cy="104" r="3"/></g>
+      <rect x="716" y="128" width="80" height="56" rx="8" fill="#ffffff" stroke="#d97706"/>
+      <text x="756" y="144" text-anchor="middle" font-size="11.5" font-weight="700">目标 j₄</text>
+      <circle cx="768" cy="166" r="4.5" fill="#10b981"/>
+      <g fill="#e5e7eb"><circle cx="730" cy="162" r="3"/><circle cx="752" cy="172" r="3"/><circle cx="784" cy="156" r="3"/></g>
+    </g>
+    <g stroke="#9a93c9" stroke-width="1.8" marker-end="url(#ar2)">
+      <line x1="584" y1="96" x2="616" y2="92"/><line x1="584" y1="106" x2="616" y2="152"/>
+      <line x1="584" y1="118" x2="712" y2="92"/><line x1="584" y1="128" x2="712" y2="152"/>
+    </g>
+    <text x="655" y="208" text-anchor="middle" font-size="11.5" fill="#24292f">≤256 个源（每个须在 ≥2 帧有效）× 128 随机负</text>
+    <text x="655" y="226" text-anchor="middle" font-size="11.5" fill="#b45309" font-weight="700">→ 时间覆盖（一条"轨迹"）</text>
+  </g>
+  <!-- 底部说明 -->
+  <rect x="60" y="248" width="760" height="58" rx="10" fill="#f5f3ff" stroke="#5845e6"/>
+  <text x="440" y="270" text-anchor="middle" font-size="12" fill="#24292f"><tspan font-weight="700" fill="#4636c4">Pairwise</tspan>：一个源 → 一帧的全部候选（贵，但空间对比最完整）</text>
+  <text x="440" y="292" text-anchor="middle" font-size="12" fill="#24292f"><tspan font-weight="700" fill="#b45309">Trackwise</tspan>：一个源 → 多帧的邻域+负样本（省，把预算花在时间跨度上）——两者均只算采样到的子集，从不构造全帧注意力矩阵</text>
+</svg>
+<p class="figcap"><b>图 8-1：</b>两种监督采样的互补分工。绿色为高斯软目标的 3×3 正邻域，红色为难负样本，灰色为随机负样本。数字为"pairwise + trackwise 联合训练"时的默认预算（每训练样本、每个路由层）。</p>
+</div>
+
+<h3>8.5 两支怎么合：系数归一化约定</h3>
+<p>实现上用总辅助系数 λ<sub>aux</sub> 与两支相对权重 β 来表达 Eq.4 中的 λ₁、λ₂：</p>
+<div class="formula">
+  λ₁ = λ<sub>aux</sub> · β<sub>pair</sub> / (β<sub>pair</sub> + β<sub>track</sub>)，&nbsp;&nbsp;&nbsp;&nbsp;
+  λ₂ = λ<sub>aux</sub> · β<sub>track</sub> / (β<sub>pair</sub> + β<sub>track</sub>)
+  <span class="eqno">Eq. 8</span>
+  <span class="note-below">仅一支有效时权重在活跃支上重归一化（该支系数 = λ<sub>aux</sub>）；两支皆无有效监督时辅助损失为零。实验全部使用 λ<sub>aux</sub> = 0.05、β<sub>pair</sub> = β<sub>track</sub> = 1，即 λ₁ = λ₂ = 0.025。</span>
+</div>
+<div class="callout tip">
+  <span class="co-title">为什么两支都要</span>
+  <p>消融（Table 5，Wan2.2 5B @ DL3DV）：CAT+PWS 单独把 R<sub>dist</sub> 从 9.57 拉到 5.31，CAT+TWS 拉到 6.03；两者合用拿到 4.89，且七项指标全场最佳。成对监督提供"在整帧空间里分辨正确位置"的判别压力，轨迹监督提供"同一元素跨多帧一致关联"的时间压力——各自补对方的盲区。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section id="ch9">
+<h2><span class="ch-no">09</span>整体训练流程</h2>
+<p class="ch-intro">所有组件拼装：先缓存、再逐样本路由、双损失 + 流匹配联合优化；训完即丢弃全部辅助件。</p>
+
+<h3>9.1 总目标</h3>
+<div class="formula">
+  𝓛<sub>total</sub> = 𝓛<sub>FM</sub> + λ₁ · 𝓛<sub>pair</sub> + λ₂ · 𝓛<sub>track</sub>
+  <span class="eqno">Eq. 4</span>
+  <span class="note-below">两个对应损失都在路由层 ℓ(t) 上计算；对训练样本与噪声水平的平均隐含其中。流匹配继续训练主干的去噪速度预测，对应损失引导跨帧关联。</span>
+</div>
+<p>流匹配项按主干的噪声采样与损失权重 ρ(t) 保留，写进模型时间步坐标：</p>
+<div class="formula">
+  𝓛<sub>FM</sub> = 𝔼<sub>z₀, ε, t</sub> [ ρ(t) · ‖ v<sub>θ</sub>(z<sub>t</sub>, t, 𝐜) − (ε − z₀) ‖²₂ ]
+  <span class="eqno">Eq. 11</span>
+  <span class="note-below">z<sub>t</sub> = (1−s)z₀ + sε，s = t/1000；𝐜 = 首帧 + 文本 + 目标相机轨迹（首帧条件机制训练与推理均保留）。</span>
+</div>
+
+<h3>9.2 每个训练迭代的完整时序</h3>
+<div class="flow">
+  <b>① 离线</b> 教师对应缓存 (c, m, w, y) <span class="tag">每 clip 一次 · VGGT-Ω 冻结</span><br>
+  <b>② 采样</b> clip → 抽 t ~ 噪声分布 → 构造 z<sub>t</sub> <span class="tag">s = t/1000</span><br>
+  <b>③ 路由</b> ℓ(t)：t&lt;850→L5 · 850≤t&lt;950→L15 · t≥950→L25 <span class="tag">每样本唯一层</span><br>
+  <b>④ 前向</b> Wan DiT 前向（不改结构）→ 在 ℓ(t) 捕获 norm+RoPE 后的 Q/K <span class="tag">hook 实现</span><br>
+  <b>⑤ 蒸馏</b> 门控 g<sub>φ</sub> 聚合 → logits s → 候选 softmax → P <span class="tag">FP32 · τ=1</span><br>
+  <b>⑥ 损失</b> 𝓛<sub>FM</sub> + 0.025·𝓛<sub>pair</sub> + 0.025·𝓛<sub>track</sub> <span class="tag">Eq.4 + Eq.8</span><br>
+  <b>⑦ 更新</b> AdamW 反传：DiT + 门控 MLP（文本编码器 / VAE / 教师冻结）
+</div>
+
+<h3>9.3 训练配置速览</h3>
+<table class="tbl">
+  <tr><th>项</th><th>配置</th></tr>
+  <tr><td>数据</td><td>35K clips：RealEstate10K + DL3DV-10K + OmniWorld-Game（游戏子集）</td></tr>
+  <tr><td>分辨率 / 帧数</td><td class="num">832×480；长程 241 帧（15s）/ 时长实验 161 帧（10s）/ 动态 81 帧（5s），16 fps</td></tr>
+  <tr><td>硬件 / 轮数</td><td class="num">32 × NVIDIA A800，10 epochs</td></tr>
+  <tr><td>优化器 / 学习率</td><td class="num">AdamW，1e-5；微调视频 DiT + 聚合 MLP</td></tr>
+  <tr><td>冻结</td><td>文本编码器、VAE、VGGT-Ω 教师</td></tr>
+  <tr><td>损失权重</td><td class="num">λ<sub>aux</sub>=0.05，β<sub>pair</sub>=β<sub>track</sub>=1 → λ₁=λ₂=0.025</td></tr>
+  <tr><td>对照设定</td><td>每个任务/时长各训一对 Wan(纯FM) 与 GAD(同一初始化/数据/优化器/有效批大小/时长)</td></tr>
+</table>
+
+<div class="callout note">
+  <span class="co-title">推理：什么都没变</span>
+  <p>训练结束后加载的只有微调过的 DiT 权重（以及可选的门控权重——但推理根本不用它）。注意力计算、采样步数、CFG、调度全部保持原样；没有教师、没有缓存、没有逐帧几何推理。<strong>Table 2 实测：峰值显存与基线完全相同，运行时间差异在 run-to-run 抖动范围内</strong>。这与显式几何条件类方法（Gen3C/Voyager 推理时间分别为 Wan 的 ~4.8×/15×）形成鲜明对比。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="ch10">
+<h2><span class="ch-no">10</span>实现细节与超参汇总</h2>
+
+<p>本章把散落在正文与附录 A/B/C 中的全部实现细节压缩成四张速查表，并在最后给出一份“复现检查清单”——这些细节大多<strong>不出现在方法示意图里，却直接决定复现成败</strong>。</p>
+
+<h3>10.1 教师流水线（VGGT-Ω → 标签缓存）</h3>
+<table class="tbl">
+  <tr><th>环节</th><th>设定</th><th>出处</th></tr>
+  <tr><td>教师模型</td><td>VGGT-Ω 1B（512 分辨率检查点），全程冻结，推理模式提取</td><td class="num">B.1</td></tr>
+  <tr><td>注意力源</td><td>全局注意力 <strong>第 13 层 · 第 10 头</strong>（零起点计数）</td><td class="num">4.1</td></tr>
+  <tr><td>归一化方式</td><td>注意力在<strong>全部输入 token（含相机/注册等特殊 token）上联合 softmax</strong>；先对全 token 算，再截取 patch 块——保证目标分布 sum=1</td><td class="num">B.1</td></tr>
+  <tr><td>质量分数 m</td><td>patch token 上的注意力质量（第 4 章定义），与分布 c <strong>分开存储</strong></td><td class="num">B.1</td></tr>
+  <tr><td>视图子采样</td><td>4n+1 个学生帧 → 代表帧 [0, 2, 6, …, 4n−2] → n+1 个教师视图（241→61）</td><td class="num">B.1</td></tr>
+  <tr><td>源查询对齐</td><td>教师网格上的查询位置<strong>重采样到学生网格后再归一化</strong>（学生视角的对应必须落在学生的 patch 中心）</td><td class="num">B.1</td></tr>
+  <tr><td>条件图对齐</td><td>条件帧注意力图重采样到学生网格 + 重新归一化后取 argmax（3×3 邻域软目标在高分辨率学生网格上构建）</td><td class="num">B.1</td></tr>
+  <tr><td>缓存内容</td><td>只存 (c, m) + 元数据（源帧、像素偏移、网格尺寸、层/头编号）——<strong>不存教师激活</strong></td><td class="num">B.1</td></tr>
+  <tr><td>短前缀规则</td><td>读长前缀缓存时 m 沿用原值<strong>不重算</strong>（保留原上下文的归一化语义）</td><td class="num">B.1</td></tr>
+</table>
+
+<h3>10.2 路由与头聚合门控</h3>
+<table class="tbl">
+  <tr><th>组件</th><th>设定</th><th>出处</th></tr>
+  <tr><td>时间步坐标</td><td>t 为 Wan 调度器的<strong>模型噪声时间步 [0,1000]</strong>，不是采样步索引</td><td class="num">A.2</td></tr>
+  <tr class="hl"><td>路由规则 (Eq.2)</td><td class="num">t&lt;850 → L5；850≤t&lt;950 → L15；t≥950 → L25（<strong>边界归高噪声区间</strong>）</td><td class="num">A.2</td></tr>
+  <tr><td>门控输入</td><td>每个 (query, key) 对的 H 维头内积分数向量 r = ⟨q<sub>h</sub>, k<sub>h</sub>⟩（逐对，不是逐头求和）</td><td class="num">B.2</td></tr>
+  <tr><td>门控结构</td><td>MLP：H → 4H → H，GELU；每层独立参数</td><td class="num">B.2</td></tr>
+  <tr class="hl"><td>初始化</td><td><strong>末层权重零初始化</strong> → 初始 logits 全 0 → softmax(0) = 均匀头权重：训练起步等价于“平均所有头”，由梯度逐步学出偏置</td><td class="num">B.2</td></tr>
+  <tr><td>数值精度</td><td>门控及分数计算全程 FP32</td><td class="num">B.2</td></tr>
+  <tr><td>温度</td><td>τ = 1（Eq.10 分母）</td><td class="num">A.2</td></tr>
+</table>
+
+<h3>10.3 监督采样与损失超参</h3>
+<table class="tbl">
+  <tr><th>项</th><th>联合采样（默认）</th><th>单支消融</th></tr>
+  <tr><td>pairwise 对数 × 每对查询</td><td class="num">≤32 有向帧对 × 256 查询（覆盖目标帧全部空间 token）</td><td class="num">pairwise-only：≤128 对 × 320 查询</td></tr>
+  <tr><td>trackwise 源帧 × 负目标</td><td class="num">≤256 源帧 × 128 随机负帧</td><td class="num">trackwise-only：≤384 源 × 192 负</td></tr>
+  <tr><td>源帧资格</td><td colspan="2">须有 ≥2 个有效目标帧（含正/难负目标）</td></tr>
+  <tr><td>难负采样</td><td colspan="2">Top-64，按<strong>学生</strong> logits 排序（模型自身觉得“像”的才值得当负例）</td></tr>
+  <tr><td>pairwise 边际 (Eq.6)</td><td colspan="2" class="num">η = 0.1</td></tr>
+  <tr><td>软目标 (Eq.4)</td><td colspan="2" class="num">3×3 高斯邻域，σ = 1（token 单位）；出界剔除后归一化</td></tr>
+  <tr><td>置信度权重 (Eq.9)</td><td colspan="2" class="num">w = χ·[sigmoid((log₂(max(m,ε))−μ)/κ)]<sup>γ</sup>，ε=2<sup>−20</sup>，γ=2</td></tr>
+  <tr><td>标定参数 (μ, κ)</td><td colspan="2" class="num">30×52：(−9.86777, 1.81857)；15×26：(−9.75580, 1.59004)</td></tr>
+  <tr><td>总损失 (Eq.8)</td><td colspan="2" class="num">λ<sub>aux</sub>=0.05，β=1/1 → λ₁=λ₂=0.025；单支时活动支权重 0.05（重归一化）</td></tr>
+</table>
+
+<div class="callout tip">
+  <span class="co-title">为什么置信度标定值得一个附录</span>
+  <p>Eq.9 的 (μ, κ) 不是拍脑袋常数：作者在 55 个 DL3DV 场景（48 随机 + 7 困难）上构造了 803 个人工对应判断（401 可见 / 172 不可见，230 个“不确定”被剔除），以注意力 mass 为唯一特征、按可见性做类平衡 logistic 回归，并用<strong>按场景分组的 5 折交叉验证</strong>验证泛化（ROC-AUC 0.903/0.932）。换特征（加 entropy、top-1 概率）几乎不变（0.910/0.933）——mass 已经携带了几乎全部可用信号。这套流程意味着：<strong>换教师或换分辨率后，(μ, κ) 应当重新标定，而不是照抄数字</strong>。</p>
+</div>
+
+<h3>10.4 训练与评测协议</h3>
+<table class="tbl">
+  <tr><th>项</th><th>设定</th><th>出处</th></tr>
+  <tr><td>训练目标 (Eq.11)</td><td>流匹配：z<sub>t</sub>=(1−s)z₀+sε，s=t/1000，预测方向 ε−z₀，保留底座 ρ(t)</td><td class="num">C.1</td></tr>
+  <tr><td>监督层</td><td class="num">L5 / L15 / L25（1.3B 与 14B 相同；Wan2.2-5B 按比例对应）</td><td class="num">4.2</td></tr>
+  <tr><td>任务/时长</td><td>每个任务与时长<strong>单独训练</strong>一对 Wan / GAD（同初始化、同数据、同优化器、同有效批大小）</td><td class="num">C.1</td></tr>
+  <tr><td>FID</td><td>Inception 2048 维；帧 4, 8, …, T−1（<strong>排除首条件帧</strong>）；全集池化</td><td class="num">C.3</td></tr>
+  <tr><td>FVD</td><td>I3D 400 维，全集级</td><td class="num">C.3</td></tr>
+  <tr><td>CLIP 分数</td><td>ViT-B/32，每 4 帧一次，max(100·cos, 0)</td><td class="num">C.3</td></tr>
+  <tr><td>R_dist / T_dist</td><td>DepthAnything3 深度 + 相机；相对首帧相机；平移按最大距离归一化，旋转测地距离（度）</td><td class="num">C.3</td></tr>
+  <tr><td>M_rate / M_dist</td><td>LoMa-B（每帧 ≤2048 关键点；源位置 20px 内关联且每源只消费一次；命中需目标位置差 &lt;20px；数据集级按计数/距离和聚合）</td><td class="num">C.3</td></tr>
+  <tr><td>VBench</td><td>五维 custom-input（Subject/Bg/Motion/Aesth/ImageQ），生成与 GT 分开评测</td><td class="num">C.3</td></tr>
+  <tr><td>成本测量</td><td>单卡 A800、三场景顺序执行；Wan 系：81 帧 / 50 步 / CFG 5 / seed 0</td><td class="num">C.4</td></tr>
+</table>
+
+<div class="callout warn">
+  <span class="co-title">复现检查清单（论文附录里最容易踩的坑）</span>
+  <p>① 路由边界 <strong>850/950 归高噪声区间</strong>（850 算 L15、950 算 L25）；② t 用<strong>模型噪声时间步</strong>（0–1000 连续值），不是去噪循环的步索引；③ 教师注意力必须在<strong>全 token 联合 softmax 之后</strong>再截 patch 块，先截后归一化会让分布 sum&gt;1；④ 门控<strong>FP32 + 末层零初始化</strong>，零初始化的语义是“初始均匀头权重”；⑤ 读长前缀缓存时 m <strong>不重算</strong>；⑥ 单支消融要切换采样预算（128×320 / 384×192），不是简单把一支权重清零。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="ch11">
+<h2><span class="ch-no">11</span>实验与结果</h2>
+
+<h3>11.1 实验设置</h3>
+<table class="tbl">
+  <tr><th>项</th><th>设定</th></tr>
+  <tr><td>基准任务</td><td>长程场景级视频生成：RE10K 与 DL3DV 上 15s/241 帧单目视频；OmniWorld-Game 上动态场景 5s/81 帧</td></tr>
+  <tr><td>底座</td><td class="num">Wan2.1-1.3B / Wan2.1-14B / Wan2.2-5B（I2V，条件为首帧）</td></tr>
+  <tr><td>几何基线</td><td>Gen3R（自回归多视图）、Voyager（分块世界模型）、Gen3C（显式 3D 点云条件）、Uni3C（点云条件+一致性校准）</td></tr>
+  <tr><td>指标</td><td>外观：FID / FVD / CLIP；几何：R_dist（旋转）/ T_dist（平移）/ M_rate（跟踪命中率）/ M_dist（跟踪误差）</td></tr>
+</table>
+
+<div class="callout note">
+  <span class="co-title">基线适配与相机尺度校正（附录 C.2）</span>
+  <p>为了让比较公平，各基线按各自的最佳长视频用法适配：Gen3R 以 3×49 帧滑窗生成后按<strong>最近时间戳重采样</strong>对齐 241 帧；Voyager / Uni3C 用 3×81 帧分段（81+80+80=241，Voyager 每段去掉 4 帧内部前缀）；Gen3C 用其原生长视频路径。此外，不同方法估计的相机轨迹尺度不可比，论文用真实数据统计了成对尺度因子做校正（只影响平移）：VIPE→MoGe ≈ 0.370913；COLMAP→DA3 逐场景估计 × DA3→MoGe ≈ 0.632710；OmniWorld 上 Gen3C/Voyager 用 0.227987、Uni3C 用 0.597926。<strong>不做这一步，T_dist 的跨方法比较毫无意义</strong>——这也是该领域不少论文数字互相矛盾的一个隐藏原因。</p>
+</div>
+
+<h3>11.2 主结果：长程场景级生成（Table 1）</h3>
+
+<p><strong>RE10K（15s / 241 帧）</strong>，每格从左到右：FID↓ FVD↓ CLIP↑ R_dist↓ T_dist↓ M_rate↑ M_dist↓</p>
+<table class="tbl">
+  <tr><th>方法</th><th>FID↓</th><th>FVD↓</th><th>CLIP↑</th><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th></tr>
+  <tr><td>GF（首帧复制）</td><td class="num">61.46</td><td class="num">464.8</td><td class="num">30.03</td><td class="num">6.229</td><td class="num">0.134</td><td class="num">0.188</td><td class="num">55.66</td></tr>
+  <tr><td>Gen3R</td><td class="num">33.35</td><td class="num">305.3</td><td class="num">30.88</td><td class="num">5.167</td><td class="num">0.103</td><td class="num">0.321</td><td class="num">36.52</td></tr>
+  <tr><td>Voyager</td><td class="num">58.38</td><td class="num">410.3</td><td class="num">30.47</td><td class="num">4.779</td><td class="num">0.099</td><td class="num">0.334</td><td class="num">33.01</td></tr>
+  <tr><td>Gen3C</td><td class="num">31.07</td><td class="num">264.7</td><td class="num">31.11</td><td class="num">4.288</td><td class="num">0.076</td><td class="num">0.315</td><td class="num">35.07</td></tr>
+  <tr><td>Uni3C</td><td class="num">34.46</td><td class="num">289.6</td><td class="num">31.32</td><td class="num">5.146</td><td class="num">0.096</td><td class="num">0.384</td><td class="num">32.11</td></tr>
+  <tr><td>Wan2.1 1.3B</td><td class="num">30.83</td><td class="num">267.4</td><td class="num">31.11</td><td class="num">7.236</td><td class="num">0.162</td><td class="num">0.336</td><td class="num">38.19</td></tr>
+  <tr class="hl"><td>1.3B + GAD</td><td class="num">30.53</td><td class="num">259.0</td><td class="num">31.69</td><td class="num">4.734</td><td class="num">0.093</td><td class="num">0.387</td><td class="num">32.16</td></tr>
+  <tr><td>Wan2.2 5B</td><td class="num">31.32</td><td class="num">258.8</td><td class="num">31.77</td><td class="num">6.705</td><td class="num">0.175</td><td class="num">0.263</td><td class="num">45.53</td></tr>
+  <tr class="hl"><td>5B + GAD</td><td class="num">29.20</td><td class="num">242.1</td><td class="num">32.03</td><td class="num">4.335</td><td class="num">0.088</td><td class="num">0.350</td><td class="num">31.36</td></tr>
+  <tr><td>Wan2.1 14B</td><td class="num">24.80</td><td class="num">201.8</td><td class="num">32.00</td><td class="num">4.724</td><td class="num">0.078</td><td class="num">0.413</td><td class="num">30.09</td></tr>
+  <tr class="hl"><td><strong>14B + GAD</strong></td><td class="num"><strong>23.15</strong></td><td class="num"><strong>194.8</strong></td><td class="num"><strong>32.14</strong></td><td class="num"><strong>2.754</strong></td><td class="num"><strong>0.058</strong></td><td class="num"><strong>0.476</strong></td><td class="num"><strong>26.01</strong></td></tr>
+</table>
+
+<p><strong>DL3DV（15s / 241 帧）</strong>，指标同上</p>
+<table class="tbl">
+  <tr><th>方法</th><th>FID↓</th><th>FVD↓</th><th>CLIP↑</th><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th></tr>
+  <tr><td>GF（首帧复制）</td><td class="num">104.1</td><td class="num">813.7</td><td class="num">29.42</td><td class="num">8.145</td><td class="num">0.126</td><td class="num">0.209</td><td class="num">54.50</td></tr>
+  <tr><td>Gen3R</td><td class="num">45.23</td><td class="num">373.7</td><td class="num">32.66</td><td class="num">6.457</td><td class="num">0.088</td><td class="num">0.310</td><td class="num">39.27</td></tr>
+  <tr><td>Voyager</td><td class="num">65.77</td><td class="num">608.4</td><td class="num">32.16</td><td class="num">4.740</td><td class="num">0.073</td><td class="num">0.313</td><td class="num">41.02</td></tr>
+  <tr><td>Gen3C</td><td class="num">38.63</td><td class="num">325.6</td><td class="num">33.46</td><td class="num">4.732</td><td class="num">0.056</td><td class="num">0.289</td><td class="num">42.19</td></tr>
+  <tr><td>Uni3C</td><td class="num">43.28</td><td class="num">351.1</td><td class="num">33.30</td><td class="num">5.589</td><td class="num">0.078</td><td class="num">0.331</td><td class="num">38.42</td></tr>
+  <tr><td>Wan2.1 1.3B</td><td class="num">40.06</td><td class="num">336.9</td><td class="num">33.93</td><td class="num">6.395</td><td class="num">0.112</td><td class="num">0.318</td><td class="num">42.41</td></tr>
+  <tr class="hl"><td>1.3B + GAD</td><td class="num">38.83</td><td class="num">328.8</td><td class="num">34.13</td><td class="num">5.029</td><td class="num">0.071</td><td class="num">0.358</td><td class="num">37.05</td></tr>
+  <tr><td>Wan2.2 5B</td><td class="num">38.60</td><td class="num">322.1</td><td class="num">33.85</td><td class="num">9.573</td><td class="num">0.108</td><td class="num">0.257</td><td class="num">48.90</td></tr>
+  <tr class="hl"><td>5B + GAD</td><td class="num">37.93</td><td class="num">318.0</td><td class="num">34.24</td><td class="num">4.890</td><td class="num">0.065</td><td class="num">0.335</td><td class="num">38.85</td></tr>
+  <tr><td>Wan2.1 14B</td><td class="num">31.02</td><td class="num">255.8</td><td class="num">34.05</td><td class="num">5.497</td><td class="num">0.083</td><td class="num">0.365</td><td class="num">39.68</td></tr>
+  <tr class="hl"><td><strong>14B + GAD</strong></td><td class="num"><strong>28.66</strong></td><td class="num"><strong>228.8</strong></td><td class="num"><strong>34.34</strong></td><td class="num"><strong>3.039</strong></td><td class="num"><strong>0.046</strong></td><td class="num"><strong>0.393</strong></td><td class="num"><strong>34.10</strong></td></tr>
+</table>
+
+<p>读表要点：</p>
+<div class="stat-grid">
+  <div class="stat"><div class="s-val">−34.6%~−48.9%</div><div class="s-label">R_dist 相对降幅（三个底座 × 两个数据集）</div></div>
+  <div class="stat"><div class="s-val">+7.7%~+33.1%</div><div class="s-label">M_rate 相对提升</div></div>
+  <div class="stat"><div class="s-val">7 / 7</div><div class="s-label">14B+GAD 在两数据集全部七项指标均最优</div></div>
+  <div class="stat"><div class="s-val">0.476</div><div class="s-label">14B+GAD 的 M_rate（RE10K），超过全部几何基线</div></div>
+</div>
+
+<ul>
+  <li><strong>几何指标是主战场</strong>：底座 Wan 的 R_dist/T_dist/M_dist 明显落后于几何基线（外观强、几何弱），加 GAD 后在三个底座上一致地反超大多数几何基线。例如 5B 在 DL3DV 上 R_dist 从 9.573 → 4.890（−48.9%），从垫底跃至与 Gen3C（4.732）同一水平；14B+GAD 的 2.754/3.039 则大幅领先所有方法。</li>
+  <li><strong>外观指标不降反升</strong>：FID/FVD/CLIP 全部小幅改善——几何监督没有挤占生成能力，反而因为跨帧一致性更强而略微受益（FVD 是时序指标，与一致性直接相关）。</li>
+  <li><strong>底座越强，收益越大</strong>：14B 上 R_dist 降幅（−41.7%/−44.7%）大于 1.3B（−34.6%/−21.4%）。GAD 蒸馏的是“对应关系”，底座的视觉先验越强，越能把对应落实成高质量外观。</li>
+  <li><strong>M_dist 依然存在</strong>：即使 14B+GAD，跟踪误差仍比 R/T 距离更显眼（26.01/34.10 px）——几何相机轨迹对了不等于每个物体表面点都对，这正是组件消融（11.5）中 TWS 分支要解决的问题。</li>
+</ul>
+
+<h3>11.3 动态场景与效率（Table 2，OmniWorld-Game 5s/81 帧）</h3>
+
+<p>OmniWorld-Game 包含运动物体与非静态光照，考察的是<strong>把长程静态场景学到的一致性迁移到动态内容</strong>的能力。VBench 五维以 custom-input 方式评测（生成与 GT 分开跑），成本为单卡 A800 三场景顺序执行。</p>
+
+<table class="tbl">
+  <tr><th>方法</th><th>FID↓</th><th>FVD↓</th><th>CLIP↑</th><th>Subj↑</th><th>Bg↑</th><th>Motion↑</th><th>Aesth↑</th><th>ImageQ↑</th><th>Time(s)↓</th><th>Peak(GB)↓</th><th>Avg(GB)↓</th></tr>
+  <tr><td>GF</td><td class="num">162.0</td><td class="num">1543</td><td class="num">20.48</td><td class="num">0.698</td><td class="num">0.851</td><td class="num">0.961</td><td class="num">0.397</td><td class="num">0.380</td><td class="num">194.6</td><td class="num">48.96</td><td class="num">33.80</td></tr>
+  <tr><td>Gen3R</td><td class="num">81.91</td><td class="num">870.1</td><td class="num">26.84</td><td class="num">0.817</td><td class="num">0.907</td><td class="num">0.957</td><td class="num">0.482</td><td class="num">0.505</td><td class="num">209.3</td><td class="num">50.66</td><td class="num">37.05</td></tr>
+  <tr><td>Voyager</td><td class="num">103.6</td><td class="num">987.7</td><td class="num">26.09</td><td class="num">0.805</td><td class="num">0.906</td><td class="num">0.963</td><td class="num">0.492</td><td class="num">0.521</td><td class="num">2583.2</td><td class="num">67.45</td><td class="num">62.27</td></tr>
+  <tr><td>Gen3C</td><td class="num">70.41</td><td class="num">774.8</td><td class="num">27.55</td><td class="num">0.810</td><td class="num">0.908</td><td class="num">0.970</td><td class="num">0.493</td><td class="num">0.527</td><td class="num">825.9</td><td class="num">63.71</td><td class="num">57.20</td></tr>
+  <tr><td>Uni3C</td><td class="num">80.63</td><td class="num">856.6</td><td class="num">27.56</td><td class="num">0.804</td><td class="num">0.908</td><td class="num">0.968</td><td class="num">0.504</td><td class="num">0.553</td><td class="num">444.0</td><td class="num">49.77</td><td class="num">37.68</td></tr>
+  <tr><td>GT（真值）</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">0.867</td><td class="num">0.919</td><td class="num">0.981</td><td class="num">0.553</td><td class="num">0.662</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+  <tr><td>Wan2.1 1.3B</td><td class="num">65.16</td><td class="num">665.9</td><td class="num">27.39</td><td class="num">0.813</td><td class="num">0.889</td><td class="num">0.968</td><td class="num">0.533</td><td class="num">0.591</td><td class="num">172.9</td><td class="num">25.44</td><td class="num">22.23</td></tr>
+  <tr class="hl"><td>1.3B + GAD</td><td class="num">60.35</td><td class="num">625.7</td><td class="num">27.67</td><td class="num">0.854</td><td class="num">0.910</td><td class="num">0.977</td><td class="num">0.534</td><td class="num">0.586</td><td class="num">171.2</td><td class="num">25.44</td><td class="num">22.76</td></tr>
+  <tr><td>Wan2.2 5B</td><td class="num">61.29</td><td class="num">657.6</td><td class="num">27.46</td><td class="num">0.825</td><td class="num">0.900</td><td class="num">0.964</td><td class="num">0.542</td><td class="num">0.636</td><td class="num">69.60</td><td class="num">34.85</td><td class="num">26.11</td></tr>
+  <tr class="hl"><td>5B + GAD</td><td class="num">59.52</td><td class="num">622.3</td><td class="num">28.23</td><td class="num">0.853</td><td class="num">0.913</td><td class="num">0.976</td><td class="num">0.546</td><td class="num"><strong>0.641</strong></td><td class="num">70.44</td><td class="num">34.85</td><td class="num">26.08</td></tr>
+  <tr><td>Wan2.1 14B</td><td class="num">45.94</td><td class="num">419.7</td><td class="num">28.18</td><td class="num">0.850</td><td class="num">0.909</td><td class="num">0.971</td><td class="num">0.546</td><td class="num">0.612</td><td class="num">854.9</td><td class="num">57.54</td><td class="num">55.74</td></tr>
+  <tr class="hl"><td><strong>14B + GAD</strong></td><td class="num"><strong>44.75</strong></td><td class="num"><strong>410.2</strong></td><td class="num"><strong>28.88</strong></td><td class="num"><strong>0.863</strong></td><td class="num"><strong>0.917</strong></td><td class="num"><strong>0.978</strong></td><td class="num"><strong>0.552</strong></td><td class="num">0.617</td><td class="num">856.5</td><td class="num">57.54</td><td class="num">55.48</td></tr>
+</table>
+
+<ul>
+  <li><strong>零开销的直接证据</strong>：三个底座的 Wan 与 +GAD <strong>峰值显存逐位相同</strong>（25.44/34.85/57.54 GB），时间差异在 run-to-run 抖动内（171.2 vs 172.9、70.44 vs 69.60、856.5 vs 854.9）。对照 Voyager ≈ 14.9×、Gen3C ≈ 4.8× 于 1.3B 的推理时间，GAD 是唯一“免费”的几何一致性来源。</li>
+  <li><strong>动态场景照样受益</strong>：Subj/Bg（主体与背景一致性）是 GAD 提升最明显的两维（1.3B：0.813→0.854、0.889→0.910），说明蒸馏的跨帧对应把动态物体的外观漂移也压住了；Motion 分数不降反升（0.968→0.977），几何一致没有以牺牲运动为代价。</li>
+  <li><strong>唯一的例外</strong>：ImageQ（画质）上 14B+GAD（0.617）略低于 5B+GAD（0.641）——但两者都显著高于全部几何基线；GT 的 ImageQ 也只有 0.662，说明该维度本身空间不大。</li>
+</ul>
+
+<h3>11.4 消融一：噪声时间步路由（Table 4）</h3>
+
+<p>这是第 7 章预告的核心实验：在 Wan2.2-5B（DL3DV 15s）上，把三段路由换成各种固定或错位配置，R_dist 从 9.573 一路压到 4.890。R1–R8 的配置定义见第 7 章表格，此处给出完整四项几何指标。</p>
+
+<table class="tbl">
+  <tr><th>配置</th><th>定义</th><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th></tr>
+  <tr><td>R1</td><td>Wan 底座（无对应监督）</td><td class="num">9.573</td><td class="num">0.108</td><td class="num">0.257</td><td class="num">48.90</td></tr>
+  <tr><td>R2</td><td>仅 L5 全程</td><td class="num">7.440</td><td class="num">0.086</td><td class="num">0.295</td><td class="num">43.89</td></tr>
+  <tr><td>R3</td><td>仅 L15 全程</td><td class="num">7.346</td><td class="num">0.090</td><td class="num">0.286</td><td class="num">42.71</td></tr>
+  <tr><td>R4</td><td>仅 L25 全程</td><td class="num">6.540</td><td class="num">0.075</td><td class="num">0.289</td><td class="num">43.55</td></tr>
+  <tr><td>R5</td><td>L5 @ t≥900（方向反）</td><td class="num">8.932</td><td class="num">0.098</td><td class="num">0.262</td><td class="num">46.36</td></tr>
+  <tr><td>R6</td><td>L25 @ t&lt;900（方向反）</td><td class="num">9.290</td><td class="num">0.106</td><td class="num">0.258</td><td class="num">47.17</td></tr>
+  <tr><td>R7</td><td>两段：t≥900 用 L25，否则 L5</td><td class="num">8.755</td><td class="num">0.104</td><td class="num">0.268</td><td class="num">45.77</td></tr>
+  <tr class="hl"><td><strong>R8（GAD）</strong></td><td><strong>三段路由 L5/L15/L25 @ 850/950</strong></td><td class="num"><strong>4.890</strong></td><td class="num"><strong>0.065</strong></td><td class="num"><strong>0.335</strong></td><td class="num"><strong>38.85</strong></td></tr>
+</table>
+
+<div class="figure">
+<svg viewBox="0 0 760 400" xmlns="http://www.w3.org/2000/svg" font-family="system-ui, -apple-system, sans-serif">
+  <text x="12" y="20" font-size="14.5" font-weight="700" fill="#1f2430">路由消融：R_dist 对比（Wan2.2-5B · DL3DV · 15s）</text>
+  <text x="12" y="38" font-size="11" fill="#6b7280">旋转误差（度，越低越好）；条形按配置类型着色</text>
+
+  <!-- 网格线 -->
+  <line x1="250" y1="46" x2="250" y2="346" stroke="#9ca3af" stroke-width="1.5"/>
+  <line x1="342" y1="46" x2="342" y2="346" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="434" y1="46" x2="434" y2="346" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="526" y1="46" x2="526" y2="346" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="618" y1="46" x2="618" y2="346" stroke="#e5e7eb" stroke-width="1"/>
+  <line x1="710" y1="46" x2="710" y2="346" stroke="#e5e7eb" stroke-width="1"/>
+
+  <!-- 条形 -->
+  <rect x="250" y="52" width="440" height="22" rx="3" fill="#9aa4b2"/>
+  <text x="238" y="68" font-size="12" fill="#374151" text-anchor="end">R1 底座（无监督）</text>
+  <text x="698" y="68" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">9.57</text>
+
+  <rect x="250" y="90" width="342" height="22" rx="3" fill="#b9b1e8"/>
+  <text x="238" y="106" font-size="12" fill="#374151" text-anchor="end">R2 仅 L5</text>
+  <text x="600" y="106" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">7.44</text>
+
+  <rect x="250" y="128" width="338" height="22" rx="3" fill="#b9b1e8"/>
+  <text x="238" y="144" font-size="12" fill="#374151" text-anchor="end">R3 仅 L15</text>
+  <text x="596" y="144" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">7.35</text>
+
+  <rect x="250" y="166" width="301" height="22" rx="3" fill="#b9b1e8"/>
+  <text x="238" y="182" font-size="12" fill="#374151" text-anchor="end">R4 仅 L25</text>
+  <text x="559" y="182" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">6.54</text>
+
+  <rect x="250" y="204" width="411" height="22" rx="3" fill="#f0c987"/>
+  <text x="238" y="220" font-size="12" fill="#374151" text-anchor="end">R5 L5@t≥900</text>
+  <text x="669" y="220" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">8.93</text>
+
+  <rect x="250" y="242" width="427" height="22" rx="3" fill="#f0c987"/>
+  <text x="238" y="258" font-size="12" fill="#374151" text-anchor="end">R6 L25@t&lt;900</text>
+  <text x="685" y="258" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">9.29</text>
+
+  <rect x="250" y="280" width="403" height="22" rx="3" fill="#f0c987"/>
+  <text x="238" y="296" font-size="12" fill="#374151" text-anchor="end">R7 两段@900</text>
+  <text x="661" y="296" font-size="12" fill="#4b5563" font-family="ui-monospace, monospace">8.76</text>
+
+  <rect x="250" y="318" width="225" height="22" rx="3" fill="#5845e6"/>
+  <text x="238" y="334" font-size="12" fill="#1f2430" text-anchor="end" font-weight="700">R8 GAD 三段</text>
+  <text x="483" y="334" font-size="12" fill="#4636c4" font-family="ui-monospace, monospace" font-weight="700">4.89</text>
+
+  <!-- 刻度 -->
+  <text x="250" y="362" font-size="11" fill="#6b7280" text-anchor="middle">0</text>
+  <text x="342" y="362" font-size="11" fill="#6b7280" text-anchor="middle">2</text>
+  <text x="434" y="362" font-size="11" fill="#6b7280" text-anchor="middle">4</text>
+  <text x="526" y="362" font-size="11" fill="#6b7280" text-anchor="middle">6</text>
+  <text x="618" y="362" font-size="11" fill="#6b7280" text-anchor="middle">8</text>
+  <text x="710" y="362" font-size="11" fill="#6b7280" text-anchor="middle">10°</text>
+
+  <!-- 图例 -->
+  <rect x="250" y="374" width="12" height="12" fill="#9aa4b2" rx="2"/>
+  <text x="266" y="384" font-size="11" fill="#4b5563">基线（无对应监督）</text>
+  <rect x="410" y="374" width="12" height="12" fill="#b9b1e8" rx="2"/>
+  <text x="426" y="384" font-size="11" fill="#4b5563">固定单层</text>
+  <rect x="500" y="374" width="12" height="12" fill="#f0c987" rx="2"/>
+  <text x="516" y="384" font-size="11" fill="#4b5563">随噪声换层（方向不对）</text>
+  <rect x="648" y="374" width="12" height="12" fill="#5845e6" rx="2"/>
+  <text x="664" y="384" font-size="11" fill="#4b5563">GAD 三段路由</text>
+</svg>
+<p class="figcap"><b>图 11-1：</b>八种路由配置的旋转误差。任何固定单层（紫）都能改善底座（灰），但都停留在 6.5–7.4 区间；把"浅层↔高噪声 / 深层↔低噪声"的对应关系弄反（黄）几乎抹平全部收益（R6 甚至回到 9.29）；只有方向正确的三段路由（深紫）把误差压到 4.89，比最优固定层 R4 再降 25.2%。</p>
+</div>
+
+<p>三组对照各说明一件事：</p>
+<ul>
+  <li><strong>R2/R3/R4（固定单层）</strong>：监督信号本身有效（三者均显著优于 R1），且 L25 优于 L15 优于 L5——低噪声步（细节成形阶段）的对应监督价值更高；但任何单层配置都有天花板（最好 6.540）。</li>
+  <li><strong>R5/R6/R7（方向错误的换层）</strong>：R5 在高噪声步用浅层、R6 在低噪声步用深层——收益几乎归零（8.932/9.290，接近无监督的 9.573）。<strong>"在哪个噪声水平监督哪一层"比"监督本身"更关键</strong>：高噪声时图像内容尚未成形，深层语义层既没有可监督的对应结构、又可能被错误梯度破坏；低噪声时内容已成形，浅层像素层缺少承载细粒度对应的表达。R7 的两段版（8.755）同样不行，说明三段（带中间过渡 L15）不是过度设计。</li>
+  <li><strong>R8（完整 GAD）</strong>：4.890，比最优固定配置 R4 再降 25.2%，且四项几何指标同时最优——三段路由把不同噪声水平的生成阶段与层级结构正确对齐后，各层在"对的时间做对的事"。</li>
+</ul>
+
+<h3>11.5 消融二：损失组件（Table 5，CAT / TWS / PWS）</h3>
+
+<table class="tbl">
+  <tr><th>CAT（对应软目标）</th><th>TWS（trackwise）</th><th>PWS（pairwise）</th><th>FID↓</th><th>FVD↓</th><th>CLIP↑</th><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th></tr>
+  <tr><td>×</td><td>×</td><td>×</td><td class="num">38.60</td><td class="num">322.1</td><td class="num">33.85</td><td class="num">9.573</td><td class="num">0.108</td><td class="num">0.257</td><td class="num">48.90</td></tr>
+  <tr class="hl"><td>×</td><td>✓</td><td>✓</td><td class="num">39.04</td><td class="num">329.4</td><td class="num">33.92</td><td class="num">8.753</td><td class="num">0.092</td><td class="num"><strong>0.230</strong></td><td class="num">42.94</td></tr>
+  <tr><td>✓</td><td>✓</td><td>×</td><td class="num">38.61</td><td class="num">321.4</td><td class="num">34.01</td><td class="num">6.028</td><td class="num">0.082</td><td class="num">0.274</td><td class="num">40.20</td></tr>
+  <tr><td>✓</td><td>×</td><td>✓</td><td class="num">38.35</td><td class="num">320.3</td><td class="num">34.05</td><td class="num">5.312</td><td class="num">0.076</td><td class="num">0.291</td><td class="num">39.67</td></tr>
+  <tr class="hl"><td><strong>✓</strong></td><td><strong>✓</strong></td><td><strong>✓</strong></td><td class="num"><strong>37.93</strong></td><td class="num"><strong>318.0</strong></td><td class="num"><strong>34.24</strong></td><td class="num"><strong>4.890</strong></td><td class="num"><strong>0.065</strong></td><td class="num"><strong>0.335</strong></td><td class="num"><strong>38.85</strong></td></tr>
+</table>
+
+<p>三个组件各管一段频谱，缺谁都能看出来：</p>
+<ul>
+  <li><strong>没有 CAT（第二行）</strong>：逐对应 CE 是唯一直接塑形"哪个 key 该被注意"的项，去掉后 R_dist 只从 9.573 降到 8.753（完整版 4.890），且 <strong>M_rate 掉到 0.230——比不训练的底座（0.257）还低</strong>。这是全文最有说服力的一行：只靠排序/分离类损失（TWS+PWS）可以把对应"排对顺序"，却没有教会注意力把质量集中到正确位置上，命中率反而受损。</li>
+  <li><strong>没有 TWS（第三行，CAT+PWS）</strong>：R_dist 6.028 尚可，但 M_rate 0.274 偏低——pairwise 只看孤立的帧对，学不到"同一条轨迹跨多帧保持稳定"的长程约束。</li>
+  <li><strong>没有 PWS（第四行，CAT+TWS）</strong>：R_dist 5.312 不错，M_rate 0.291 中等——trackwise 有长程信号但目标集合里正例密度低、学习信号稀疏，pairwise 的难负对比补的就是这一块。</li>
+  <li><strong>全开（最后一行）</strong>：七项全部最优。CAT 打底（塑形）、PWS 拉开（对比）、TWS 稳轨（长程），三者是互补关系而非冗余。</li>
+</ul>
+
+<h3>11.6 消融三：视频时长（Table 3，5B · DL3DV）</h3>
+
+<table class="tbl">
+  <tr><th rowspan="2">时长</th><th colspan="4">Wan2.2-5B</th><th colspan="4">5B + GAD</th><th colspan="2">提升</th></tr>
+  <tr><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th><th>R_dist↓</th><th>T_dist↓</th><th>M_rate↑</th><th>M_dist↓</th><th>ΔR_dist</th><th>ΔM_rate</th></tr>
+  <tr><td>5s / 81 帧</td><td class="num">3.020</td><td class="num">0.064</td><td class="num">0.529</td><td class="num">21.84</td><td class="num">1.684</td><td class="num">0.053</td><td class="num">0.571</td><td class="num">19.31</td><td class="num">−44.2%</td><td class="num">+7.9%</td></tr>
+  <tr><td>10s / 161 帧</td><td class="num">5.948</td><td class="num">0.072</td><td class="num">0.371</td><td class="num">38.34</td><td class="num">3.376</td><td class="num">0.056</td><td class="num">0.453</td><td class="num">33.33</td><td class="num">−43.2%</td><td class="num">+22.1%</td></tr>
+  <tr><td>15s / 241 帧</td><td class="num">9.573</td><td class="num">0.108</td><td class="num">0.257</td><td class="num">48.90</td><td class="num">4.890</td><td class="num">0.065</td><td class="num">0.335</td><td class="num">38.85</td><td class="num">−48.9%</td><td class="num">+30.4%</td></tr>
+</table>
+
+<p>两个趋势值得注意：<strong>时长越长，底座退化越快，GAD 的相对收益越大</strong>（R_dist 降幅从 5s 的 −44.2% 扩大到 15s 的 −48.9%，M_rate 提升从 +7.9% 扩大到 +30.4%）。底座在 15s 时 M_rate 只剩 0.257（不到 5s 的一半），漂移是随时长累积的；而 GAD 的注意力结构一旦成形，长程保持的"斜率"更平缓。这正对应第 2 章的问题分析：自回归式的误差累积是扩散视频生成的结构性痛点，蒸馏几何对应是目前最轻量的解法。</p>
+
+<h3>11.7 定性结果</h3>
+
+<p>论文图 4–8 的可视化结论（原图见项目主页）：</p>
+<ul>
+  <li><strong>长程漂移（图 4）</strong>：241 帧轨迹上，底座在场景边缘、走廊尽头等弱纹理区域出现墙体歪斜、结构重排；GAD 保持了墙面/地板的直线与平面关系。</li>
+  <li><strong>注意力图（图 5）</strong>：同一 query 位置在不同噪声水平下，GAD 的注意力逐步从"扩散/弥散"收敛到与教师对应一致的窄峰——这正是路由设计的直接可视化证据。</li>
+  <li><strong>新视角一致性（图 6）</strong>：RE10K/DL3DV 中相机大幅平移+旋转后，底座生成的同一物体外观漂移明显，GAD 保持了纹理与形状。</li>
+  <li><strong>动态场景（图 7）</strong>：OmniWorld 中运动物体（车辆、角色）在 GAD 下外观更稳定，背景几何同样受益——对应蒸馏对静态与动态内容都有效，说明 VGGT-Ω 的跨帧注意力在动态场景中也携带可用的对应信号。</li>
+  <li><strong>失败案例（图 8）</strong>：弱纹理、遮挡、运动模糊区域仍是主要失败模式——与置信度权重 w 的设计动机一致（这些区域教师自己也匹配不准），也是第 13 章局限性①的来源。</li>
+</ul>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="ch12">
+<h2><span class="ch-no">12</span>代码详解：从公式到实现</h2>
+
+<div class="callout warn">
+  <span class="co-title">先说清楚：以下是参考实现</span>
+  <p>官方仓库 <a href="https://github.com/Fantasy-AMAP/GAD">Fantasy-AMAP/GAD</a> 截至本文撰写时的 Release Plan 为：<code>[x] Release the project page</code>、<code>[x] Release the paper</code>、<code>[ ] Release VGGT-Ω attention-label extraction code</code>、<code>[ ] Release GAD training and inference code</code>、<code>[ ] Release model checkpoints</code>、<code>[ ] Release example data and usage documentation</code>——即<strong>训练与提取代码尚未发布</strong>。本章代码是我按论文正文公式（Eq.1–11）与附录 A/B 的超参逐条编写的 PyTorch 风格参考实现，接口与命名服务于讲解，<strong>不是官方代码</strong>；与论文描述可能存在未注明实现细节的差异，事实一律以论文原文为准。</p>
+</div>
+
+<h3>12.1 模块总览</h3>
+
+<p>GAD 的训练侧代码可以拆成五个小模块加一个训练器——每个模块只对应对应论文里的一两个公式，单独都不难：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">GAD-code/（参考实现的逻辑结构）</span></div>
+<pre><code>gad/
+├── confidence.py    # Eq.9  置信度权重 w(m)：标定参数 + sigmoid 变换
+├── soft_target.py   # Eq.4  3×3 高斯软目标 y
+├── routing.py       # Eq.2  噪声时间步 → 监督层 三段路由
+├── gate.py          # Eq.10 头聚合门控 MLP（零初始化）
+├── losses.py        # Eq.3/5/6/7  三种对应损失
+├── teacher.py       # 附录 B.1  VGGT-Ω 教师注意力 → (c, m) 缓存
+└── trainer.py       # Eq.8/11  组装：前向钩子捕获 q/k + 总损失
+train.py             # 入口：torchrun 启动 8 卡/节点
+</code></pre>
+</div>
+
+<h3>12.2 confidence.py：置信度权重（Eq.9）</h3>
+
+<p>回顾公式：<strong>w = χ · [sigmoid((log₂(max(m, ε)) − μ) / κ)]<sup>γ</sup></strong>。输入是教师在目标 patch 上的注意力质量 m（一个 0 到 1 的标量），输出是 0 到 χ 之间的权重。代码里唯一“魔法数字”是标定出的 (μ, κ)，按学生特征网格分辨率二选一：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/confidence.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import math
+import torch
+
+# 附录 B.3：在 55 个 DL3DV 场景（48 随机 + 7 困难）上
+# 以注意力 mass 为特征、可见性为标签的类平衡 logistic 回归标定
+CALIB = {
+    (30, 52): (-9.86777, 1.81857),   # 832x480 下 1.3B/14B 的 patch 网格
+    (15, 26): (-9.75580, 1.59004),   # 480x272 一类的低分辨率网格
+}
+EPS  = 2.0 ** -20   # 防 log(0)
+GAMMA = 2.0         # 陡化系数
+
+def confidence_weight(m: torch.Tensor, grid=(30, 52)) -&gt; torch.Tensor:
+    """Eq.9: w = chi * sigmoid((log2(max(m, eps)) - mu) / kappa) ** gamma
+
+    m: 教师在目标 patch token 上的注意力质量，任意形状
+    返回同形状的权重，值域 [0, 1]（chi=1）
+    """
+    mu, kappa = CALIB[grid]
+    x = torch.log2(torch.clamp(m, min=EPS))
+    w = torch.sigmoid((x - mu) / kappa)
+    return w ** GAMMA
+</code></pre>
+</div>
+
+<p>三个实现细节：<strong>① clamp 在 log 之前</strong>（不是之后），保证 max(m, ε)；<strong>② γ=2 是幂在 sigmoid 外面</strong>，先压平 0.5 附近再保持两端饱和；<strong>③ χ（可见性指示）默认为 1</strong>，源查询不可见时整个对应直接跳过、根本不会走到加权这一步，所以函数里不出现 χ。</p>
+
+<h3>12.3 soft_target.py：高斯软目标（Eq.4）</h3>
+
+<p>硬 one-hot 目标会把“对应位置差半个 patch”当作完全错误。GAD 在教师 argmax 位置周围铺一个 3×3、σ=1（token 单位）的离散高斯，出界的邻格剔除后归一化：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/soft_target.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import math
+import torch
+
+def gaussian_soft_target(c: torch.Tensor, H: int, W: int, sigma: float = 1.0) -&gt; torch.Tensor:
+    """Eq.4: 教师对应 argmax 位置 -&gt; 3x3 高斯软目标分布
+
+    c: (N, 2) 教师对应点（学生网格坐标，浮点），取过 argmax 后的位置
+    返回 y: (N, H*W) 每行 sum=1（出界邻格剔除后重归一化）
+    """
+    N = c.shape[0]
+    y = torch.zeros(N, H * W, device=c.device)
+    cy = torch.clamp(c[:, 0].long(), 0, H - 1)
+    cx = torch.clamp(c[:, 1].long(), 0, W - 1)
+
+    for dy in (-1, 0, 1):          # 3x3 邻域，i in {-1,0,1}, j in {-1,0,1}
+        for dx in (-1, 0, 1):
+            gy, gx = cy + dy, cx + dx
+            valid = (gy &gt;= 0) &amp; (gy &lt; H) &amp; (gx &gt;= 0) &amp; (gx &lt; W)   # 出界剔除
+            w = math.exp(-(dy * dy + dx * dx) / (2 * sigma * sigma))  # 高斯核
+            idx = gy[valid] * W + gx[valid]
+            y[valid.nonzero(as_tuple=True)[0], idx] += w
+
+    return y / y.sum(dim=-1, keepdim=True).clamp(min=1e-12)   # 归一化
+</code></pre>
+</div>
+
+<p>注意 <code>sigma</code> 以<strong> token 为单位</strong>——σ=1 意味着相邻格权重约 0.61、对角格约 0.37、中心格 1.0。如果将来把 patch 化的粒度改细（比如 VAE 下采样 8→4），σ 应该跟着重新考虑，而不是死守 1。</p>
+
+<h3>12.4 routing.py：噪声时间步路由（Eq.2）</h3>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/routing.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import torch
+
+SUPERVISED_LAYERS = (5, 15, 25)   # 零起点层号
+
+def route_layer(t: torch.Tensor) -&gt; torch.Tensor:
+    """Eq.2: 三段路由。
+
+    t: 模型噪声时间步 [0, 1000]，不是采样循环的步索引！
+       （流匹配下 t 与噪声强度一一对应，见 Eq.11 的 s = t/1000）
+    返回与 t 同形状的层号张量（int64），取值 {5, 15, 25}
+    """
+    t = t.float()
+    return torch.where(
+        t &lt; 850, torch.full_like(t, SUPERVISED_LAYERS[0]),
+        torch.where(
+            t &lt; 950, torch.full_like(t, SUPERVISED_LAYERS[1]),
+            torch.full_like(t, SUPERVISED_LAYERS[2]),
+        ),
+    ).long()
+</code></pre>
+</div>
+
+<p>最容易写错的两点（也是 Table 4 里 R5–R7 专门惩罚的）：其一，<strong>边界归属</strong>——<code>t&lt;850 / t&lt;950</code> 的写法让 850 落进 L15、950 落进 L25，即边界归高噪声区间；其二，<strong>t 的坐标</strong>——是 Wan 调度器里连续的模型噪声时间步，50 步采样时每步的 t 值由调度器算出，与“第几步”不是一回事。训练时每个 batch 会随机采 t，一个 batch 内可能同时命中三个区段——所以返回值是逐元素的张量而不是标量。</p>
+
+<h3>12.5 gate.py：头聚合门控（Eq.10）</h3>
+
+<p>门控的职责：把 H 个头的内积分数 r 揉成一个聚合分数。结构是两层 MLP（H→4H→H，GELU），<strong>末层零初始化</strong>——这一步的语义值得反复强调：初始 logits 全 0，softmax(0) 给出均匀头权重，模型从“平均所有头”这个无偏起点出发，由梯度决定最终偏重哪些头：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/gate.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import math
+
+class HeadAggGate(nn.Module):
+    """Eq.10: 逐 (query, key) 对的头聚合门控。每层一份，独立参数。"""
+
+    def __init__(self, num_heads: int, tau: float = 1.0):
+        super().__init__()
+        self.tau = tau
+        H = num_heads
+        self.net = nn.Sequential(
+            nn.Linear(H, 4 * H), nn.GELU(),
+            nn.Linear(4 * H, H),
+        )
+        # 关键：末层零初始化 -&gt; 初始 logits 全 0 -&gt; softmax(0)=均匀头权重
+        nn.init.zeros_(self.net[2].weight)
+        nn.init.zeros_(self.net[2].bias)
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor) -&gt; torch.Tensor:
+        """q, k: (B, L, H, d)  各头的 query / key
+        返回聚合分数: (B, L, L)  —— 与普通单头注意力的分数同形状，
+        可直接替换 attn 计算，且推理时可整体丢弃
+        """
+        q, k = q.float(), k.float()                      # 全程 FP32
+        # 逐对头内积: r[b, i, j, h] = &lt;q[b,i,h,:], k[b,j,h,:]&gt;
+        r = torch.einsum("bihd,bjhd-&gt;bijh", q, k) / math.sqrt(q.shape[-1])
+        alpha = torch.softmax(self.net(r), dim=-1)       # (B, L, L, H) 头权重
+        return (alpha * r).sum(dim=-1) / self.tau        # 加权求和 -&gt; (B, L, L)
+</code></pre>
+</div>
+
+<p>两个容易被忽略的点：<strong>① 输入是逐对的 H 维向量</strong>（einsum 出来的 <code>bijh</code>），门控看的是“这对 query-key 在每个头上的分数模式”，而不是每头各自的某个全局统计量——这让门控能学到“这对 token 在头 3 和头 7 上都强才可信”这类交叉头的证据组合；<strong>② 零初始化的是末层</strong>，第一层仍是正常初始化，梯度才能从第一步就流进特征变换。<code>tau=1</code> 只是把温度留在接口里，论文并未调节它。</p>
+
+<h3>12.6 losses.py：三种对应损失（Eq.3 / Eq.5-6 / Eq.7）</h3>
+
+<p>三个函数分别对应第 6 章的三种监督。先看最基础的逐对应交叉熵（Eq.3）：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/losses.py（1/3：对应交叉熵）</span><span class="lang">python</span></div>
+<pre><code class="language-python">import torch
+import torch.nn.functional as F
+
+def corr_ce(s: torch.Tensor, y: torch.Tensor) -&gt; torch.Tensor:
+    """Eq.3: 逐对应交叉熵 L = -sum_y y * log softmax(s)
+
+    s: (N, K) 聚合门控输出的对应 logits（N 个源查询 × K 个候选 key）
+    y: (N, K) 高斯软目标，每行 sum=1
+    """
+    return -(y * F.log_softmax(s, dim=-1)).sum(dim=-1)   # (N,) 逐对应损失
+</code></pre>
+</div>
+
+<p>pairwise 间隔损失（Eq.5-6）——正例从软目标加权平均得分，难负从学生自己的 logits 里挑 Top-64：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/losses.py（2/3：pairwise 间隔）</span><span class="lang">python</span></div>
+<pre><code class="language-python">def pairwise_loss(s: torch.Tensor, y: torch.Tensor,
+                  eta: float = 0.1, k_neg: int = 64) -&gt; torch.Tensor:
+    """Eq.5-6: 间隔损失 L = -log Z+ / (Z+ + Z- + eta)
+
+    s: (N, K)  N 个源查询对某目标帧全部 token 的 logits
+    y: (N, K)  软目标（正例位置权重高，其余近似 0）
+    难负例：按【学生自己的 logits】挑 Top-64 —— 模型觉得最像的位置
+    """
+    logp = F.log_softmax(s, dim=-1)
+    # Z+ : 正例加权几何平均（soft 版正例得分）
+    z_pos = (y * logp.exp()).sum(dim=-1)                       # (N,)
+    # Z- : 难负例的 log-softmax，排除正例格后取 Top-64
+    neg_mask = y &lt;= 1e-8
+    hard_neg = logp.masked_fill(~neg_mask, float("-inf"))
+    z_neg = hard_neg.topk(k_neg, dim=-1).values.exp().sum(-1)   # (N,)
+    # 难负里也可能混着教师认为低置信的位置，不精确排除是刻意的：
+    # 论文按学生 logits 排序取 Top-64 作为候选难负集合
+    return -torch.log(z_pos / (z_pos + z_neg + 1e-12))
+</code></pre>
+</div>
+
+<p>trackwise 集合级 InfoNCE（Eq.7）——每个源帧对齐它的正例集与负例集，置信度 w 双重加权：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/losses.py（3/3：trackwise）</span><span class="lang">python</span></div>
+<pre><code class="language-python">def trackwise_loss(per_frame: list, per_w: list):
+    """Eq.7: 轨迹级 InfoNCE 的批内实现。
+
+    per_frame[i]: 源帧 i 的 (n_i,) 逐对应损失（已含对齐损失）
+    per_w[i]:     源帧 i 的 (n_i,) 置信度权重 w
+    返回 (L_track, w_bar)：w_bar 是帧平均置信度，
+    供总损失里给两支做置信度再平衡（Eq.8 的 w-bar 项）。
+    空轨迹（&lt;2 个有效目标帧）整条剔除，不参与均值。
+    """
+    frame_means = []
+    for l, w in zip(per_frame, per_w):
+        if l.numel() &lt; 2:          # 不足两个目标帧：跳过该源帧
+            continue
+        frame_means.append((w * l).sum() / w.sum().clamp(min=1e-12))
+    if not frame_means:
+        return None, None
+    L_bar = torch.stack(frame_means).mean()
+    w_bar = torch.stack([w.mean() for w in per_w]).mean()
+    return L_bar, w_bar
+</code></pre>
+</div>
+
+<p>提醒一个容易混淆的点：<strong>Eq.7 在论文里是集合级公式</strong>（分母 clamp、对负例集求和），上面的实现把它拆成了"逐源帧的加权平均 + 帧间平均"两级——数学上等价于论文附录 A 对 Eq.7 的展开形式，但如果你要严格逐项对齐论文符号，注意 Z+/Z− 的求和范围是<strong>该源帧的全部有效目标</strong>（正例 + 采样负例），不是全 batch。</p>
+
+<h3>12.7 teacher.py：教师注意力提取与缓存（附录 B.1）</h3>
+
+<p>这一块是"标签生产线"，也是复现时工作量最大的部分。三个关键动作：<strong>选帧</strong>（4n+1 学生帧 → n+1 教师视图）、<strong>取注意力</strong>（第 13 层第 10 头，全 token 联合 softmax 后截 patch 块）、<strong>对齐回学生网格</strong>（重采样 + 重归一化 + argmax）：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/teacher.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import torch
+
+LAYER, HEAD = 13, 10      # VGGT-Omega 全局注意力：第 13 层、第 10 头（零起点）
+
+def representative_indices(n_frames: int) -&gt; list:
+    """4n+1 个学生帧 -&gt; n+1 个教师视图: [0, 2, 6, 10, ..., 4n-2]
+    例: 241 帧 -&gt; [0, 2, 6, ..., 238]，共 61 个视图
+    """
+    return [0] + list(range(2, n_frames - 1, 4))
+
+@torch.no_grad()
+def extract_teacher_cache(model, frames, src_view, grid) -&gt; dict:
+    """跑一次教师前向，抽出 src_view 对所有教师视图的注意力标签。
+
+    frames: (V, 3, H, W) 教师输入（V 个代表视图，512 分辨率）
+    src_view: 源视图索引（学生侧对应某个源帧）
+    grid: 学生 patch 网格 (h, w)，如 (30, 52)
+    返回: {"c": 对应点, "m": 质量分数, "meta": 元数据}
+    """
+    out = model(frames)                       # VGGT-Omega 前向
+    attn = out["global_attn"][LAYER][:, HEAD]  # (V_s, V_t, N_t, N_s) 全局注意力
+    # 全部 token（含相机/注册特殊 token）已经联合 softmax 过；
+    # 现在按教师 patch 网格截出 patch 块：
+    ps = model.patch_slice                    # patch token 的下标切片
+    A = attn[:, :, ps, :]                     # (V_s, V_t, P_t, N_s)
+
+    # 质量分数 m：目标 patch token 上、对源视图整行的注意力总和
+    m = A.sum(dim=-1)                         # (V_s, V_t, P_t) —— 归一化前单独留一份！
+
+    # 条件分布 c = A / m：重采样到学生网格、重新归一化后取 argmax
+    c = A / m.clamp(min=1e-12).unsqueeze(-1)
+    c = resample_grid(c, to=grid)             # 双线性重采样到 (h, w)
+    c = c / c.sum(dim=-1, keepdim=True).clamp(min=1e-12)   # 重归一化
+    corr = c.argmax(dim=-2)                   # (V_s, V_t, h*w) 对应点
+
+    return {"c": corr, "m": m, "meta": {
+        "src_view": src_view, "grid": grid, "layer": LAYER, "head": HEAD,
+    }}
+</code></pre>
+</div>
+
+<p>三处细节直接决定标签质量：<strong>① 联合 softmax 的顺序</strong>——教师注意力在含特殊 token 的全部输入上联合归一化，截取 patch 块之后行和 m≤1，这个 m 才是第 4 章的"质量"（剩下的质量去了特殊 token，说明对应本身不可靠）；<strong>② m 与 c 分开存</strong>，缓存里只有 (c, m) 和元数据，没有教师激活——61 个视图 × 每视图一张注意力图的存储量远小于激活本身；<strong>③ 短前缀读缓存时 m 不重算</strong>（10.1 表格最后一行），保持标签与提取时上下文的一致性。</p>
+
+<h3>12.8 trainer.py：组装一切（Eq.8 / Eq.11）</h3>
+
+<p>训练器做四件事：给三个监督层挂前向钩子拿 q/k；按 Eq.11 做流匹配插值与主损失；按路由结果选层、采对应样本算两支辅助损失；合成 Eq.8 总损失。为控制篇幅，下面是骨架级但可读的实现：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">gad/trainer.py</span><span class="lang">python</span></div>
+<pre><code class="language-python">import torch, torch.nn as nn, torch.nn.functional as F
+
+L_AUX = 0.05                      # lambda_aux（附录 C.1）
+LAM   = L_AUX / 2                 # beta_pair = beta_track = 1 -&gt; 两支均分
+SUPERVISED_LAYERS = (5, 15, 25)
+
+class GADTrainer(nn.Module):
+    def __init__(self, dit, teacher_cache, gates):
+        super().__init__()
+        self.dit, self.cache, self.gates = dit, teacher_cache, gates
+        self._hooks = []
+        self._qk = {}
+        for L in SUPERVISED_LAYERS:        # 只挂三个监督层，别的层零开销
+            self._hooks.append(
+                self.dit.blocks[L].attn.register_forward_hook(self._mk_hook(L))
+            )
+
+    def _mk_hook(self, layer_id):
+        """捕获该层注意力的 q_rot / k_rot（RoPE 旋转后的，用于门控）"""
+        def hook(mod, inp, out):
+            self._qk[layer_id] = (mod.q_rot, mod.k_rot)
+        return hook
+
+    def training_step(self, batch):
+        z0, cond = batch["latents"], batch["cond"]
+        B = z0.shape[0]
+        # ---- Eq.11: 流匹配插值 ----
+        t = torch.randint(1, 1000, (B,), device=z0.device)
+        s = (t / 1000).view(B, 1, 1, 1)
+        eps = torch.randn_like(z0)
+        z_t = (1 - s) * z0 + s * eps
+        pred = self.dit(z_t, t, cond)
+        l_fm = F.mse_loss(pred, eps - z0)          # 方向场：预测 eps - z0
+
+        # ---- 对应监督：路由选层 ----
+        L = route_layer(t).item()                  # Eq.2
+        q, k = self._qk[L]                         # (B, Lq, H, d), (B, Lk, H, d)
+        gate = self.gates[L]
+
+        l_pw = self._pairwise(q, k, gate, self.cache, n_pairs=32, n_query=256)
+        l_tr, w_bar = self._trackwise(q, k, gate, self.cache,
+                                      n_src=256, n_neg=128)
+
+        # ---- Eq.8: 总损失 ----
+        if l_pw is not None and l_tr is not None:
+            l_aux = LAM * l_pw + LAM * l_tr        # 0.025 + 0.025
+        elif l_pw is not None:
+            l_aux = L_AUX * l_pw                   # 单支：0.05（重归一化）
+        elif l_tr is not None:
+            l_aux = L_AUX * l_tr
+        else:
+            return l_fm                            # 无有效对应：纯底座损失
+        return l_fm + l_aux
+
+    def _pairwise(self, q, k, gate, cache, n_pairs, n_query):
+        """联合采样: &lt;=32 有向帧对 x 256 查询（覆盖目标帧全部空间 token）"""
+        s = sample_pairwise(q, k, gate, cache, n_pairs, n_query)   # (N, K) logits
+        y = build_targets(cache)                                   # (N, K) 软目标
+        w = confidence_weight(cache["m"])                          # (N,)
+        return (pairwise_loss(s, y, eta=0.1, k_neg=64) * w).mean()
+
+    def _trackwise(self, q, k, gate, cache, n_src, n_neg):
+        """联合采样: &lt;=256 源帧 x 128 随机负帧；源须 &gt;=2 个有效目标"""
+        per_l, per_w = sample_trackwise(q, k, gate, cache, n_src, n_neg)
+        return trackwise_loss(per_l, per_w)
+</code></pre>
+</div>
+
+<p>几个工程决策值得展开：</p>
+<ul>
+  <li><strong>钩子只挂三层</strong>（L5/L15/L25），其余层的训练路径与底座逐位一致——这是"推理零改动"的训练侧对偶：训练时对非监督层也几乎零侵入。</li>
+  <li><strong>捕获的是 RoPE 旋转后的 q/k</strong>（<code>q_rot/k_rot</code>），门控分数与学生真实注意力的几何量一致；如果捕获旋转前的 q/k，位置编码信息就丢了。</li>
+  <li><strong>单支重归一化</strong>：消融时不是把 λ₁/λ₂ 其中一项清零，而是活动支拿满 0.05——保证消融实验中辅助损失的总量级可比，这是论文对照实验的严谨之处（也是 10.3 表格里"单支消融"列的来源）。</li>
+  <li><strong>l_fm 永远在</strong>：对应监督是 λ_aux=0.05 的辅助项，流匹配主损失才是主体——这个比例远小于常见蒸馏工作的 1:1，对应信号是"轻微塑形"而非"主导优化"。</li>
+</ul>
+
+<h3>12.9 启动与推理</h3>
+
+<p>完整流程是"先离线提标签，再分布式训练，推理不变"三段：</p>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">完整流程</span><span class="lang">bash</span></div>
+<pre><code class="language-bash"># 第 1 步：离线提取教师注意力标签（每条 clip 一次，写入 cache/）
+python -m gad.teacher --data data/ --ckpt vggt-omega-1b-512.ckpt --cache cache/
+
+# 第 2 步：分布式训练（32x A800 = 4 节点 x 8 卡）
+torchrun --nproc_per_node=8 train.py \
+    --backbone Wan2.1-1.3B --gad \
+    --lambda-aux 0.05 \
+    --frames 241 --res 832x480 \
+    --cache cache/ --epochs 10 --lr 1e-5
+
+# 第 3 步：推理 —— 与原版 Wan 完全相同
+# （没有 --gad，没有 --cache，没有任何额外参数；
+#   门控 MLP 不参与推理，直接丢弃）
+python generate.py --ckpt gad-1.3b-241f.pth --prompt "..." --frames 241
+</code></pre>
+</div>
+
+<div class="callout tip">
+  <span class="co-title">对照第 10 章清单逐项核验</span>
+  <p>上面这份实现里可以核对的项：route_layer 的 <code>t&lt;850 / t&lt;950</code> 写法（边界归高噪声）✓；钩子捕获 <code>q_rot/k_rot</code>（旋转后）✓；门控末层 <code>zeros_</code> 初始化 + <code>.float()</code> 全程 FP32 ✓；teacher 里 m 与 c 分开、argmax 在重采样+重归一化之后 ✓；单支时 <code>L_AUX</code> 拿满 0.05 ✓。以及最重要的：推理脚本里<strong>没有任何一行 GAD 代码</strong>——这正是"推理零开销"在代码形态上的样子。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="ch13">
+<h2><span class="ch-no">13</span>局限性与未来方向</h2>
+
+<p>论文附录 F 坦率列出了三个开放问题——它们同时也是后续研究的三个入口：</p>
+
+<h3>13.1 对应目标的天花板在教师</h3>
+
+<p>GAD 的监督信号完全来自 VGGT-Ω 的跨帧注意力，因此<strong>教师匹配不准的地方，学生不可能学得更好</strong>：歧义外观（重复纹理、对称结构）、遮挡边界、运动物体表面——这些区域教师自己的对应就不可靠。论文用置信度权重 w 把这类低质量标签的梯度压到很小（不放大错误），但"压小"不等于"解决"。</p>
+<p>两个自然的延伸：其一，<strong>换更强或互补的对应证据</strong>——比如用多个几何估计器交叉验证、或把光流/深度/多视角跟踪作为第三证据源融合进标签生产；其二，置信度标定流程（55 场景 → mass-only logistic，10.3 节）本身可以在线化，让 w 随教师升级而自适应。</p>
+
+<h3>13.2 路由表是手工固定的</h3>
+
+<p>三段路由 850/950 的边界与 L5/L15/L25 的指派是<strong>训练前写死的</strong>，只依赖噪声时间步 t 这一个变量。它没有参与端到端学习，也没有随训练进程调整——Table 4 证明了"方向对就够好"，但也留下了空间：边界可以由训练课程联合学习（比如按重建误差自适应换层），或把离散路由松弛为可微的软路由。风险同样明显：可微化会引入新的超参与不稳定性，GAD 当前的简洁性（一个 if-else）本身是工程优点。</p>
+
+<h3>13.3 自回归长视频生成</h3>
+
+<p>本文的"长程"是在<strong>单次全注意力窗口内</strong>的 241 帧；当视频生成走向分钟级、采用滑动窗口自回归（Wan2.2 的时序维度 / 开源社区的 chunk 式续写）时，因果注意力只允许看到前面的 chunk，<strong>新内容与更早前置帧之间不存在直接注意力通路</strong>——蒸馏出来的对应结构无法跨 chunk 传递。如何让 GAD 的几何一致性在 chunk 之间"接力"（缓存对应图？跨 chunk 蒸馏？），是把它推向真正长视频的关键一步。</p>
+</section>
+
+<!-- ================================================================ -->
+
+<section id="ch14">
+<h2><span class="ch-no">14</span>参考资料与结语</h2>
+
+<h3>14.1 论文与官方资源</h3>
+<table class="tbl">
+  <tr><th>资源</th><th>链接</th></tr>
+  <tr><td>论文（arXiv）</td><td><a href="https://arxiv.org/abs/2610.18779">arXiv:2610.18779</a> · GAD: Geometry Attention Distillation for Consistent Video Generation</td></tr>
+  <tr><td>项目主页</td><td><a href="https://fantasy-amap.github.io/GAD/">fantasy-amap.github.io/GAD</a>（含图 4–8 高清可视化与更多示例）</td></tr>
+  <tr><td>官方代码</td><td><a href="https://github.com/Fantasy-AMAP/GAD">github.com/Fantasy-AMAP/GAD</a>（本文撰写时：仅主页与论文已发布，训练/推理/检查点待发布）</td></tr>
+  <tr><td>作者</td><td>Junfeng Ni（清华 / BIGAI）、Ziyu Zhu、Fan Jiang（阿里 AMAP，通讯）、Yu Liu、Chiyu Wang、Jiawei Zhang、Zhaoxuan Sun、Mu Xu、Siyuan Huang（BIGAI）、Yixin Chen（BIGAI）——清华大学 · 阿里巴巴高德 · 北京通用人工智能研究院（BIGAI）</td></tr>
+</table>
+
+<h3>14.2 相关开源生态</h3>
+<table class="tbl">
+  <tr><th>项目</th><th>在 GAD 中的角色</th><th>链接</th></tr>
+  <tr><td>VGGT-Ω</td><td>几何注意力教师（冻结）</td><td><a href="https://github.com/facebookresearch/vggt-omega">facebookresearch/vggt-omega</a></td></tr>
+  <tr><td>Wan2.1 / Wan2.2</td><td>视频扩散底座（1.3B / 14B / 5B）</td><td><a href="https://github.com/Wan-Video/Wan2.1">Wan-Video/Wan2.1</a></td></tr>
+  <tr><td>DiffSynth-Studio</td><td>官方致谢的训练框架之一</td><td><a href="https://github.com/modelscope/DiffSynth-Studio">modelscope/DiffSynth-Studio</a></td></tr>
+  <tr><td>VideoX-Fun</td><td>官方致谢的训练框架之一</td><td><a href="https://github.com/aigc-apps/VideoX-Fun">aigc-apps/VideoX-Fun</a></td></tr>
+  <tr><td>RealEstate10K / DL3DV / OmniWorld</td><td>训练与评测数据集</td><td>论文附录 C 及各自项目页</td></tr>
+  <tr><td>VBench</td><td>动态场景五维评测</td><td><a href="https://github.com/Vchitect/VBench">Vchitect/VBench</a></td></tr>
+</table>
+
+<h3>14.3 BibTeX</h3>
+
+<div class="codeblock">
+<div class="codehead"><span class="fname">引用本文（官方 README 提供）</span></div>
+<pre><code>@article{ni2026gad,
+  title={GAD: Geometry Attention Distillation for Consistent Video Generation},
+  author={Ni, Junfeng and Zhu, Ziyu and Jiang, Fan and Liu, Yu and Wang, Chiyu and Zhang, Jiawei and Sun, Zhaoxu and Xu, Mu and Huang, Siyuan and Chen, Yixin},
+  journal={arXiv preprint arXiv:2610.18779},
+  year={2026}
+}
+</code></pre>
+</div>
+
+<h3>14.4 结语：四条带走的话</h3>
+
+<ul>
+  <li><strong>几何一致性可以是"白来的"</strong>。GAD 把跨帧对应作为训练时的辅助监督蒸馏进注意力权重，推理时一行代码不改、一毫秒不加、一字节显存不占——峰值显存逐位相同的实验数据（Table 2）是这类"蒸馏式"方法最漂亮的证明。对比之下，显式几何条件路线（Gen3C/Voyager）在推理时间上付出 4.8×/14.9× 的代价。</li>
+  <li><strong>监督"什么时候给、给到哪"比"给不给"更重要</strong>。路由消融是全文最有信息量的实验：同样的对应标签，监督错层（R5/R6/R7）收益几乎归零，监督对层（R8）比最优固定层再降 25.2%。扩散模型不同噪声水平对应不同的生成阶段，监督信号必须与阶段匹配。</li>
+  <li><strong>三个损失不是三份保险，是三段频谱</strong>。CAT 塑形（哪个 key 该被注意）、PWS 拉开（正负对应要分得开）、TWS 稳轨（长程要稳）；去掉 CAT 后 M_rate 掉到比底座还低——只学"排序"不学"落点"，一致性反而受损。</li>
+  <li><strong>置信度是蒸馏的前提</strong>。教师注意力天然携带质量信号（patch token 上分到的总质量 m），把它显式标定成权重去过滤不可靠标签，比任何"事后清洗"都便宜。任何"从估计器蒸馏"的工作都值得先问一句：你的教师知道自己什么时候在瞎猜吗？</li>
+</ul>
+
+<p>最后回到整体视角：GAD 的贡献不在某个单点技术——交叉熵、InfoNCE、课程式路由都是旧零件——而在于把"几何模型的注意力 = 对应"这个观察，完整地走通了从教师选择、标签生产、时间步-层级对齐、到零开销推理的<strong>端到端工程闭环</strong>，并用消融实验把每个决策的必要性单独证明了一遍。对想做"一致性增强"或"知识蒸馏进扩散模型"的人来说，这篇论文的实验设计本身就值得精读。</p>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p>本文档由 AI 辅助整理，内容依据论文 <a href="https://arxiv.org/abs/2610.18779">arXiv:2610.18779</a>（GAD: Geometry Attention Distillation for Consistent Video Generation）及其 <a href="https://fantasy-amap.github.io/GAD/">项目主页</a>；官方代码仓库 <a href="https://github.com/Fantasy-AMAP/GAD">Fantasy-AMAP/GAD</a> 截至本文撰写时尚未发布训练代码，第 12 章代码为按论文公式与超参复现的参考实现（已在文中明确标注），非官方实现。事实与数据以论文原文为准。</p>
+</footer>
+
+<script>
+(function(){
+  // ---------- Python / Bash 代码高亮（正则单遍 tokenizer） ----------
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var PY_RE = /(#[^\n]*)|((?:[rbfu]?)(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"))|(@[A-Za-z_][\w.]*)|(\b\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)(?=\s*\()|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|self|print|range|len|enumerate|zip|int|float|str|bool|list|dict|tuple|set|min|max|abs|round|super|getattr|hasattr|isinstance)\b)/g;
+
+  var BASH_RE = /(#[^\n]*)|((?:"[^"\n]*"|'[^'\n]*'))|(\b(?:python|python3|git|cd|pip|pip3|export|source|conda|torchrun|huggingface-cli|modelscope|accelerate|wget|curl|nvidia-smi|nvcc|apt|sudo|make|tar|unzip|cp|mv|ls|mkdir)\b)/g;
+
+  function paint(src, re, kwIsGroup6){
+    var out = esc(src).replace(re, function(m, c, s, d, n, f, kw){
+      if (c) return '<span class="tk-c">' + c + '</span>';
+      if (s) return '<span class="tk-s">' + s + '</span>';
+      if (d) return '<span class="tk-d">' + d + '</span>';
+      if (n) return '<span class="tk-n">' + n + '</span>';
+      if (f) return '<span class="tk-f">' + f + '</span>';
+      if (kw) return '<span class="tk-k">' + kw + '</span>';
+      return m;
+    });
+    return out;
+  }
+
+  document.querySelectorAll('pre code').forEach(function(el){
+    var cls = el.className || '';
+    var src = el.textContent;
+    if (/\bpython\b/.test(cls)) {
+      el.innerHTML = paint(src, PY_RE, true);
+    } else if (/\bbash\b/.test(cls)) {
+      el.innerHTML = paint(src, BASH_RE, false);
+    }
+  });
+
+  // ---------- 侧边目录 scrollspy ----------
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var secs = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  function spy(){
+    var cur = secs.length ? secs[0] : null;
+    for (var i = 0; i < secs.length; i++){
+      if (secs[i].getBoundingClientRect().top <= 140) cur = secs[i];
+    }
+    tocLinks.forEach(function(a){
+      a.classList.toggle('active', cur && a.getAttribute('href') === '#' + cur.id);
+    });
+  }
+  window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
+  spy();
+})();
+</script>
+</body>
+</html>
