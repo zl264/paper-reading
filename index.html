@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>论文精读 · Paper Reading</title>
+<meta name="description" content="生成模型与视频生成方向论文精读笔记：Transformer、VAE、Diffusion、DiT、Wan2.1 / Wan2.2">
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card: #ffffff;
+    --ink: #1a1a1a;
+    --ink-2: #55524d;
+    --ink-3: #8a867f;
+    --accent: #b5412e;
+    --accent-soft: #f6e8e4;
+    --line: #e7e4de;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614;
+      --card: #201f1c;
+      --ink: #ece9e3;
+      --ink-2: #b3afa7;
+      --ink-3: #7d7973;
+      --accent: #e0705c;
+      --accent-soft: #3a2721;
+      --line: #323029;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 56px 24px 72px; }
+
+  header.site { margin-bottom: 48px; }
+  .crumb {
+    display: inline-block;
+    font-size: 14px;
+    color: var(--ink-3);
+    text-decoration: none;
+    margin-bottom: 28px;
+    transition: color .2s;
+  }
+  .crumb:hover { color: var(--accent); }
+  .crumb .arrow { margin-right: 6px; }
+  h1 {
+    font-family: Georgia, "Songti SC", "SimSun", serif;
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1.25;
+  }
+  h1 .en {
+    display: block;
+    margin-top: 10px;
+    font-size: 15px;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--ink-3);
+    letter-spacing: .12em;
+  }
+  .lede {
+    margin-top: 18px;
+    max-width: 560px;
+    color: var(--ink-2);
+    font-size: 15.5px;
+  }
+
+  ol.list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  a.doc {
+    display: flex;
+    gap: 22px;
+    align-items: flex-start;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 24px 26px;
+    text-decoration: none;
+    color: inherit;
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  }
+  a.doc:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 28px rgba(0,0,0,.08);
+    border-color: var(--accent);
+  }
+  .no {
+    font-family: Georgia, serif;
+    font-size: 15px;
+    color: var(--accent);
+    min-width: 34px;
+    padding-top: 4px;
+    font-style: italic;
+  }
+  .doc h2 {
+    font-size: 19px;
+    font-weight: 650;
+    letter-spacing: .01em;
+    line-height: 1.4;
+  }
+  .doc p {
+    margin-top: 6px;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .tags { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .tag {
+    font-size: 12px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 999px;
+    padding: 2px 11px;
+    letter-spacing: .03em;
+  }
+  .go {
+    margin-left: auto;
+    align-self: center;
+    color: var(--ink-3);
+    font-size: 20px;
+    transition: color .2s, transform .2s;
+    flex-shrink: 0;
+  }
+  a.doc:hover .go { color: var(--accent); transform: translateX(3px); }
+
+  footer.site {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--ink-3);
+  }
+  footer.site a { color: var(--ink-2); text-decoration: none; }
+  footer.site a:hover { color: var(--accent); }
+
+  @media (max-width: 560px) {
+    .wrap { padding: 40px 18px 56px; }
+    a.doc { padding: 18px 18px; gap: 14px; }
+    .go { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <a class="crumb" href="https://zl264.github.io/"><span class="arrow">←</span>返回主页</a>
+    <h1>论文精读<span class="en">PAPER&nbsp;READING</span></h1>
+    <p class="lede">生成模型与视频生成方向的学习笔记，从基础架构到前沿模型，涵盖原理推导与代码实现。</p>
+  </header>
+
+  <ol class="list">
+
+    <li>
+      <a class="doc" href="transformer_tutorial.html">
+        <span class="no">01</span>
+        <div>
+          <h2>Transformer 详解</h2>
+          <p>从原理、结构到代码实现：注意力机制、位置编码、编码器-解码器结构逐层拆解。</p>
+          <div class="tags"><span class="tag">基础架构</span><span class="tag">Attention</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="VAE-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">02</span>
+        <div>
+          <h2>VAE 变分自编码器</h2>
+          <p>从原理到代码全面详解：变分下界、重参数化技巧与潜空间表示学习。</p>
+          <div class="tags"><span class="tag">生成模型</span><span class="tag">潜空间</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="diffusion_tutorial.html">
+        <span class="no">03</span>
+        <div>
+          <h2>Diffusion 扩散模型详解</h2>
+          <p>从原理、结构到代码实现：前向加噪、反向去噪、DDPM 推导与采样过程。</p>
+          <div class="tags"><span class="tag">生成模型</span><span class="tag">DDPM</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="dit-guide.html">
+        <span class="no">04</span>
+        <div>
+          <h2>DiT（Diffusion Transformer）完全解读</h2>
+          <p>从扩散模型原理、Transformer 结构到逐行代码实现，生成模型两大范式的融合。</p>
+          <div class="tags"><span class="tag">DiT</span><span class="tag">架构融合</span><span class="tag">逐行代码</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="Wan2.1-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">05</span>
+        <div>
+          <h2>Wan 2.1 从原理到源码</h2>
+          <p>万相开源视频生成模型全面详解：整体架构、训练策略与源码级实现分析。</p>
+          <div class="tags"><span class="tag">视频生成</span><span class="tag">文生视频</span><span class="tag">源码解析</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="Wan2.2-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">06</span>
+        <div>
+          <h2>Wan 2.2 从原理到源码</h2>
+          <p>Wan 系列新一代模型全面详解：架构升级点、能力演进与源码级实现分析。</p>
+          <div class="tags"><span class="tag">视频生成</span><span class="tag">文生视频</span><span class="tag">源码解析</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+  </ol>
+
+  <footer class="site">
+    <span>持续更新中</span>
+    <span><a href="https://github.com/zl264/paper-reading" target="_blank" rel="noopener">GitHub 仓库 ↗</a></span>
+  </footer>
+
+</div>
+</body>
+</html>
