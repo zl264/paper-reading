@@ -36,7 +36,7 @@ body {
 
 /* ========== 布局 ========== */
 .sidebar {
-  position: fixed; left: 0; top: 0; bottom: 0;
+  position: fixed; left: max(0px, calc((100% - 1392px)/2)); top: 0; bottom: 0;
   width: var(--sidebar-w);
   background: #0f172a;
   color: #cbd5e1;
@@ -74,13 +74,30 @@ body {
 .toc a.active { color: #fff; border-left-color: #818cf8; background: rgba(99,102,241,.15); }
 
 main {
-  margin-left: var(--sidebar-w);
-  max-width: 920px;
-  padding: 36px 44px 80px;
+  margin-left: calc(var(--sidebar-w) + max(0px, calc((100% - 1392px)/2)));
+  max-width: 1120px;
+  padding: 36px clamp(20px,3.5vw,44px) 80px;
 }
+canvas { max-width: 100%; height: auto; }
+/* ---- 窄屏抽屉侧栏 ---- */
+.sb-btn{
+  display:none; position:fixed; top:14px; left:14px; z-index:130;
+  border:1px solid rgba(148,163,184,.45); background:#0f172a; color:#e2e8f0;
+  font-size:14px; font-weight:600; line-height:1; padding:11px 14px; border-radius:10px;
+  box-shadow:0 4px 14px rgba(15,23,42,.3); cursor:pointer;
+}
+.sb-mask{display:none; position:fixed; inset:0; z-index:90; background:rgba(15,23,42,.5);}
 @media (max-width: 1100px) {
-  .sidebar { display: none; }
-  main { margin-left: 0; padding: 20px 18px 60px; }
+  .sidebar {
+    left: 0; width: min(300px, 84vw); padding-top: 76px;
+    transform: translateX(-105%);
+    transition: transform .28s ease;
+    box-shadow: 0 0 40px rgba(15,23,42,.4);
+  }
+  .sidebar.open { transform: none; }
+  .sb-btn { display: block; }
+  .sb-mask.show { display: block; }
+  main { margin-left: 0; padding: 74px 18px 60px; }
 }
 
 /* ========== Hero ========== */
@@ -88,7 +105,7 @@ main {
   background: linear-gradient(135deg, #1e1b4b 0%, #4f46e5 55%, #db2777 130%);
   border-radius: 18px;
   color: #fff;
-  padding: 46px 48px 42px;
+  padding: 46px clamp(22px,4vw,48px) 42px;
   margin-bottom: 36px;
   position: relative;
   overflow: hidden;
@@ -103,7 +120,7 @@ main {
   width: 240px; height: 240px; border-radius: 50%;
   background: rgba(255,255,255,.06);
 }
-.hero h1 { font-size: 34px; margin-bottom: 14px; letter-spacing: 1px; position: relative; z-index: 2; }
+.hero h1 { font-size: clamp(24px,3.4vw,34px); margin-bottom: 14px; letter-spacing: 1px; position: relative; z-index: 2; }
 .hero p.sub { font-size: 16px; opacity: .92; max-width: 640px; position: relative; z-index: 2; }
 .hero .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; position: relative; z-index: 2; }
 .hero .meta span {
@@ -129,7 +146,7 @@ main {
 }
 @media (max-width: 1100px) { .chapter { padding: 26px 20px; } }
 .chapter > h2 {
-  font-size: 26px; margin-bottom: 6px; color: var(--primary-deep);
+  font-size: clamp(21px,2.6vw,26px); margin-bottom: 6px; color: var(--primary-deep);
   display: flex; align-items: baseline; gap: 14px;
   border-bottom: 2px solid var(--primary-light);
   padding-bottom: 14px; margin-bottom: 26px;
@@ -316,7 +333,7 @@ pre.codeblock code {
   display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 12px 0;
 }
 .demo-controls label { font-size: 13.5px; color: #334155; }
-input[type=range] { accent-color: var(--primary); vertical-align: middle; }
+input[type=range] { accent-color: var(--primary); vertical-align: middle; max-width: 100%; }
 .btn-mini {
   background: var(--primary); color: #fff; border: none; cursor: pointer;
   border-radius: 8px; padding: 6px 16px; font-size: 13px; font-family: inherit;
@@ -417,9 +434,11 @@ footer {
 </style>
 </head>
 <body>
+<button class="sb-btn" id="sbBtn" type="button" aria-controls="sidebar">☰ 目录</button>
+<div class="sb-mask" id="sbMask"></div>
 
 <!-- ================= 侧边栏 ================= -->
-<nav class="sidebar">
+<nav class="sidebar" id="sidebar">
   <div class="logo">
     <div class="t-mark">ε</div>
     <h1>Diffusion 扩散模型详解</h1>
@@ -624,7 +643,7 @@ x<sub>t</sub> = √<span class="sqrt">1−β<sub>t</sub></span> · x<sub>t−1</
   </div>
   <div class="demo-controls">
     <label for="fwd-t">时间步 t = <b id="fwd-t-val">0</b> / 1000</label>
-    <input type="range" id="fwd-t" min="0" max="1000" value="250" step="5" style="width:330px">
+    <input type="range" id="fwd-t" min="0" max="1000" value="250" step="5" style="width:min(330px,100%)">
     <button class="btn-mini gray" id="fwd-resample">重新采样噪声 ε</button>
     <button class="btn-mini gray" id="fwd-prev">◀ 变清晰</button>
     <button class="btn-mini gray" id="fwd-next">变噪声 ▶</button>
@@ -1220,7 +1239,7 @@ Attention(Q, K, V) = softmax( <span class="frac"><span class="num">Q · K<sup>T<
   </div>
   <div class="demo-controls">
     <label for="cfg-w">引导强度 w = <b id="cfg-w-val">7.5</b></label>
-    <input type="range" id="cfg-w" min="0" max="12" value="7.5" step="0.1" style="width:300px">
+    <input type="range" id="cfg-w" min="0" max="12" value="7.5" step="0.1" style="width:min(300px,100%)">
     <button class="btn-mini gray" id="cfg-resample">换一组 ε 向量</button>
   </div>
   <div class="chips">
@@ -2273,5 +2292,28 @@ function drawFloat(ctx, arr) {                   // [-1,1] 浮点数组 → 画�
 
 </script>
 
+<script>
+(function(){
+  var btn = document.getElementById('sbBtn');
+  var sb = document.getElementById('sidebar');
+  var mask = document.getElementById('sbMask');
+  if (!btn || !sb || !mask) return;
+  function setOpen(open){
+    sb.classList.toggle('open', open);
+    mask.classList.toggle('show', open);
+    btn.textContent = open ? '✕ 收起目录' : '☰ 目录';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!sb.classList.contains('open')); });
+  mask.addEventListener('click', function(){ setOpen(false); });
+  sb.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('a')) setOpen(false);
+  });
+  window.addEventListener('resize', function(){
+    if (window.innerWidth > 1100 && sb.classList.contains('open')) setOpen(false);
+  });
+})();
+</script>
 </body>
 </html>

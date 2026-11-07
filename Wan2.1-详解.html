@@ -26,7 +26,7 @@ body{
 /* ---------- 布局 ---------- */
 .layout{display:flex; min-height:100vh;}
 .toc{
-  position:fixed; top:0; left:0; bottom:0; width:284px;
+  position:fixed; top:0; left:max(0px, calc((100% - 1424px)/2)); bottom:0; width:284px;
   background:#ffffff; border-right:1px solid var(--border);
   overflow-y:auto; padding:28px 18px 40px; z-index:10;
 }
@@ -39,17 +39,35 @@ body{
 .toc a:hover{color:var(--accent); background:var(--accent-soft);}
 .toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
 .content{
-  margin-left:284px; width:calc(100% - 284px);
-  max-width:960px; padding:56px 56px 80px;
+  margin-left:calc(284px + max(0px, calc((100% - 1424px)/2)));
+  width:calc(100% - 284px - max(0px, calc((100% - 1424px)/2)));
+  max-width:1140px; padding:56px clamp(24px,4vw,56px) 80px;
 }
+/* ---- 窄屏抽屉目录 ---- */
+.toc-btn{
+  display:none; position:fixed; top:14px; left:14px; z-index:130;
+  border:1px solid var(--border); background:#ffffff; color:var(--accent-deep);
+  font-size:14px; font-weight:600; line-height:1; padding:11px 14px; border-radius:10px;
+  box-shadow:0 4px 14px rgba(15,17,32,.14); cursor:pointer;
+}
+.toc-mask{display:none; position:fixed; inset:0; z-index:90; background:rgba(15,17,32,.45);}
 @media (max-width:1180px){
-  .toc{display:none;}
-  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+  .toc{
+    left:0; width:min(300px,86vw); z-index:120; border-radius:0 12px 12px 0;
+    transform:translateX(-105%); transition:transform .28s ease;
+    box-shadow:0 0 40px rgba(15,17,32,.2);
+  }
+  .toc.open{transform:none;}
+  .content{margin-left:0; width:100%; padding:74px 20px 60px;}
+  .toc-btn{display:block;}
+  .toc-mask.show{display:block;}
+  .content code{white-space:normal; overflow-wrap:anywhere;}
+  .content pre code{white-space:pre;}
 }
 /* ---------- 标题 ---------- */
 .doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
 .doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
-h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+h1{font-size:clamp(27px,4vw,38px); line-height:1.25; font-weight:800; letter-spacing:-.5px;}
 .doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
 .doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
 .doc-meta span{
@@ -57,7 +75,7 @@ h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
   border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
 }
 h2{
-  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  font-size:clamp(22px,3vw,29px); font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
   display:flex; align-items:baseline; gap:14px;
 }
 h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
@@ -113,6 +131,8 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 .tbl tr:hover td{background:#faf9ff;}
 .tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
 .tbl .hl td{background:var(--accent-soft);}
+.tbl-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin:20px 0;}
+.tbl-wrap .tbl{margin:0; min-width:100%;}
 /* ---------- 提示框 ---------- */
 .callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
 .callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
@@ -126,7 +146,7 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 /* ---------- 公式 ---------- */
 .formula{
   background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
-  text-align:center; padding:18px 20px; margin:22px 0;
+  text-align:center; padding:18px 20px; margin:22px 0; overflow-x:auto;
   font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
 }
 .formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
@@ -148,6 +168,8 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </style>
 </head>
 <body>
+<button class="toc-btn" id="tocBtn" type="button" aria-controls="toc">☰ 目录</button>
+<div class="toc-mask" id="tocMask"></div>
 <div class="layout">
 
 <nav class="toc" id="toc">
@@ -195,7 +217,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </ul>
 
 <h3>1.2 模型家族一览</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>模型</th><th>任务</th><th>分辨率</th><th>规模</th><th>备注</th></tr>
   <tr class="hl"><td>Wan2.1-T2V-1.3B</td><td>文生视频</td><td>480P</td><td>1.3B</td><td>8.19 GB 显存，消费级显卡可跑，官方建议 guide_scale=6、shift=8~12</td></tr>
   <tr><td>Wan2.1-T2V-14B</td><td>文生视频</td><td>480P / 720P</td><td>14B</td><td>效果最好，支持中英文字渲染</td></tr>
@@ -204,7 +226,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>Wan2.1-FLF2V-14B-720P</td><td>首尾帧生成</td><td>720P</td><td>14B</td><td>给定首帧+尾帧，补全中间过程</td></tr>
   <tr><td>Wan2.1-VACE-1.3B / 14B</td><td>全能视频编辑</td><td>480P / 720P</td><td>1.3B / 14B</td><td>参考图、深度/姿态控制、遮罩局部重绘、视频外延等统一在一个模型里</td></tr>
   <tr><td>Wan2.1-T2I-14B</td><td>文生图</td><td>1024</td><td>14B</td><td>图片版，与视频共享架构思想</td></tr>
-</table>
+</table></div>
 
 <div class="callout tip">
   <span class="co-title">怎么选？</span>
@@ -487,7 +509,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
 
 <h3>3.2 DiT 两种规格</h3>
 <p>1.3B 与 14B 共用同一套架构代码，只是「宽度和深度」不同。以下数字直接来自仓库配置文件 <code>wan/configs/wan_t2v_1_3B.py</code> 与 <code>wan_t2v_14B.py</code>：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>配置项</th><th class="num">T2V-1.3B</th><th class="num">T2V-14B</th><th>说明</th></tr>
   <tr><td><code>dim</code> 隐藏宽度</td><td class="num">1536</td><td class="num">5120</td><td>每个 token 的特征维度</td></tr>
   <tr><td><code>ffn_dim</code></td><td class="num">8960</td><td class="num">13824</td><td>FFN 中间层宽度</td></tr>
@@ -497,7 +519,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
   <tr><td><code>patch_size</code></td><td class="num">(1, 2, 2)</td><td class="num">(1, 2, 2)</td><td>latent 切 patch 的步长</td></tr>
   <tr><td><code>in_dim</code> / <code>out_dim</code></td><td class="num">16</td><td class="num">16</td><td>输入/输出通道 = VAE 的 z_dim</td></tr>
   <tr><td>参数量</td><td class="num">约 1.3B</td><td class="num">约 14B</td><td>bfloat16 权重，官方发布</td></tr>
-</table>
+</table></div>
 
 <h3>3.3 张量形状全程追踪（以 480P 为例）</h3>
 <p>假设生成 832×480、81 帧的视频（<code>size=(832,480)</code>, <code>frame_num=81</code>）。跟着数据走一遍：</p>
@@ -516,11 +538,11 @@ loss.backward()                               # 如此反复，直到收敛</cod
   <span class="arr">→ unpatchify →</span> <b>16 × 21 × 60 × 104</b>
   <span class="arr">→ VAE.decode →</span> <b>3 × 81 × 480 × 832</b>
 </div>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>分辨率</th><th>latent 形状（VAE 后）</th><th>token 网格（patch 后）</th><th class="num">token 数</th></tr>
   <tr><td>480P（832×480）</td><td class="num">16×21×60×104</td><td class="num">21×30×52</td><td class="num">32,760</td></tr>
   <tr><td>720P（1280×720）</td><td class="num">16×21×90×160</td><td class="num">21×45×80</td><td class="num">75,600</td></tr>
-</table>
+</table></div>
 <div class="callout note">
   <span class="co-title">为什么帧数必须是 4n+1？</span>
   <p>时间维被 VAE 压 4 倍：81 帧 → <code>(81−1)/4+1 = 21</code> 个 latent 帧（首帧单独一块，之后每 4 帧一块）。所以 <code>frame_num</code> 必须满足 <code>4n+1</code>（81 = 4×20+1 ≈ 16fps 下 5 秒）。720P 时 75,600 个 token 的自注意力是显存大头——这也是 Wan 需要序列并行（第 9 章）的原因。</p>
@@ -528,7 +550,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
 
 <h3>3.4 共享超参数</h3>
 <p>来自 <code>wan/configs/shared_config.py</code>，所有任务变体共用：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>参数</th><th class="num">值</th><th>含义</th></tr>
   <tr><td><code>t5_model</code> / <code>t5_dtype</code></td><td class="num">umt5_xxl / bfloat16</td><td>文本编码器及其精度</td></tr>
   <tr><td><code>text_len</code></td><td class="num">512</td><td>文本 token 上限（不足补零）</td></tr>
@@ -536,7 +558,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
   <tr><td><code>num_train_timesteps</code></td><td class="num">1000</td><td>离散化时间步总数（t·1000 送入模型）</td></tr>
   <tr><td><code>sample_fps</code></td><td class="num">16</td><td>输出视频帧率</td></tr>
   <tr><td><code>sample_neg_prompt</code></td><td class="num">中文长句</td><td>默认负向提示词（见 2.5 节）</td></tr>
-</table>
+</table></div>
 
 <h3>3.5 源码仓库导览</h3>
 <p>本文引用的全部代码都来自下面的目录结构，建议对照阅读（本地克隆在 <code>Wan2.1-repo/</code>）：</p>
@@ -580,7 +602,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
 
 <h3>4.2 结构总览</h3>
 <p>整体是经典的「下采样堆叠 + 瓶颈 + 上采样堆叠」U 形结构，尺寸参数全部硬编码在 <code>_video_vae()</code> 工厂函数中：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>配置项</th><th class="num">值</th><th>含义</th></tr>
   <tr><td><code>dim</code></td><td class="num">96</td><td>基础通道宽度</td></tr>
   <tr><td><code>dim_mult</code></td><td class="num">[1, 2, 4, 4]</td><td>四个阶段的通道倍率（96/192/384/384）</td></tr>
@@ -589,7 +611,7 @@ loss.backward()                               # 如此反复，直到收敛</cod
   <tr><td><code>temperal_downsample</code></td><td class="num">[False, True, True]</td><td>第 2、3 次下采样才带时间维（共 2 次 → 时间 4×）</td></tr>
   <tr><td><code>z_dim</code></td><td class="num">16</td><td>latent 通道数</td></tr>
   <tr><td><code>CACHE_T</code></td><td class="num">2</td><td>分块编解码时每个卷积缓存的历史帧数</td></tr>
-</table>
+</table></div>
 <p>编码器路径（<code>Encoder3d</code>）：</p>
 <div class="flow">
   输入 <b>3 × T × H × W</b>
@@ -1255,7 +1277,7 @@ self.freqs = torch.cat([
 
 <h3>6.2 umT5-XXL：被「砍掉后半身」的多语种大模型</h3>
 <p>T5 家族的原始形态是「编码器 + 解码器」的序列到序列模型（翻译、摘要这类任务需要解码器逐词生成）。Wan 只需要「理解」提示词，不需要它生成文字，于是只保留了编码器塔——参数量直接砍半，推理也更快：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>配置项</th><th>值</th><th>说明</th></tr>
   <tr class="hl"><td>vocab_size</td><td>256,384</td><td>词表巨大，覆盖上百种语言（含中文），sentencepiece 分词</td></tr>
   <tr><td>dim</td><td>4096</td><td>模型宽度（Wan 论文里说的 5.7B 主要就是它）</td></tr>
@@ -1264,7 +1286,7 @@ self.freqs = torch.cat([
   <tr><td>encoder_layers</td><td>24</td><td>只保留编码器 24 层（解码器 24 层被丢弃）</td></tr>
   <tr><td>num_buckets</td><td>32</td><td>相对位置桶数（见 6.3）</td></tr>
   <tr><td>shared_pos</td><td>False</td><td>每层独立学习一套相对位置偏置（umT5 特有，mT5 是共享的）</td></tr>
-</table>
+</table></div>
 
 <div class="callout note">
   <span class="co-title">参数量粗算</span>
@@ -1370,14 +1392,14 @@ self.freqs = torch.cat([
 
 <h3>6.5 CLIP 视觉分支：只借「眼睛」，不借「嘴」</h3>
 <p>I2V 模型选的是 <code>open-clip-xlm-roberta-large-vit-huge-14</code>：一个双塔 CLIP，文本塔是 XLM-RoBERTa-Large，视觉塔是 ViT-Huge/14。Wan <strong>只加载视觉塔</strong>（文本理解已由 umT5 负责），而且取的还不是最终输出——</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>配置项</th><th>值</th><th>说明</th></tr>
   <tr class="hl"><td>vision_dim</td><td>1280</td><td>ViT-Huge 宽度（Wan 源码里那个 1280 的出处）</td></tr>
   <tr><td>vision_layers</td><td>32</td><td>视觉塔层数</td></tr>
   <tr><td>vision_heads</td><td>16</td><td>head_dim = 80</td></tr>
   <tr><td>image_size / patch_size</td><td>224 / 14</td><td>16 × 16 = 256 个 patch，加 1 个 CLS → <strong>257 token</strong></td></tr>
   <tr><td>vision_pool</td><td>token</td><td>默认用 CLS 池化——但 Wan 不走这条路</td></tr>
-</table>
+</table></div>
 
 <div class="codeblock">
 <div class="codehead"><span class="fname">wan/modules/clip.py · CLIPModel.visual</span><span class="lang">Python</span></div>
@@ -1559,14 +1581,14 @@ y = torch.concat([msk, y])                        # [20, T, lat_h, lat_w]</code>
 
 <h3>7.3 msk：帧级掩码是怎么变成 4 通道的</h3>
 <p>上面那段 msk 代码是全仓库最绕的几行之一，把每步的形状摆出来就清楚了（以 81 帧、480P 为例）：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>步骤</th><th>代码</th><th>形状（lh=60, lw=104）</th></tr>
   <tr><td>1</td><td><code>torch.ones(1, F, lh, lw)</code></td><td>[1, 81, 60, 104]（全 1）</td></tr>
   <tr><td>2</td><td><code>msk[:, 1:] = 0</code></td><td>[1, 81, ...]：仅第 1 帧为 1</td></tr>
   <tr><td>3</td><td><code>repeat_interleave(第0帧, 4) + concat</code></td><td>[1, 84, ...]：开头变成 [1,1,1,1] + 80 个 0</td></tr>
   <tr><td>4</td><td><code>view(1, 21, 4, lh, lw)</code></td><td>[1, 21, 4, ...]：每 4 帧归一个 latent 帧</td></tr>
   <tr class="hl"><td>5</td><td><code>transpose(1, 2)[0]</code></td><td>[4, 21, 60, 104]：4 个「时间子位置」通道</td></tr>
-</table>
+</table></div>
 <p>最终效果：msk 的 4 个通道中，每个通道对应 latent 帧内部的一个时间相位——<strong>第 0 个 latent 帧的 4 个相位全部为 1，其余 20 个 latent 帧全为 0</strong>。为什么要这么细？回忆第 4 章：VAE 解码时第一个 latent 帧产出 1 帧、其后每个产出 4 帧，且这 4 帧是交错插值出来的——「一个 latent 帧覆盖哪些视频帧」天然是 4 相位结构。掩码做在同样的粒度上，训练时就能把<strong>任意位置的条件帧</strong>（而不只是首帧）喂给模型：哪里有真值，对应相位就置 1。推理时 I2V 固定首帧、FLF2V 固定首尾帧，只是这个通用机制的两种特例。</p>
 
 <h3>7.4 DiT 一侧的对接</h3>
@@ -1631,13 +1653,13 @@ y = torch.concat([msk, y])                # 仍是 [20, T, lh, lw]，in_dim 同�
 
 <h3>7.7 T2I 与家族对比</h3>
 <p>T2I-14B 是同一套 DiT 的单帧特化（1280×1024 静态图），patch、调制、RoPE 机制完全同构，视频版会动的本事在图片上体现为更强的构图与<strong>中英文文字渲染</strong>能力（视频版 T2V-14B 同样支持）。最后把全家族的输入差异收进一张表：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>变体</th><th>y 的内容</th><th>msk 标记</th><th>CLIP token</th><th>in_dim</th><th>负向前缀</th></tr>
   <tr class="hl"><td>T2V</td><td>无</td><td>—</td><td>—</td><td>16</td><td>基础负向</td></tr>
   <tr><td>I2V</td><td>msk + 首帧 latent（20 通道）</td><td>第 0 个 latent 的 4 相位</td><td>257</td><td>36</td><td>+「镜头晃动，」</td></tr>
   <tr><td>FLF2V</td><td>msk + 首尾帧 latent（20 通道）</td><td>第 0 个 latent 全 4 相位 + 末 latent 第 4 相位</td><td>514</td><td>36</td><td>+「镜头切换，」</td></tr>
   <tr><td>VACE</td><td>无（控制走 vace_context 旁支，96 通道）</td><td>保留区/生成区 8×8 邻域掩码</td><td>—</td><td>16</td><td>基础负向</td></tr>
-</table>
+</table></div>
 </section>
 
 <section id="ch8">
@@ -1779,13 +1801,13 @@ if self.rank == 0:
 
 <h3>8.4 推理参数速查表</h3>
 <p>以下是 <code>generate.py</code> 里各任务的开箱默认值（<code>generate.py</code> 的 <code>_validate_args</code> 函数），也是社区反复验证过的甜点位：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>参数</th><th>T2V</th><th>I2V</th><th>FLF2V / VACE</th><th>T2I</th></tr>
   <tr class="hl"><td>sampling_steps</td><td>50</td><td>40</td><td>50</td><td>50</td></tr>
   <tr><td>shift</td><td>5.0</td><td>832×480：<strong>3.0</strong>；720P：5.0</td><td><strong>16</strong></td><td>5.0</td></tr>
   <tr><td>guide_scale</td><td>5.0</td><td>5.0</td><td>5.0</td><td>5.0</td></tr>
   <tr><td>frame_num</td><td>81</td><td>81</td><td>81</td><td>1</td></tr>
-</table>
+</table></div>
 <div class="callout tip">
   <span class="co-title">调参直觉</span>
   <p><strong>shift</strong>：值越大，采样步越集中在前段（大噪声、定结构的阶段）。I2V 480P 用 3.0 是因为首帧已经定了结构，前段不需要那么多步；FLF2V/VACE 用 16 是因为控制信号多、结构阶段必须抠得足够细。<strong>1.3B 模型</strong>官方建议 guide_scale=6、shift=8~12，小模型对文本的响应弱，需要推得狠一点。<strong>diffusers 版</strong>里 T2V-480P 建议用 flow_shift=3.0、720P 用 5.0，与上表同理。</p>
@@ -1799,13 +1821,13 @@ if self.rank == 0:
 
 <h3>9.1 数据流水线：十亿级素材怎么筛</h3>
 <p>候选集包含数十亿图像与视频，清洗按四步走，聚焦三个维度：<strong>基本维度、视觉质量、运动质量</strong>。</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>步骤</th><th>做什么</th><th>典型手段</th></tr>
   <tr class="hl"><td>① 基础清洗</td><td>去掉「不该进训练集」的素材</td><td>OCR 检测过滤文字过多的素材、LAION 美学分类器过滤低质、NSFW 安全模型、水印/黑边/过曝/模糊检测、剔除 AI 生成内容</td></tr>
   <tr><td>② 聚类去重</td><td>同类内容只留代表</td><td>特征聚类 + 类别平衡，防止数据分布被少数类别淹没</td></tr>
   <tr><td>③ 运动筛选</td><td>只要「动得自然」的视频</td><td>运动强度评分：保留动作自然、完整、显著的片段，剔除静止或剧烈抖动的</td></tr>
   <tr><td>④ 稠密描述</td><td>给每个素材配「说明书」</td><td>内部多模态大模型逐条生成 dense caption（见下）</td></tr>
-</table>
+</table></div>
 <p><strong>稠密视频描述（Dense Video Caption）</strong>是整条流水线里最关键的投入。DALL-E 3 已经验证：用高度描述性的 caption 训练，模型的提示词遵循能力会大幅提升。Wan 为此专门训了一个视频 caption 模型，训练数据覆盖 ID 主体、数量、OCR 文字、镜头角度、运动幅度、细粒度类别、空间关系等角度——最终质量对齐 Gemini Pro 1.5 水平。你写「低角度、镜头缓慢推近、左侧有三人」这种提示词能被听懂，根源在这里。</p>
 
 <h3>9.2 训练策略：渐进式分辨率与后训练</h3>
@@ -1825,12 +1847,12 @@ if self.rank == 0:
 <p>Ulysses（序列切头并行）把注意力的头分给组内各卡，通信只在组内小圈子里发生；Ring Attention（外层）把序列分段轮流传递，通信与计算重叠。两者套起来，256K 序列的通信开销从 <strong>约 10% 压到 1% 以下</strong>。一个有趣的细节：1.3B 模型只有 12 个注意力头，Ulysses 组内卡数必须整除头数（8 卡就除不开）——所以报告建议小模型场景用「Ring 为主、Ulysses 为辅」的搭配。</p>
 
 <h3>9.4 推理加速：三个官方 trick</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>技术</th><th>原理</th><th>收益</th></tr>
   <tr class="hl"><td>Diffusion Cache</td><td>相邻去噪步的 DiT 输出高度相似；对缓存结果做残差补偿而不是每步全算</td><td>约 1.4×（官方数字，观感几乎无损）</td></tr>
   <tr><td>负向提示隔步计算</td><td>CFG 的负向前向不必每步都算，隔步算一次、中间步复用</td><td>1.62×（负向前向次数减半以上）</td></tr>
   <tr><td>FlashAttention 混合量化</td><td>注意力里 Q·K<sup>T</sup> 用 int8、乘 V 用 fp8，softmax 保精度</td><td>1.27×</td></tr>
-</table>
+</table></div>
 <p>注意 9.4 与 8.2 的呼应：<code>generate</code> 里正负提示词<strong>先编码、循环里只传 embedding</strong>——就是在为「隔步计算负向前向」这类优化留好接口（社区项目 TeaCache 就是在这个位置动刀的，第 11 章会见到）。</p>
 
 <h3>9.5 提示词对齐：Qwen 扩写</h3>
@@ -1867,14 +1889,14 @@ huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir ./Wan2.1-T2V-1.3B
 pip install modelscope
 modelscope download Wan-AI/Wan2.1-T2V-1.3B --local_dir ./Wan2.1-T2V-1.3B</code></pre>
 </div>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>模型 ID（Wan-AI/…）</th><th>大小</th><th>显存（官方口径）</th></tr>
   <tr class="hl"><td>Wan2.1-T2V-1.3B</td><td>~2.6 GB</td><td><strong>8.19 GB</strong>（offload + t5_cpu）</td></tr>
   <tr><td>Wan2.1-T2V-14B</td><td>~28 GB</td><td>8×A800 或单卡 24 GB+offload 跑 480P</td></tr>
   <tr><td>Wan2.1-I2V-14B-480P / 720P</td><td>~28 GB</td><td>同上量级</td></tr>
   <tr><td>Wan2.1-FLF2V-14B-720P</td><td>~28 GB</td><td>同上量级</td></tr>
   <tr><td>Wan2.1-VACE-1.3B / 14B</td><td>~2.6 / ~35 GB</td><td>1.3B 消费级可跑</td></tr>
-</table>
+</table></div>
 
 <h3>10.3 官方 CLI：单卡与多卡</h3>
 <div class="codeblock">
@@ -1963,7 +1985,7 @@ python t2v_14B_singleGPU.py --prompt_extend_method 'local_qwen' --ckpt_dir ../Wa
 
 <h3>11.1 生态地图</h3>
 <p>Wan 2.1 开源一年多，已长出完整的生态。<strong>官方侧</strong>：ComfyUI 与 Diffusers 的一线支持、Gradio demo、VACE 工具链。<strong>社区侧</strong>（摘自官方 README「Community Works」）：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>项目</th><th>类型</th><th>一句话说明</th></tr>
   <tr class="hl"><td><a href="https://github.com/ali-vilab/TeaCache">TeaCache</a></td><td>推理加速</td><td>时步感知的缓存策略，跳过相似度高的 DiT 步，提速约 2×，几乎无损</td></tr>
   <tr><td><a href="https://github.com/ModelTC/LightX2V">LightX2V</a></td><td>轻量推理</td><td>RTX 4060（8 GB）也能跑 Wan2.1/2.2，集成多种工程加速与流式生成</td></tr>
@@ -1973,7 +1995,7 @@ python t2v_14B_singleGPU.py --prompt_extend_method 'local_qwen' --ckpt_dir ../Wa
   <tr><td><a href="https://github.com/bytedance/Video-As-Prompt">Video-As-Prompt</a></td><td>语义控制</td><td>统一的概念/风格/运动/镜头上下文控制（字节跳动）</td></tr>
   <tr><td><a href="https://github.com/PKU-YuanGroup/Helios">Helios</a></td><td>长视频</td><td>分钟级高质量视频，单 H100 19.5 FPS（北大团队）</td></tr>
   <tr><td>AniCrafter / UniAnimate-DiT / Wan-Move / ATI / MagicTryOn 等</td><td>垂直应用</td><td>动画角色插入、姿态驱动数字人、点级运动控制、轨迹控制、虚拟试穿……全部以 Wan2.1 为底座</td></tr>
-</table>
+</table></div>
 <p>规律很明显：<strong>「底座 + 任务头」的架构让 Wan 成了视频界的 SD</strong>——改输入构造就能长出新任务（第 7 章的全部内容），加旁支就能长出新控制（VACE 式），微调底座就能长出新玩法（LoRA）。理解了 Wan 的源码，这些项目你也都能读懂。</p>
 
 <h3>11.2 局限</h3>
@@ -1996,7 +2018,7 @@ python t2v_14B_singleGPU.py --prompt_extend_method 'local_qwen' --ckpt_dir ../Wa
 <h2><span class="ch-no">12</span>参考资料与结语</h2>
 
 <h3>12.1 延伸阅读</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>资料</th><th>链接</th><th>说明</th></tr>
   <tr class="hl"><td>Wan 技术报告</td><td><a href="https://arxiv.org/abs/2503.20314">arXiv:2503.20314</a></td><td>一切数据与训练细节的原始出处</td></tr>
   <tr><td>官方仓库</td><td><a href="https://github.com/Wan-Video/Wan2.1">github.com/Wan-Video/Wan2.1</a></td><td>本档引用的全部源码；本地已克隆至 <code>Wan2.1-repo/</code></td></tr>
@@ -2005,7 +2027,7 @@ python t2v_14B_singleGPU.py --prompt_extend_method 'local_qwen' --ckpt_dir ../Wa
   <tr><td>HuggingFace</td><td><a href="https://huggingface.co/Wan-AI">huggingface.co/Wan-AI</a></td><td>全部权重（含 -Diffusers 版）</td></tr>
   <tr><td>ModelScope</td><td><a href="https://modelscope.cn/organization/Wan-AI">modelscope.cn/organization/Wan-AI</a></td><td>国内镜像下载</td></tr>
   <tr><td>Flow Matching 原论文</td><td><a href="https://arxiv.org/abs/2210.02747">arXiv:2210.02747</a></td><td>想深挖第 2 章数学的话</td></tr>
-</table>
+</table></div>
 <p>配套阅读建议：技术报告第 3 节（数据）与第 4 节（模型）配合本文第 5~9 章食用；源码按第 3.5 节的仓库导览顺序读：<code>model.py → vae.py → text2video.py</code>，三份读完就能贯通全文。</p>
 
 <h3>12.2 结语</h3>
@@ -2066,6 +2088,29 @@ python t2v_14B_singleGPU.py --prompt_extend_method 'local_qwen' --ckpt_dir ../Wa
   }
   window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
   spy();
+})();
+</script>
+<script>
+(function(){
+  var btn = document.getElementById('tocBtn');
+  var toc = document.getElementById('toc');
+  var mask = document.getElementById('tocMask');
+  if (!btn || !toc || !mask) return;
+  function setOpen(open){
+    toc.classList.toggle('open', open);
+    mask.classList.toggle('show', open);
+    btn.textContent = open ? '✕ 收起目录' : '☰ 目录';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!toc.classList.contains('open')); });
+  mask.addEventListener('click', function(){ setOpen(false); });
+  toc.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('a')) setOpen(false);
+  });
+  window.addEventListener('resize', function(){
+    if (window.innerWidth > 1180 && toc.classList.contains('open')) setOpen(false);
+  });
 })();
 </script>
 </body>

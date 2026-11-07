@@ -26,7 +26,7 @@ body{
 /* ---------- 布局 ---------- */
 .layout{display:flex; min-height:100vh;}
 .toc{
-  position:fixed; top:0; left:0; bottom:0; width:284px;
+  position:fixed; top:0; left:max(0px, calc((100% - 1424px)/2)); bottom:0; width:284px;
   background:#ffffff; border-right:1px solid var(--border);
   overflow-y:auto; padding:28px 18px 40px; z-index:10;
 }
@@ -39,17 +39,35 @@ body{
 .toc a:hover{color:var(--accent); background:var(--accent-soft);}
 .toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
 .content{
-  margin-left:284px; width:calc(100% - 284px);
-  max-width:960px; padding:56px 56px 80px;
+  margin-left:calc(284px + max(0px, calc((100% - 1424px)/2)));
+  width:calc(100% - 284px - max(0px, calc((100% - 1424px)/2)));
+  max-width:1140px; padding:56px clamp(24px,4vw,56px) 80px;
 }
+/* ---- 窄屏抽屉目录 ---- */
+.toc-btn{
+  display:none; position:fixed; top:14px; left:14px; z-index:130;
+  border:1px solid var(--border); background:#ffffff; color:var(--accent-deep);
+  font-size:14px; font-weight:600; line-height:1; padding:11px 14px; border-radius:10px;
+  box-shadow:0 4px 14px rgba(15,17,32,.14); cursor:pointer;
+}
+.toc-mask{display:none; position:fixed; inset:0; z-index:90; background:rgba(15,17,32,.45);}
 @media (max-width:1180px){
-  .toc{display:none;}
-  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+  .toc{
+    left:0; width:min(300px,86vw); z-index:120; border-radius:0 12px 12px 0;
+    transform:translateX(-105%); transition:transform .28s ease;
+    box-shadow:0 0 40px rgba(15,17,32,.2);
+  }
+  .toc.open{transform:none;}
+  .content{margin-left:0; width:100%; padding:74px 20px 60px;}
+  .toc-btn{display:block;}
+  .toc-mask.show{display:block;}
+  .content code{white-space:normal; overflow-wrap:anywhere;}
+  .content pre code{white-space:pre;}
 }
 /* ---------- 标题 ---------- */
 .doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
 .doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
-h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+h1{font-size:clamp(27px,4vw,38px); line-height:1.25; font-weight:800; letter-spacing:-.5px;}
 .doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
 .doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
 .doc-meta span{
@@ -57,7 +75,7 @@ h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
   border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
 }
 h2{
-  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  font-size:clamp(22px,3vw,29px); font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
   display:flex; align-items:baseline; gap:14px;
 }
 h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
@@ -113,6 +131,8 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 .tbl tr:hover td{background:#faf9ff;}
 .tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
 .tbl .hl td{background:var(--accent-soft);}
+.tbl-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin:20px 0;}
+.tbl-wrap .tbl{margin:0; min-width:100%;}
 /* ---------- 提示框 ---------- */
 .callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
 .callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
@@ -126,7 +146,7 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 /* ---------- 公式 ---------- */
 .formula{
   background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
-  text-align:center; padding:18px 20px; margin:22px 0;
+  text-align:center; padding:18px 20px; margin:22px 0; overflow-x:auto;
   font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
 }
 .formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
@@ -148,6 +168,8 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </style>
 </head>
 <body>
+<button class="toc-btn" id="tocBtn" type="button" aria-controls="toc">☰ 目录</button>
+<div class="toc-mask" id="tocMask"></div>
 <div class="layout">
 
 <nav class="toc" id="toc">
@@ -184,13 +206,13 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>1.1 生成模型 vs 判别模型</h3>
 <p>先用一个最粗的对比建立位置感。常见的神经网络大多属于<strong>判别模型</strong>：给定输入 x，预测标签 y（猫还是狗？下一个词是什么？）。而<strong>生成模型</strong>反过来，它要建模数据本身的分布 p(x)，然后<strong>从分布里「无中生有」地采样出新样本</strong>。</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>视角</th><th>判别模型</th><th>生成模型</th></tr>
   <tr><td>学什么</td><td>p(y | x)：条件分布</td><td>p(x)（可能带隐变量 z）</td></tr>
   <tr><td>能干什么</td><td>分类、回归、打标签</td><td>采样新数据、算似然、补全、去噪</td></tr>
   <tr><td>典型代表</td><td>ResNet、BERT、GPT（判别式用法）</td><td>VAE、GAN、Diffusion、PixelRNN</td></tr>
   <tr><td>难度</td><td>「照葫芦画瓢」相对容易</td><td>「造一个新葫芦」难得多</td></tr>
-</table>
+</table></div>
 <p>VAE 就是生成模型家族的一员，而且是其中<strong>数学结构最优雅、训练最稳定</strong>的一支——这也是它至今仍被大量使用的原因。</p>
 
 <h3>1.2 历史与出处</h3>
@@ -201,12 +223,12 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </ul>
 
 <h3>1.3 三大生成范式一眼对比</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>范式</th><th>核心思想</th><th>训练稳定性</th><th>样本质量</th><th>典型短板</th></tr>
   <tr class="hl"><td>VAE</td><td>最大化似然下界（ELBO）</td><td>非常稳定，损失单调可监控</td><td>偏模糊</td><td>生成图像平均化、偏糊</td></tr>
   <tr><td>GAN</td><td>生成器与判别器对抗博弈</td><td>不稳定，易模式坍缩</td><td>锐利逼真</td><td>训练难调、多样性差</td></tr>
   <tr><td>Diffusion</td><td>逐步加噪再学会逐步去噪</td><td>稳定</td><td>最好</td><td>推理慢（需多步迭代）</td></tr>
-</table>
+</table></div>
 <div class="callout note">
   <span class="co-title">有趣的联系</span>
   <p>从数学上看，Diffusion 可以被写成一种特殊的、隐变量逐步加噪的 VAE（这是论文《Understanding Diffusion Models: A Unified Perspective》的观点）。理解 VAE 的 ELBO，也是理解扩散模型损失的敲门砖。</p>
@@ -456,11 +478,11 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </div>
 
 <h3>3.6 两项式 ELBO 的直观读法</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>项</th><th>公式</th><th>大白话</th><th>负责的网络</th></tr>
   <tr class="hl"><td>重构项</td><td class="num">E<sub>z~q</sub>[ log p(x|z) ]</td><td>从 q 里采个 z，解码出来要像原图——<strong>保真压力</strong></td><td>Encoder + Decoder</td></tr>
   <tr><td>正则项</td><td class="num">−D<sub>KL</sub>(q(z|x) ‖ N(0, I))</td><td>编码出的分布要靠近标准正态——<strong>规整压力</strong></td><td>Encoder</td></tr>
-</table>
+</table></div>
 <p>两股力量天然<strong>互相制衡</strong>：正则项相当于给 z 通道限流——KL 越小，q 携带的「关于 x 的信息量」越少（极端情形 q 完全无视 x、恒等于 N(0, I)，KL 为 0，但什么都重构不出来）；重构项则逼着 q 往 z 里塞信息以还原 x。最终平衡点决定了隐空间「多有用、多规整」的折中。这个制衡关系是理解第 8 章「后验坍缩」「β-VAE」全部现象的钥匙。</p>
 <div class="callout note">
   <span class="co-title">为什么叫「证据」下界？</span>
@@ -696,11 +718,11 @@ def decode(self, z):
 
 <h3>5.5 为什么预测 logvar 而不是直接预测 σ</h3>
 <p>细心的读者会发现：网络输出的叫 logvar（log σ²）而不是 σ 本身。这不是随意命名，而是<strong>数值稳定性</strong>的成熟做法：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>方案</th><th>做法</th><th>问题</th></tr>
   <tr><td>直接输出 σ</td><td>σ = fc(x)，必须再 clamp 到正数</td><td>σ 必须大于 0；若用 <code>clamp</code> 硬截断，边界处梯度为零，网络容易被「卡死」在边界上</td></tr>
   <tr class="hl"><td>输出 logvar（推荐）</td><td>logvar = fc(x) 无约束，σ = exp(½ logvar)</td><td>exp 天然保证 σ 为正；网络可在整个实数轴上自由调整方差，logvar = 0 对应 σ = 1，移动一格就翻倍/减半，尺度跨度友好</td></tr>
-</table>
+</table></div>
 <p>另一个好处：KL 闭式解里恰好出现 log σ² 项（第 6 章推导），直接用 logvar 代入，一行搞定，无需再取对数。</p>
 <div class="callout warn">
   <span class="co-title">最常见的实现 bug</span>
@@ -716,7 +738,7 @@ def decode(self, z):
 
 <h3>5.7 升级：CNN 版结构（真实图像用）</h3>
 <p>MLP 对 28×28 的 MNIST 够用；处理 64×64 以上的自然图像时，Encoder/Decoder 换成卷积网络，其余思想一字不改：</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>层</th><th>配置</th><th>输出形状（64×64 输入）</th><th>说明</th></tr>
   <tr><td>Conv1</td><td class="num">3→32, 4×4, stride 2</td><td class="num">32 × 32 × 32</td><td>分辨率减半</td></tr>
   <tr><td>Conv2</td><td class="num">32→64, 4×4, stride 2</td><td class="num">64 × 16 × 16</td><td>分辨率再减半</td></tr>
@@ -724,7 +746,7 @@ def decode(self, z):
   <tr><td>Conv4</td><td class="num">128→256, 4×4, stride 2</td><td class="num">256 × 4 × 4</td><td>到达隐层特征</td></tr>
   <tr class="hl"><td>双头</td><td class="num">两个 1×1 卷积（或分离卷积）</td><td class="num">μ / logvar 各 256×4×4</td><td>逐位置输出分布参数</td></tr>
   <tr><td>Decoder</td><td>ConvTranspose 逐级上采样</td><td class="num">… → 3 × 64 × 64</td><td>镜像还原</td></tr>
-</table>
+</table></div>
 <p>注意 CNN 版的 z 不再是一个 20 维向量，而是一张 <strong>空间化的特征图</strong>（比如 256 通道、4×4 分辨率）——每个空间位置一个分布。这个设计一路进化，最终成为 Stable Diffusion 里 64×64×4 潜空间的雏形（第 8 章）。</p>
 </section>
 
@@ -798,11 +820,11 @@ def decode(self, z):
   <span class="note-below">后两项与 θ 无关是常数，优化时可以扔掉</span>
 </div>
 <p>于是最大化对数似然等价于最小化 <strong>‖x − x̂‖²（MSE）</strong>，只差一个随 σ 变化的系数——这个系数在实践中常被吸收进重构/KL 的权重配比。自然图像（连续色彩）用这路更合适。</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>似然选择</th><th>损失形式</th><th>Decoder 末端</th><th>适用数据</th></tr>
   <tr class="hl"><td>伯努利</td><td class="num">BCE（逐像素求和）</td><td>Sigmoid</td><td>MNIST、二值图、笔画类</td></tr>
   <tr><td>高斯（固定 σ）</td><td class="num">MSE（差一个系数）</td><td>恒等或 Sigmoid</td><td>自然图像、连续灰度/彩色</td></tr>
-</table>
+</table></div>
 
 <h3>6.4 工程大坑：reduction 的配比</h3>
 <p>两个数值口径必须<strong>对齐</strong>，这是新手 VAE「训出来一团糊」的头号原因：</p>
@@ -825,12 +847,12 @@ total = recon + kl
 # 后果：KL 的相对权重凭空放大约 784 倍 —— 正则压倒保真，
 # encoder 输出被强行拉平，所有图像的编码挤成一团，输出糊成灰雾</code></pre>
 </div>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>配比方式</th><th>重构项</th><th>KL 项</th><th>效果</th></tr>
   <tr class="hl"><td>sum / sum（推荐）</td><td class="num">sum（像素）÷ batch</td><td class="num">sum（维度）÷ batch</td><td>两项天然同量级，无需调权</td></tr>
   <tr><td>mean / sum（错误）</td><td class="num">mean（像素）÷ batch</td><td class="num">sum（维度）÷ batch</td><td>KL 相对过强，过度正则，输出模糊</td></tr>
   <tr><td>mean + β（可选）</td><td class="num">mean（像素）</td><td class="num">mean（维度）× β</td><td>两项都被归一到 O(1)，用 β 手动控制权衡（β-VAE 的做法）</td></tr>
-</table>
+</table></div>
 <div class="callout note">
   <span class="co-title">调参直觉</span>
   <p>训练日志里同时打印两项。健康的状态是：重构项稳步下降，KL 从 0 先升后回落到某个不为 0 的平衡值（通常几到几十 nats）。若 KL 一路掉到接近 0：发生了「后验坍缩」（第 8 章）；若重构项始终不动：正则太强，检查 reduction 配比或降低 β。</p>
@@ -1059,7 +1081,7 @@ with torch.no_grad():
 </div>
 
 <h3>7.5 常见坑速查表</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>症状</th><th>原因</th><th>修复</th></tr>
   <tr><td>输出全黑或全灰雾</td><td>把 logvar 直接当 σ 用</td><td>std = <code>torch.exp(0.5 * logvar)</code></td></tr>
   <tr class="hl"><td>图像糊成一团、无细节</td><td>reduction 口径不一致，KL 相对过强</td><td>两项都用 sum 再除 batch（6.4 节）</td></tr>
@@ -1067,7 +1089,7 @@ with torch.no_grad():
   <tr><td>形状对不上</td><td>忘了把 [B,1,28,28] 摊平</td><td><code>x.view(x.size(0), -1)</code></td></tr>
   <tr><td>生成样本几乎相同</td><td>KL 项没真正加进总损失</td><td>打印两项数值，确认 (recon + kl).backward()</td></tr>
   <tr><td>KL 一路掉到 ≈0</td><td>后验坍缩</td><td>见第 8.2 节</td></tr>
-</table>
+</table></div>
 </section>
 
 <!-- ==== 第 8 章 ==== -->
@@ -1082,13 +1104,13 @@ with torch.no_grad():
   <span class="note-below">逐像素 MSE 的最优解是条件均值；第 6 章讲过 BCE（伯努利 NLL）的最优解同样是条件均值——两种「标准损失」殊途同归</span>
 </div>
 <p>问题就出在「条件均值」四个字上。设想 z 编码了「一张数字 1」，但训练集里的 1 有的笔画偏左、有的偏右——真实的 p(x|z) 是<strong>双峰分布</strong>。decoder 只能输出一个答案，于是它输出两峰的<strong>平均</strong>：一条又粗又淡、不左不右的笔画。每个像素都经历同样的平均，整张图自然糊掉。而 GAN 清晰的原因也在这里：判别器判断的是「这张图像像不像真的」，均值图像恰好落在两个峰之间的低密度区，会被判假——生成器被迫把概率质量坍缩到某个具体模态上，输出锐利样本。</p>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>缓解手段</th><th>思路</th><th>代表</th></tr>
   <tr><td>感知损失（LPIPS）</td><td>用深度特征距离代替逐像素距离——均值图像在特征空间同样被惩罚</td><td>SD 的 VAE</td></tr>
   <tr class="hl"><td>对抗损失</td><td>引入判别器直接惩罚「看起来假」的模糊输出</td><td>VQ-VAE-2、SD 的 VAE</td></tr>
   <tr><td>离散化隐空间</td><td>decoder 输入是确定性码字，不存在「均值化」</td><td>VQ-VAE（8.4 节）</td></tr>
   <tr><td>事后超分</td><td>生成后再接一个超分网络修细节</td><td>早期工业方案</td></tr>
-</table>
+</table></div>
 
 <h3>8.2 后验坍缩：隐变量「罢工」</h3>
 <p>第二个问题的表现是：训练到一半，KL 项悄悄掉到 ≈ 0。</p>
@@ -1102,14 +1124,14 @@ with torch.no_grad():
   <span class="co-title">诊断方法</span>
   <p>同时打印两项损失曲线。健康的训练：KL 先快速上升（信息涌入 z）再缓慢回落，稳定在<strong>一个正数</strong>。坍缩的典型曲线：KL 早早触零且不再回升，重构损失反而漂亮——一旦出现，先检查 KL 是否被 reduction 口径错误放大（6.4 节），再考虑下面的缓解手段。</p>
 </div>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>缓解策略</th><th>做法</th><th>出处</th></tr>
   <tr class="hl"><td>KL 退火（annealing）</td><td>β 从 0 随 epoch 缓慢升到 1：先让重构学会用 z，再上正则</td><td>Bowman et al. 2016</td></tr>
   <tr><td>Free bits</td><td>给每个隐维度设 KL 下限 λ，低于下限的部分不产生梯度</td><td>Kingma et al. 2016</td></tr>
   <tr><td>削弱 decoder</td><td>word dropout、砍层数、去自回归——让 decoder 「离不开」z</td><td>文本 VAE 常用</td></tr>
   <tr><td>容量调度</td><td>KL 项允许通过的容量 C 随训练逐步放开</td><td>VAE capacity 系工作</td></tr>
   <tr><td>换离散码本</td><td>从结构上绕开「每个维度对齐高斯」的要求</td><td>VQ-VAE（下节）</td></tr>
-</table>
+</table></div>
 
 <h3>8.3 β-VAE：一个旋钮换解耦</h3>
 <p>β-VAE 只改一个字符——给 KL 项乘上系数 β：</p>
@@ -1265,16 +1287,16 @@ with torch.no_grad():
     pixel = vae.decode(latent / 0.18215).sample</code></pre>
 </div>
 
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>版本</th><th>latent 通道</th><th>要点</th></tr>
   <tr><td>SD 1.x / 2.x</td><td>4</td><td>AutoencoderKL，f=8，缩放因子 0.18215</td></tr>
   <tr><td>SDXL</td><td>4</td><td>同款结构更大训练量；缩放因子 0.13084</td></tr>
   <tr class="hl"><td>SD3 / FLUX</td><td>16</td><td>通道 4→16：修色偏、保留更多高频细节，f=8 不变</td></tr>
   <tr><td>sd-vae-ft-mse</td><td>4</td><td>用 MSE 微调的版本：重构更准但略糊</td></tr>
-</table>
+</table></div>
 
 <h3>8.6 变体速览</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>模型</th><th>核心改动</th><th>一句话定位</th></tr>
   <tr><td>CVAE</td><td>编码条件 c：p(x|z, c)</td><td>VAE + 标签/条件控制</td></tr>
   <tr><td>β-VAE</td><td>KL 乘系数 β</td><td>解耦表示学习</td></tr>
@@ -1282,7 +1304,7 @@ with torch.no_grad():
   <tr><td>VQ-VAE-2</td><td>层级码本 + 对抗损失</td><td>大图高保真重构</td></tr>
   <tr><td>NVAE</td><td>层级先验 + 归一化流后验</td><td>图像 NLL 刷榜系</td></tr>
   <tr class="hl"><td>SD 的 VAE</td><td>L1 + LPIPS + 对抗 + 微弱 KL</td><td>扩散模型的压缩引擎</td></tr>
-</table>
+</table></div>
 </section>
 
 <!-- ==== 第 9 章 ==== -->
@@ -1303,7 +1325,7 @@ with torch.no_grad():
 </ol>
 
 <h3>9.2 公式速查表</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>名称</th><th>公式</th><th>出处</th></tr>
   <tr><td>ELBO（对数似然下界）</td><td>log p<sub>θ</sub>(x) ≥ E<sub>q</sub>[log p<sub>θ</sub>(x|z)] − KL(q<sub>φ</sub>(z|x)‖p(z))</td><td>3.3 节</td></tr>
   <tr><td>KL 闭式解</td><td>½ Σ<sub>j</sub>( μ<sub>j</sub>² + σ<sub>j</sub>² − log σ<sub>j</sub>² − 1 )</td><td>6.2 节</td></tr>
@@ -1312,7 +1334,7 @@ with torch.no_grad():
   <tr><td>β-VAE</td><td>L = 重构 + β·KL</td><td>8.3 节</td></tr>
   <tr><td>VQ 量化 / 三件套</td><td>k = argmin<sub>j</sub>‖z<sub>e</sub>−e<sub>j</sub>‖₂；L = 重构 + 码字项 + commitment 项</td><td>8.4 节</td></tr>
   <tr><td>SD VAE 损失</td><td>L1 + LPIPS + 对抗 + 4×10<sup>−6</sup>·KL</td><td>8.5 节</td></tr>
-</table>
+</table></div>
 
 <h3>9.3 训练 Checklist</h3>
 <p>动手训一个新 VAE（或排查旧代码）之前，从上到下过一遍：</p>
@@ -1330,7 +1352,7 @@ with torch.no_grad():
 </ol>
 
 <h3>9.4 延伸阅读</h3>
-<table class="tbl">
+<div class="tbl-wrap"><table class="tbl">
   <tr><th>论文</th><th>贡献</th></tr>
   <tr><td>《Auto-Encoding Variational Bayes》Kingma and Welling, 2013</td><td>VAE 原始论文：ELBO + 重参数化</td></tr>
   <tr><td>《Stochastic Backpropagation and Approximate Inference in Deep Generative Models》Rezende et al., 2014</td><td>同期独立提出同一框架</td></tr>
@@ -1339,7 +1361,7 @@ with torch.no_grad():
   <tr><td>《Zero-Shot Text-to-Image Generation》Ramesh et al., 2021</td><td>DALL·E：dVAE 离散 tokenizer 走向大规模</td></tr>
   <tr><td>《Taming Transformers for High-Resolution Image Synthesis》Esser et al., 2021</td><td>VQGAN：码本 + Transformer，SD 前身</td></tr>
   <tr class="hl"><td>《High-Resolution Image Synthesis with Latent Diffusion Models》Rombach et al., 2022</td><td>Stable Diffusion：AutoencoderKL + latent 扩散</td></tr>
-</table>
+</table></div>
 <p>最后回到全局视角：VAE 作为「独立生成模型」的高光时代已经过去，但它留下的两件东西成了整个深度生成领域的公共基础设施——<strong>「把数据编码成可采样的分布」</strong>（Stable Diffusion 的 latent 空间、扩散模型的 ELBO 视角）与<strong>「用重参数化让梯度穿过随机性」</strong>（从强化学习策略梯度到 Flow Matching 训练到处都是它的变体）。读懂这份文档的九个章节，再去看 Diffusion、VQGAN 乃至大模型后训练里的变分目标，都会顺畅得多。</p>
 </section>
 
@@ -1396,6 +1418,29 @@ with torch.no_grad():
   }
   window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
   spy();
+})();
+</script>
+<script>
+(function(){
+  var btn = document.getElementById('tocBtn');
+  var toc = document.getElementById('toc');
+  var mask = document.getElementById('tocMask');
+  if (!btn || !toc || !mask) return;
+  function setOpen(open){
+    toc.classList.toggle('open', open);
+    mask.classList.toggle('show', open);
+    btn.textContent = open ? '✕ 收起目录' : '☰ 目录';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!toc.classList.contains('open')); });
+  mask.addEventListener('click', function(){ setOpen(false); });
+  toc.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('a')) setOpen(false);
+  });
+  window.addEventListener('resize', function(){
+    if (window.innerWidth > 1180 && toc.classList.contains('open')) setOpen(false);
+  });
 })();
 </script>
 </body>
