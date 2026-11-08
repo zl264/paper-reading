@@ -1,0 +1,2271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniMax H3 从原理到源码：全面详解</title>
+<style>
+:root{
+  --bg:#f7f7fa; --fg:#24292f; --muted:#5a6070;
+  --accent:#5845e6; --accent-2:#7c6cf0; --accent-soft:#eeecfc; --accent-deep:#4636c4;
+  --border:#e3e4ec; --card:#ffffff;
+  --code-bg:#0d1117; --code-head:#161b22; --code-fg:#e6edf3;
+  --tk-c:#8b949e; --tk-k:#ff7b72; --tk-s:#a5d6ff; --tk-n:#79c0ff; --tk-d:#d2a8ff; --tk-f:#d2a8ff; --tk-b:#ffa657;
+  --note-bg:#eff6ff; --note-bd:#3b82f6;
+  --warn-bg:#fffbeb; --warn-bd:#d97706;
+  --tip-bg:#ecfdf5; --tip-bd:#10b981;
+  --danger-bg:#fef2f2; --danger-bd:#ef4444;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth; scroll-padding-top:24px;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+}
+/* ---------- 布局 ---------- */
+.layout{display:flex; min-height:100vh;}
+.toc{
+  position:fixed; top:0; left:0; bottom:0; width:284px;
+  background:#ffffff; border-right:1px solid var(--border);
+  overflow-y:auto; padding:28px 18px 40px; z-index:10;
+}
+.toc-title{font-size:15px; font-weight:700; color:var(--accent-deep); padding:0 10px 14px; letter-spacing:.5px;}
+.toc a{
+  display:block; padding:5px 10px; margin:1px 0; border-radius:7px;
+  color:var(--muted); text-decoration:none; font-size:13.5px; line-height:1.45;
+  border-left:3px solid transparent; transition:all .15s ease;
+}
+.toc a:hover{color:var(--accent); background:var(--accent-soft);}
+.toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
+.content{
+  margin-left:284px; width:calc(100% - 284px);
+  max-width:960px; padding:56px 56px 80px;
+}
+@media (max-width:1180px){
+  .toc{display:none;}
+  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+}
+/* ---------- 标题 ---------- */
+.doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
+.doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
+h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+.doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
+.doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
+.doc-meta span{
+  font-size:12.5px; color:var(--accent-deep); background:var(--accent-soft);
+  border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
+}
+h2{
+  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  display:flex; align-items:baseline; gap:14px;
+}
+h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
+h2::after{content:""; display:block;}
+.ch-intro{color:var(--muted); font-size:15.5px; margin:8px 0 24px; border-left:3px solid var(--accent-2); padding-left:14px;}
+h3{
+  font-size:20px; font-weight:700; margin:40px 0 14px; padding-left:12px;
+  border-left:4px solid var(--accent); line-height:1.4;
+}
+h4{font-size:16.5px; font-weight:700; margin:28px 0 10px; color:#383e4c;}
+p{margin:14px 0;}
+strong{font-weight:700; color:#1a1f2b;}
+em{font-style:normal; background:linear-gradient(transparent 62%, #e8e2ff 62%); font-weight:600;}
+ul,ol{padding-left:26px; margin:12px 0;}
+li{margin:7px 0;}
+hr{border:none; border-top:1px solid var(--border); margin:36px 0;}
+a{color:var(--accent); text-decoration:none;}
+a:hover{text-decoration:underline;}
+/* ---------- 行内代码 ---------- */
+code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Cascadia Code",Menlo,monospace;
+  font-size:.86em; background:var(--accent-soft); color:var(--accent-deep);
+  padding:2px 6px; border-radius:5px; white-space:nowrap;
+}
+/* ---------- 代码块 ---------- */
+.codeblock{margin:20px 0; border-radius:11px; overflow:hidden; border:1px solid #262b36; box-shadow:0 6px 24px rgba(15,17,32,.10);}
+.codehead{
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232833;
+}
+.codehead .fname{color:#9aa4b2; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;}
+.codehead .lang{color:#6e7681; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;}
+pre{
+  background:var(--code-bg); color:var(--code-fg); overflow-x:auto;
+  padding:16px 18px; font-size:13.5px; line-height:1.65; tab-size:4;
+}
+pre code{background:none; color:inherit; padding:0; font-size:inherit; white-space:pre; border-radius:0;}
+.tk-c{color:var(--tk-c); font-style:italic;}
+.tk-k{color:var(--tk-k);}
+.tk-s{color:var(--tk-s);}
+.tk-n{color:var(--tk-n);}
+.tk-d{color:var(--tk-d);}
+.tk-f{color:var(--tk-f);}
+.tk-b{color:var(--tk-b);}
+/* ---------- 表格 ---------- */
+.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(20,22,40,.06);}
+.tbl th{
+  background:#f0eefb; color:#3b3480; text-align:left; padding:10px 14px;
+  font-weight:700; border-bottom:2px solid #ddd6f5; font-size:13.5px; white-space:nowrap;
+}
+.tbl td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:#faf9ff;}
+.tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
+.tbl .hl td{background:var(--accent-soft);}
+/* ---------- 提示框 ---------- */
+.callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
+.callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
+.callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
+.callout.note .co-title{color:#1d4ed8;}
+.callout.warn{background:var(--warn-bg); border-color:var(--warn-bd); color:#713f12;}
+.callout.warn .co-title{color:#b45309;}
+.callout.tip{background:var(--tip-bg); border-color:var(--tip-bd); color:#064e3b;}
+.callout.tip .co-title{color:#047857;}
+.callout p{margin:6px 0;}
+/* ---------- 公式 ---------- */
+.formula{
+  background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
+  text-align:center; padding:18px 20px; margin:22px 0;
+  font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
+}
+.formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
+/* ---------- 张量形状流 ---------- */
+.flow{
+  background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+  margin:20px 0; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:2.1;
+  overflow-x:auto; white-space:nowrap;
+}
+.flow b{color:var(--accent-deep); font-weight:700;}
+.flow .arr{color:#b08c00; font-weight:700; margin:0 6px;}
+.flow .tag{color:var(--muted); font-size:11.5px; margin-left:8px;}
+/* ---------- 图 ---------- */
+.figure{margin:26px 0; text-align:center;}
+.figure svg{max-width:100%; height:auto; display:block; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:12px;}
+.figcap{margin-top:10px; font-size:13.5px; color:var(--muted); line-height:1.6;}
+.figcap b{color:var(--fg);}
+footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">MiniMax H3 详解</div>
+  <a href="#ch1">1. MiniMax H3 是什么</a>
+  <a href="#ch2">2. 原理预备：Flow Matching 的 H3 约定</a>
+  <a href="#ch3">3. 系统架构与 packed sequence</a>
+  <a href="#ch4">4. H3-Encoder：Qwen3-VL 与 TokenRefiner</a>
+  <a href="#ch5">5. H3-VisualVAE：17n+5 的因果几何</a>
+  <a href="#ch6">6. H3-AudioVAE：从 DAC 到 BigVGAN</a>
+  <a href="#ch7">7. H3-Omni-Transformer 逐层精讲</a>
+  <a href="#ch8">8. MiniMaxH3Scheduler：双调度单 forward</a>
+  <a href="#ch9">9. 任务变体：FL2VA 与 Ref2VA</a>
+  <a href="#ch10">10. 推理管线与显存攻略</a>
+  <a href="#ch11">11. 部署生态、许可证与局限</a>
+  <a href="#ch12">12. 参考资料</a>
+</nav>
+
+<main class="content">
+
+<header class="doc-header">
+  <div class="doc-kicker">Omni-Modal Video Generation Deep Dive</div>
+  <h1>MiniMax H3 从原理到源码：全面详解</h1>
+  <p class="doc-sub">从「为什么这样设计」讲到「代码里怎么写的」——覆盖三模块系统设计、Flow Matching 的 H3 镜像约定、packed multimodal sequence，以及 H3-Omni-Transformer / VisualVAE / AudioVAE / Qwen3-VL 编码器四大组件的逐行拆解，最后给出推理管线与四档显存方案的完整走读。</p>
+  <div class="doc-meta">
+    <span>基于官方开源仓库 MiniMax-AI/MiniMax-H3</span>
+    <span>diffusers 官方集成实现</span>
+    <span>Python 代码逐段摘自官方源码</span>
+    <span>2026-11 整理</span>
+  </div>
+</header>
+
+<!-- ==================== 第 1 章 ==================== -->
+<section id="ch1">
+<h2><span class="ch-no">01</span>MiniMax H3 是什么</h2>
+<p class="ch-intro">一句话：MiniMax H3 是 MiniMax 于 2026 年 7 月底发布、8 月初开源的「全模态视频生成系统」——输入文本、图像、视频、音频的任意组合，输出一条自带原生立体声音轨的视频。它不是「视频模型 + 配音模型」的拼盘，而是一个模型在<strong>同一次去噪循环</strong>里同时生成画面与声音。</p>
+
+<h3>1.1 基本事实</h3>
+<ul>
+  <li><strong>发布时间线</strong>：2026-07-31 API 上线；2026-08-03 权重开源（HuggingFace 与 ModelScope 双渠道）。</li>
+  <li><strong>定位</strong>：通用全模态生成系统。输入侧接受文本 / 图像 / 视频 / 音频，输出侧是视频 + 同步音轨；支持 11 种语言的对话式提示词。</li>
+  <li><strong>生成规格</strong>：24 fps；开源管线约束 <strong>5–15 秒</strong>（产品端宣传口径 4–15 秒）；短边 <strong>768 像素</strong>（2K 成片走闭源再生成模块，见 1.2）；音轨为 32 kHz 原生<strong>立体声</strong>。</li>
+  <li><strong>宽高比</strong>：21:9 / 16:9 / 4:3 / 1:1 / 3:4 / 9:16。</li>
+  <li><strong>成绩</strong>：发布时登顶 Artificial Analysis 视频编辑榜。</li>
+</ul>
+
+<h3>1.2 三模块系统：只有中间那块开源</h3>
+<p>MiniMax 把 H3 拆成三个模块，各司其职，<strong>只有 H3-Base 开源了权重</strong>。先看全景图：</p>
+
+<div class="figure">
+<svg viewBox="0 0 960 340" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="arr1" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="arr1d" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa4b2"/></marker>
+  </defs>
+  <!-- 用户输入 -->
+  <rect x="18" y="78" width="140" height="164" rx="12" fill="#ffffff" stroke="#c9c3ee" stroke-width="1.5"/>
+  <text x="88" y="106" font-size="14" font-weight="700" fill="#24292f" text-anchor="middle">用户输入</text>
+  <text x="88" y="132" font-size="11.5" fill="#5a6070" text-anchor="middle">文本 prompt</text>
+  <text x="88" y="152" font-size="11.5" fill="#5a6070" text-anchor="middle">参考图像</text>
+  <text x="88" y="172" font-size="11.5" fill="#5a6070" text-anchor="middle">参考视频</text>
+  <text x="88" y="192" font-size="11.5" fill="#5a6070" text-anchor="middle">参考音频</text>
+  <text x="88" y="218" font-size="10.5" fill="#9aa4b2" text-anchor="middle">（任意组合）</text>
+  <!-- 箭头 1 -->
+  <line x1="160" y1="160" x2="196" y2="160" stroke="#5845e6" stroke-width="2" marker-end="url(#arr1)"/>
+  <!-- Context-IR -->
+  <rect x="200" y="78" width="180" height="164" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="252" y="64" width="76" height="22" rx="11" fill="#d97706"/>
+  <text x="290" y="79" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">闭源 API</text>
+  <text x="290" y="112" font-size="14" font-weight="700" fill="#713f12" text-anchor="middle">H3-Context-IR</text>
+  <text x="290" y="138" font-size="11.5" fill="#713f12" text-anchor="middle">指令解析</text>
+  <text x="290" y="158" font-size="11.5" fill="#713f12" text-anchor="middle">跨模态关联</text>
+  <text x="290" y="178" font-size="11.5" fill="#713f12" text-anchor="middle">时序理解</text>
+  <text x="290" y="198" font-size="11.5" fill="#713f12" text-anchor="middle">复杂逻辑推理</text>
+  <text x="290" y="228" font-size="10.5" fill="#b45309" text-anchor="middle">→ Contextual Omni</text>
+  <text x="290" y="238" font-size="10.5" fill="#b45309" text-anchor="middle">Representation</text>
+  <!-- 箭头 2 -->
+  <line x1="382" y1="160" x2="416" y2="160" stroke="#5845e6" stroke-width="2" marker-end="url(#arr1)"/>
+  <text x="399" y="148" font-size="10" fill="#8a8799" text-anchor="middle">结构化</text>
+  <text x="399" y="180" font-size="10" fill="#8a8799" text-anchor="middle">表示</text>
+  <!-- H3-Base -->
+  <rect x="420" y="48" width="300" height="224" rx="12" fill="#ecfdf5" stroke="#10b981" stroke-width="2"/>
+  <rect x="532" y="34" width="76" height="22" rx="11" fill="#10b981"/>
+  <text x="570" y="49" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">开源</text>
+  <text x="570" y="82" font-size="15" font-weight="800" fill="#064e3b" text-anchor="middle">H3-Base（本文主角）</text>
+  <!-- packed sequence 迷你图 -->
+  <rect x="446" y="100" width="248" height="86" rx="6" fill="#ffffff" stroke="#a7f3d0" stroke-width="1"/>
+  <rect x="452" y="108" width="56" height="16" fill="#79c0ff" opacity=".8"/>
+  <rect x="452" y="128" width="88" height="16" fill="#8b949e" opacity=".55"/>
+  <rect x="452" y="148" width="150" height="16" fill="#5845e6" opacity=".75"/>
+  <rect x="452" y="168" width="120" height="12" fill="#ffa657" opacity=".8"/>
+  <text x="466" y="120" font-size="9.5" fill="#fff" font-weight="700">text</text>
+  <text x="466" y="140" font-size="9.5" fill="#fff" font-weight="700">media cond.</text>
+  <text x="466" y="160" font-size="9.5" fill="#fff" font-weight="700">video latents</text>
+  <text x="466" y="178" font-size="9.5" fill="#fff" font-weight="700">audio latents</text>
+  <text x="570" y="120" font-size="10" fill="#5a6070">packed sequence</text>
+  <text x="570" y="136" font-size="10" fill="#5a6070">单流联合去噪</text>
+  <text x="570" y="192" font-size="11" fill="#064e3b" text-anchor="middle" font-weight="700">H3-Omni-Transformer（33B dense）</text>
+  <text x="570" y="212" font-size="10.5" fill="#064e3b" text-anchor="middle">+ VisualVAE + AudioVAE + Qwen3-VL</text>
+  <text x="570" y="236" font-size="10.5" fill="#047857" text-anchor="middle">→ 768p 视频 + 32kHz 立体声</text>
+  <text x="570" y="258" font-size="10" fill="#9aa4b2" text-anchor="middle">（两个 checkpoint 分区，见 1.3）</text>
+  <!-- 箭头 3 -->
+  <line x1="722" y1="160" x2="756" y2="160" stroke="#5845e6" stroke-width="2" marker-end="url(#arr1)"/>
+  <!-- Regenerate-2K -->
+  <rect x="760" y="78" width="182" height="164" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="813" y="64" width="76" height="22" rx="11" fill="#d97706"/>
+  <text x="851" y="79" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">闭源 API</text>
+  <text x="851" y="112" font-size="13.5" font-weight="700" fill="#713f12" text-anchor="middle">H3-Regenerate-2K</text>
+  <text x="851" y="140" font-size="11.5" fill="#713f12" text-anchor="middle">in-context 2K 再生成</text>
+  <text x="851" y="160" font-size="11.5" fill="#713f12" text-anchor="middle">（不是超分辨率）</text>
+  <text x="851" y="192" font-size="11" fill="#b45309" text-anchor="middle">→ 2K 成片</text>
+  <!-- 旁路：自建结构化表示 -->
+  <path d="M 88 244 L 88 300 L 570 300 L 570 276" fill="none" stroke="#9aa4b2" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#arr1d)"/>
+  <text x="330" y="292" font-size="10.5" fill="#8a8799" text-anchor="middle">自建结构化表示（官方强烈建议：接入 Context-IR，或自建等价物）</text>
+</svg>
+<p class="figcap"><b>图 1-1</b>　MiniMax H3 三模块系统。绿色为开源部分（H3-Base，本文全部内容）；橙色为闭源 API。虚线：Context-IR 可用自建结构化表示替代，但官方强烈建议接入。</p>
+</div>
+
+<table class="tbl">
+  <tr><th>模块</th><th>开源？</th><th>职责</th><th>备注</th></tr>
+  <tr class="hl"><td><strong>H3-Base</strong></td><td>开源（权重）</td><td>768p 全模态生成主体：文/图/视频/音频条件 → 视频 + 立体声</td><td>本文第 3–10 章的全部内容；33B dense 单流 DiT</td></tr>
+  <tr><td>H3-Context-IR</td><td>闭源 API</td><td>指令解析、跨模态关联、时序理解、复杂逻辑推理 → 序列化结构化表示（Contextual Omni Representation）</td><td>处理多镜头叙事、参考媒体指代（「让第二张图里的人物……」）、台词标注等复杂输入</td></tr>
+  <tr><td>H3-Regenerate-2K</td><td>闭源 API</td><td>以 768p 结果为上下文的 <strong>in-context 2K 再生成</strong></td><td>是「重新生成」而非超分——模型看着低清结果重新画一遍高清版</td></tr>
+</table>
+
+<div class="callout warn">
+  <span class="co-title">为什么官方「强烈建议」接入 Context-IR</span>
+  <p>自然语言 prompt 里混着镜头语言、参考指代、台词与时序（「前 3 秒特写图中角色，随后她开口说……」），直接喂给生成模型效果会打折。Context-IR 把它解析成结构化表示后再进 H3-Base。你可以自建等价物（比如用任意 LLM 做指令改写），但官方明确建议要么接入 API、要么认真自建——<strong>裸 prompt 直连不是设计用法</strong>。</p>
+</div>
+
+<h3>1.3 开源边界与仓库布局</h3>
+<p>开源仓库 <code>MiniMax-AI/MiniMax-H3</code> 里，H3-Base 按任务拆成<strong>两个 transformer 分区</strong>，其余组件（两个 VAE、Qwen3-VL 编码器、调度器配置等）全部共享、只存一份：</p>
+<table class="tbl">
+  <tr><th>子目录</th><th>服务的工作流</th><th>说明</th></tr>
+  <tr class="hl"><td class="num">transformer/</td><td>t2va（纯文本）、fl2va（首/尾帧）</td><td>约 61.7 GB（bfloat16）</td></tr>
+  <tr><td class="num">transformer_ref/</td><td>ref2va（图像/视频/音频混合参考）</td><td>约 61.7 GB</td></tr>
+  <tr><td class="num">video_vae/ · audio_vae/ · text_encoder/ · scheduler/ …</td><td>全部工作流共享</td><td>text_encoder 是 Qwen3-VL，约 62.1 GB（bfloat16）</td></tr>
+</table>
+<p>注意每个任务子树合计约 <strong>144 GB</strong>，全仓库超过 <strong>498 GB</strong>——<em>务必按需克隆子目录</em>，不要一把梭：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">按子目录下载（整理示例）</span><span class="lang">Bash</span></div>
+<pre><code class="language-bash"># 全仓 &gt;498 GB——只拉需要的子目录
+huggingface-cli download MiniMaxAI/MiniMax-H3 \
+    --include "transformer/*" \
+    --include "video_vae/*" --include "audio_vae/*" \
+    --include "text_encoder/*" --include "scheduler/*" \
+    --local-dir ./MiniMax-H3</code></pre>
+</div>
+<div class="callout danger">
+  <span class="co-title">磁盘与流量预警</span>
+  <p>transformer 一个分区 61.7 GB，text_encoder 又是 62.1 GB——<strong>「跑起来」的最小集合也在 130 GB 量级</strong>。clone 前先看 1.3 的表，确认自己要哪两个工作流；量化与 offload 方案见第 10 章。</p>
+</div>
+
+<h3>1.4 「33B」到底指什么</h3>
+<p>官方口径是 <strong>33B dense</strong>。按 diffusers 转换后的 <code>config.json</code>（第 7 章全文）可以精确复算出每块参数的构成：</p>
+<table class="tbl">
+  <tr><th>组件（每个 block 内）</th><th>计算</th><th class="num">参数量</th></tr>
+  <tr><td>注意力投影 to_q / to_k / to_v</td><td class="num">3 × 5376 × 7168</td><td class="num">115.6 M</td></tr>
+  <tr><td>注意力输出 to_out</td><td class="num">5376 × 7168</td><td class="num">38.5 M</td></tr>
+  <tr><td>FFN（SwiGLU 三矩阵，无 bias）</td><td class="num">3 × 5376 × 14336</td><td class="num">231.2 M</td></tr>
+  <tr class="hl"><td>AdaLN 投影 adaln_proj</td><td class="num">2688 × 96768 + 96768</td><td class="num">260.2 M</td></tr>
+  <tr><td><strong>单块合计</strong></td><td>—</td><td class="num">≈ 645 M</td></tr>
+  <tr><td><strong>50 块合计</strong></td><td class="num">645 M × 50</td><td class="num">≈ 32.3 B</td></tr>
+  <tr><td><strong>全模型</strong>（加输入/输出投影、time embedder、TokenRefiner 等）</td><td>—</td><td class="num">≈ 33 B（官方口径）</td></tr>
+</table>
+<div class="callout note">
+  <span class="co-title">最反直觉的一行：AdaLN 占了 40%</span>
+  <p>每个 block 里<strong>最大的单一参数块不是注意力、也不是 FFN，而是 AdaLN 投影</strong>（260 M/块，50 块共 <strong>13.0 B</strong>，与官方「约 13B 在 AdaLN 分支」的口径精确吻合）。原因是它要为每个 (timestep, modality) 组合生成 6 组 hidden_size 向量（第 7.4 节展开）。好消息：它的输出只依赖 timestep 集合，<strong>推理时可以在采样循环外一次性预计算缓存</strong>——33B 权重不等于每步 33B 的有效计算。</p>
+</div>
+
+<h3>1.5 给读过 Wan 2.1 文档的读者：一张迁移地图</h3>
+<p>如果你熟悉 Wan 2.1（本系列上一篇），这张表能让你十秒定位 H3 改了什么：</p>
+<table class="tbl">
+  <tr><th>维度</th><th>Wan 2.1</th><th>MiniMax H3</th></tr>
+  <tr><td>输出</td><td>纯视频（无声）</td><td class="hl"><strong>视频 + 原生立体声音轨</strong>，同一去噪循环联合生成</td></tr>
+  <tr><td>主干</td><td>DiT，1.3B / 14B</td><td>DiT 单流，33B dense，无 cross-attention</td></tr>
+  <tr><td>文本注入</td><td>umT5 → cross-attention</td><td>Qwen3-VL 第 50 层 hidden state → <strong>序列拼接</strong>（第 3 章）</td></tr>
+  <tr><td>视频 VAE</td><td>4×8×8，16 通道，全因果</td><td>4×16×16，24 通道，<strong>因果 CNN encoder + 非因果 ViT decoder</strong>（第 5 章）</td></tr>
+  <tr><td>帧数约束</td><td class="num">4n+1</td><td class="num">17n+5（第 5.2 节）</td></tr>
+  <tr><td>调度器</td><td>UniPC / 通用 flow</td><td>专属 MiniMaxH3Scheduler，<strong>视频/音频各一个实例</strong>（第 8 章）</td></tr>
+  <tr><td>速度约定</td><td>diffusers 标准（x₀ = x<sub>t</sub> − σ·v）</td><td><strong>镜像</strong>（x₀ = x<sub>t</sub> + σ·v，第 2.3 节）</td></tr>
+  <tr><td>CFG</td><td>guidance_scale 5–6，每步两次 forward</td><td>CFG 蒸馏进权重，<strong>无 negative prompt，每步一次 forward</strong></td></tr>
+  <tr><td>像素约定</td><td>[−1, 1]</td><td>[0, 1]（ImageNet 约定，第 5.3 节）</td></tr>
+</table>
+
+<div class="callout tip">
+  <span class="co-title">阅读路线建议</span>
+  <p>零基础按顺序读第 2~3 章建立直觉；有扩散模型经验的读者可以直接从第 5 章开始按组件跳读；想跑模型的读者直奔第 10 章的显存四档方案。第 7、8 章是源码精读的重头戏，建议对照本档代码块逐行看。</p>
+</div>
+</section>
+
+<!-- ==================== 第 2 章 ==================== -->
+<section id="ch2">
+<h2><span class="ch-no">02</span>原理预备：Flow Matching 的 H3 约定</h2>
+<p class="ch-intro">H3 的数学骨架是「双潜空间 + 整流流（rectified flow）」，与 Wan 2.1 同源。但 H3 在三处「符号级」细节上与 diffusers 通用实现<strong>相反</strong>——这三处看不懂，第 8 章的调度器源码就全是天书。本章先把通用形式讲清楚，再逐一指出镜像点。</p>
+
+<h3>2.1 两个潜空间</h3>
+<p>视频与音频各配一个 VAE，把两种媒体都搬进各自的潜空间，扩散过程只在潜空间里发生：</p>
+<div class="flow">
+  视频 <b>(3, 124, 768, 1344)</b> <span class="arr">→ VisualVAE encode →</span> <b>(24, 37, 48, 84)</b>
+  <span class="tag">时间 4× / 空间 16× / 通道 24，第 5 章</span><br>
+  音频 <b>(1, 160000)</b> <span class="arr">→ AudioVAE encode →</span> <b>(32, 200)</b>
+  <span class="tag">时域 800× / 40 latent·s⁻¹ / 通道 32，第 6 章</span>
+</div>
+<p>两路 latent 随后<strong>拼进同一个序列</strong>、在同一个 transformer 里联合去噪（第 3 章）——这是 H3 与「先生视频再配音」方案的本质区别。注意两路的时间分辨率不同：视频 37 个 latent 帧对应 5.17 秒，音频同 duration 约 207 个 latent 帧（124 帧 ÷ 24 fps × 40 Hz），token 数量差一个量级。</p>
+
+<h3>2.2 整流流：一条直线</h3>
+<p>设 x₁ 为真实数据（某路 latent），ε 为标准高斯噪声。整流流在两点之间做线性插值构造训练样本，模型学的是沿直线的<strong>速度场</strong>：</p>
+<div class="formula">
+  x<sub>t</sub> = (1 − t) · ε + t · x<sub>1</sub>，&nbsp;&nbsp; v*(x<sub>t</sub>, t) = x<sub>1</sub> − ε
+  <span class="note-below">路径是直线 → ODE 数值求解误差小 → 几十步就能收敛</span>
+</div>
+<div class="formula">
+  L<sub>FM</sub> = E<sub>x₁, ε, t</sub> [ ‖ v<sub>θ</sub>(x<sub>t</sub>, t) − (x<sub>1</sub> − ε) ‖² ]
+</div>
+<p>到这里为止一切都是教科书内容。分歧出现在<strong>参数化方向</strong>上：diffusers 的通用 rectified-flow 调度器用 σ（σ=1 为纯噪声、σ=0 为干净），而 H3 用 t（t=1 为干净）——两者互为 <em>t = 1 − σ</em>。方向一镜像，速度的符号也跟着镜像：</p>
+
+<div class="figure">
+<svg viewBox="0 0 960 400" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="fmA" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d97706"/></marker>
+    <marker id="fmB" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#10b981"/></marker>
+    <marker id="fmAx" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c9c3ee"/></marker>
+  </defs>
+  <!-- ===== 左panel：diffusers 通用 ===== -->
+  <text x="60" y="32" font-size="15" font-weight="700" fill="#24292f">diffusers 通用约定（σ 口径）</text>
+  <line x1="110" y1="330" x2="110" y2="76" stroke="#c9c3ee" stroke-width="1.5" marker-end="url(#fmAx)"/>
+  <text x="84" y="205" font-size="10.5" fill="#8a8799" transform="rotate(-90 84 205)">σ：1 → 0（1 为噪声）</text>
+  <line x1="110" y1="330" x2="440" y2="330" stroke="#c9c3ee" stroke-width="1.5" marker-end="url(#fmAx)"/>
+  <text x="275" y="352" font-size="10.5" fill="#8a8799">生成方向</text>
+  <circle cx="140" cy="306" r="20" fill="#5845e6" opacity=".14"/>
+  <circle cx="140" cy="306" r="11" fill="#5845e6"/>
+  <text x="140" y="310" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">ε</text>
+  <text x="140" y="278" font-size="11" fill="#4636c4" text-anchor="middle" font-weight="700">纯噪声 σ=1</text>
+  <circle cx="400" cy="100" r="20" fill="#10b981" opacity=".15"/>
+  <circle cx="400" cy="100" r="11" fill="#10b981"/>
+  <text x="400" y="104" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">x₁</text>
+  <text x="400" y="72" font-size="11" fill="#047857" text-anchor="middle" font-weight="700">纯数据 σ=0</text>
+  <line x1="151" y1="297" x2="389" y2="109" stroke="#9aa4b2" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <line x1="330" y1="152" x2="272" y2="202" stroke="#d97706" stroke-width="3" marker-end="url(#fmA)"/>
+  <text x="316" y="146" font-size="12" fill="#b45309" font-weight="700">v（模型输出）</text>
+  <rect x="70" y="362" width="380" height="26" rx="6" fill="#fffbeb" stroke="#d97706"/>
+  <text x="260" y="380" font-size="13" fill="#713f12" text-anchor="middle" font-weight="700">x₀ = x<tspan baseline-shift="sub" font-size="9">t</tspan> − σ · v　（减号）</text>
+  <!-- ===== 右panel：H3 ===== -->
+  <text x="520" y="32" font-size="15" font-weight="700" fill="#24292f">H3 约定（t 口径）</text>
+  <line x1="570" y1="330" x2="570" y2="76" stroke="#c9c3ee" stroke-width="1.5" marker-end="url(#fmAx)"/>
+  <text x="544" y="205" font-size="10.5" fill="#8a8799" transform="rotate(-90 544 205)">t：0 → 1（1 为干净）</text>
+  <line x1="570" y1="330" x2="900" y2="330" stroke="#c9c3ee" stroke-width="1.5" marker-end="url(#fmAx)"/>
+  <text x="735" y="352" font-size="10.5" fill="#8a8799">生成方向</text>
+  <circle cx="600" cy="306" r="20" fill="#5845e6" opacity=".14"/>
+  <circle cx="600" cy="306" r="11" fill="#5845e6"/>
+  <text x="600" y="310" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">ε</text>
+  <text x="600" y="278" font-size="11" fill="#4636c4" text-anchor="middle" font-weight="700">纯噪声 t=0</text>
+  <circle cx="860" cy="100" r="20" fill="#10b981" opacity=".15"/>
+  <circle cx="860" cy="100" r="11" fill="#10b981"/>
+  <text x="860" y="104" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">x₁</text>
+  <text x="860" y="72" font-size="11" fill="#047857" text-anchor="middle" font-weight="700">纯数据 t=1</text>
+  <line x1="611" y1="297" x2="849" y2="109" stroke="#9aa4b2" stroke-width="1.6" stroke-dasharray="5 4"/>
+  <line x1="668" y1="254" x2="726" y2="204" stroke="#10b981" stroke-width="3" marker-end="url(#fmB)"/>
+  <text x="700" y="238" font-size="12" fill="#047857" font-weight="700">v（模型输出）</text>
+  <rect x="530" y="362" width="400" height="26" rx="6" fill="#ecfdf5" stroke="#10b981"/>
+  <text x="730" y="380" font-size="13" fill="#064e3b" text-anchor="middle" font-weight="700">x₀ = x<tspan baseline-shift="sub" font-size="9">t</tspan> + (1 − t) · v　（加号！）</text>
+</svg>
+<p class="figcap"><b>图 2-1</b>　两种参数化对比。几何上是同一条直线（噪声 → 数据），差别只在参数方向与速度符号：<em>t = 1 − σ</em>。H3 的模型输出是<strong>指向数据</strong>的速度，所以恢复干净样本用加号。</p>
+</div>
+
+<p>把 H3 的插值与恢复式写成公式（后面源码里会一字不差地出现）：</p>
+<div class="formula">
+  x<sub>t</sub> = t · x<sub>1</sub> + (1 − t) · ε，&nbsp;&nbsp;&nbsp; x<sub>0</sub> = x<sub>t</sub> + (1 − t) · v<sub>θ</sub>
+  <span class="note-below">换回 σ 记号（σ = 1 − t）：x₀ = x_t + σ · v —— 与 diffusers 标准的 x₀ = x_t − σ · v 恰好差一个符号</span>
+</div>
+
+<h3>2.3 指数 shift：把步数花在高噪声段</h3>
+<p>均匀网格 linspace(1, 0, N) 上直接积分效果一般——去噪前期（高噪声）最难也最重要。H3 沿用指数 shift 把 σ 网格推向高噪声端：</p>
+<div class="formula">
+  σ′ = s · σ / ( 1 + (s − 1) · σ )
+  <span class="note-below">s&gt;1 时 σ′ ≥ σ：网格整体上移，更多步数落在高噪声区间</span>
+</div>
+<p>发布 checkpoint 用两组值：<strong>视频 s = 12.0，音频 s = 3.0</strong>。以 6 步网格为例看看 shift 的实际效果（这张表第 8 章还会回来）：</p>
+<table class="tbl">
+  <tr><th>网格点</th><th class="num">base（均匀）</th><th class="num">视频 s=12</th><th class="num">对应 t = 1−σ</th><th class="num">音频 s=3</th><th class="num">对应 t = 1−σ</th></tr>
+  <tr><td class="num">0</td><td class="num">1.000</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">1.000</td><td class="num">0.000</td></tr>
+  <tr><td class="num">1</td><td class="num">0.800</td><td class="num">0.980</td><td class="num">0.020</td><td class="num">0.923</td><td class="num">0.077</td></tr>
+  <tr><td class="num">2</td><td class="num">0.600</td><td class="num">0.947</td><td class="num">0.053</td><td class="num">0.818</td><td class="num">0.182</td></tr>
+  <tr><td class="num">3</td><td class="num">0.400</td><td class="num">0.889</td><td class="num">0.111</td><td class="num">0.667</td><td class="num">0.333</td></tr>
+  <tr><td class="num">4</td><td class="num">0.200</td><td class="num">0.750</td><td class="num">0.250</td><td class="num">0.429</td><td class="num">0.571</td></tr>
+  <tr><td class="num">5（终点）</td><td class="num">0.000</td><td class="num">0.000</td><td class="num">1.000</td><td class="num">0.000</td><td class="num">1.000</td></tr>
+</table>
+<p>两个要点：<strong>① 视频网格的前 5 步全部工作在 σ &gt; 0.7 的高噪声区</strong>（s=12 压得很狠）；<strong>② 同一个步序号下，视频行与音频行的噪声水平不同</strong>（第 3 步：视频 σ=0.889 vs 音频 σ=0.667）——这正是第 3 章「逐行 timestep 标签」与第 7 章「AdaLN 按 (timestep, modality) 寻址」存在的原因。</p>
+
+<h3>2.4 CFG 蒸馏：没有 negative prompt 的世界</h3>
+<p>Wan 2.1 每步要做两次 forward（条件 + 无条件，靠 guidance_scale≈5 加权合并）。H3 的两个 transformer 分区都是 <strong>guidance-distilled</strong> 的：引导信息被蒸馏进权重本身，于是——</p>
+<ul>
+  <li>没有 <code>negative_prompt</code>，没有 <code>guidance_scale</code>，也没有 guider 组件；</li>
+  <li>每个采样步<strong>恰好一次 forward</strong>，算力直接省一半；</li>
+  <li>代价是无法再用负面提示词压制坏案例，只能靠正面描述。</li>
+</ul>
+
+<h3>2.5 双模态双调度：一次 forward，两条时间轴</h3>
+<p>视频与音频各自持有一个 <code>MiniMaxH3Scheduler</code> 实例（shift 分别为 12.0 / 3.0），两份 σ 网格独立演进；但<strong>每个采样步只做一次 transformer forward</strong>——视频行与音频行在同一序列里，各自按自己调度的 (timestep, modality) 取 AdaLN 调制参数，各自被自己调度器的 <code>step()</code> 更新。完整机制在第 8 章配源码精读。</p>
+<div class="callout note">
+  <span class="co-title">本章三个镜像点（背下来再看第 8 章）</span>
+  <p>① 模型输出是<strong>数据向速度</strong>，x₀ = x_t + σ·v（加号）；② timestep 直接用 t = 1−σ ∈ [0,1]（t=1 干净），不加 1000 倍缩放；③ σ 网格是 linspace(1, 0, N) <strong>含终点 0</strong>，N 个网格点对应 N−1 次 forward。</p>
+</div>
+</section>
+
+<!-- ==================== 第 3 章 ==================== -->
+<section id="ch3">
+<h2><span class="ch-no">03</span>系统架构与 packed sequence</h2>
+<p class="ch-intro">H3 最核心的设计决策只有一个：<strong>把一个请求里的所有东西——文本条件、条件媒体、目标视频 latent、目标音频 latent——拼成一个序列，放进同一个 transformer 里联合去噪</strong>。本章讲清这个「packed multimodal sequence」的行布局、每行携带的三个坐标，以及为什么这个设计让 cross-attention 彻底消失。</p>
+
+<h3>3.1 Contextual Omni Representation：进模型之前先把世界结构化</h3>
+<p>H3-Base 的输入不是用户敲的原始 prompt，而是 Context-IR（或你自建的等价物）产出的<strong>序列化结构化表示</strong>。它承担四件事：</p>
+<ul>
+  <li><strong>指令解析</strong>：把口语化描述拆成可执行的生成指令；</li>
+  <li><strong>跨模态关联</strong>：解析「第二张图里的人物」「这段音频的说话人」这类指代；</li>
+  <li><strong>时序理解</strong>：把「前 3 秒……随后……最后……」对齐到时间轴；</li>
+  <li><strong>复杂逻辑推理</strong>：处理因果、转折、多镜头叙事。</li>
+</ul>
+<p>产出物的形态可以从 ref2va 的实现反推：参考媒体在「prompt presentation」里以 <code>&lt;Picture 1&gt;</code>、<code>&lt;Audio 1&gt;</code>、<code>&lt;Video 1&gt;</code> 这样的占位标签出现在文本流中，台词则通过 Qwen3-VL tokenizer 的特殊 token <code>&lt;d&gt;</code> 标注——也就是说，<em>结构化表示本质上是「带媒体占位标签与台词标记的富文本」</em>，随后整体送入 Qwen3-VL 编码（第 4 章）。</p>
+
+<h3>3.2 一个请求 = 一个序列</h3>
+<p>编码完成后，四类行按固定顺序拼接（顺序即语义，参考媒体的位置会推进共享的旋转位置时钟，见第 9 章）：</p>
+
+<div class="figure">
+<svg viewBox="0 0 960 470" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="pkA" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+    <marker id="pkD" markerWidth="8" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 z" fill="#b08c00"/></marker>
+  </defs>
+  <!-- 左侧：四个来源 -->
+  <rect x="16" y="34" width="190" height="52" rx="9" fill="#fff" stroke="#c9c3ee" stroke-width="1.4"/>
+  <text x="111" y="55" font-size="12" font-weight="700" fill="#24292f" text-anchor="middle">结构化表示（Context-IR）</text>
+  <text x="111" y="74" font-size="10.5" fill="#5a6070" text-anchor="middle">→ Qwen3-VL 第 50 层</text>
+  <rect x="16" y="126" width="190" height="52" rx="9" fill="#fff" stroke="#c9c3ee" stroke-width="1.4"/>
+  <text x="111" y="147" font-size="12" font-weight="700" fill="#24292f" text-anchor="middle">条件媒体（关键帧/参考）</text>
+  <text x="111" y="166" font-size="10.5" fill="#5a6070" text-anchor="middle">→ VisualVAE / AudioVAE 编码</text>
+  <rect x="16" y="286" width="190" height="52" rx="9" fill="#fff" stroke="#c9c3ee" stroke-width="1.4"/>
+  <text x="111" y="307" font-size="12" font-weight="700" fill="#24292f" text-anchor="middle">视频噪声 x_t</text>
+  <text x="111" y="326" font-size="10.5" fill="#5a6070" text-anchor="middle">→ patchify → proj_in</text>
+  <rect x="16" y="378" width="190" height="52" rx="9" fill="#fff" stroke="#c9c3ee" stroke-width="1.4"/>
+  <text x="111" y="399" font-size="12" font-weight="700" fill="#24292f" text-anchor="middle">音频噪声 x_t</text>
+  <text x="111" y="418" font-size="10.5" fill="#5a6070" text-anchor="middle">→ audio_proj_in</text>
+  <!-- 中央：packed sequence -->
+  <rect x="300" y="26" width="400" height="416" rx="12" fill="#fbfbff" stroke="#5845e6" stroke-width="2"/>
+  <text x="500" y="16" font-size="13" font-weight="800" fill="#4636c4" text-anchor="middle">packed multimodal sequence（行数 = token 数）</text>
+  <!-- 段1 text -->
+  <rect x="316" y="40" width="368" height="58" rx="6" fill="#79c0ff" opacity=".85"/>
+  <text x="330" y="64" font-size="12" font-weight="700" fill="#0b2a4a">① 文本条件行</text>
+  <text x="330" y="84" font-size="10.5" fill="#123a63">context_embedder(5120→5376)，token_refiner 精炼</text>
+  <text x="672" y="66" font-size="11" fill="#0b2a4a" text-anchor="end" font-weight="700">tags=1</text>
+  <text x="672" y="84" font-size="10" fill="#123a63" text-anchor="end">timestep 固定</text>
+  <!-- 段2 media -->
+  <rect x="316" y="106" width="368" height="64" rx="6" fill="#8b949e" opacity=".6"/>
+  <text x="330" y="130" font-size="12" font-weight="700" fill="#2f363d">② 条件媒体行</text>
+  <text x="330" y="150" font-size="10.5" fill="#3d444d">关键帧/参考的 latent 行（video 行为主，音频参考行随行）</text>
+  <text x="672" y="132" font-size="11" fill="#2f363d" text-anchor="end" font-weight="700">tags=0/2</text>
+  <text x="672" y="150" font-size="10" fill="#3d444d" text-anchor="end">timestep 固定</text>
+  <!-- 段3 video latents -->
+  <rect x="316" y="178" width="368" height="116" rx="6" fill="#5845e6" opacity=".85"/>
+  <text x="330" y="202" font-size="12" font-weight="700" fill="#fff">③ 目标视频 latent 行（要去噪的部分）</text>
+  <text x="330" y="222" font-size="10.5" fill="#eee9ff">1344×768 画布：1008 token/latent帧 × 37 帧 ≈ 37,296 行</text>
+  <text x="330" y="242" font-size="10.5" fill="#eee9ff">每行 96 通道（24 latent × patch 1×2×2）</text>
+  <text x="330" y="270" font-size="10.5" fill="#d8d1ff">由视频调度器（shift=12）的 timestep 标注</text>
+  <text x="672" y="204" font-size="11" fill="#fff" text-anchor="end" font-weight="700">tags=0</text>
+  <!-- 段4 audio latents -->
+  <rect x="316" y="302" width="368" height="92" rx="6" fill="#ffa657" opacity=".9"/>
+  <text x="330" y="326" font-size="12" font-weight="700" fill="#3d2500">④ 目标音频 latent 行（要去噪的部分）</text>
+  <text x="330" y="346" font-size="10.5" fill="#4a2e05">124 帧 ÷ 24fps × 40Hz ≈ 207 行/声道，每行 32 通道</text>
+  <text x="330" y="372" font-size="10.5" fill="#5a3a0a">由音频调度器（shift=3）的 timestep 标注</text>
+  <text x="672" y="328" font-size="11" fill="#3d2500" text-anchor="end" font-weight="700">tags=2</text>
+  <text x="500" y="428" font-size="11" fill="#5a6070" text-anchor="middle">→ 送入 50 × TransformerBlock（第 7 章），全程一套注意力权重</text>
+  <!-- 箭头 -->
+  <line x1="208" y1="60" x2="296" y2="66" stroke="#5845e6" stroke-width="1.8" marker-end="url(#pkA)"/>
+  <line x1="208" y1="152" x2="296" y2="136" stroke="#5845e6" stroke-width="1.8" marker-end="url(#pkA)"/>
+  <line x1="208" y1="312" x2="296" y2="234" stroke="#5845e6" stroke-width="1.8" marker-end="url(#pkA)"/>
+  <line x1="208" y1="404" x2="296" y2="348" stroke="#5845e6" stroke-width="1.8" marker-end="url(#pkA)"/>
+  <!-- 右侧：行坐标 -->
+  <rect x="736" y="150" width="212" height="196" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="1.4"/>
+  <text x="842" y="176" font-size="12" font-weight="800" fill="#713f12" text-anchor="middle">每行携带的三个坐标</text>
+  <text x="750" y="202" font-size="11" fill="#713f12" font-weight="700">token_tags</text>
+  <text x="750" y="220" font-size="10" fill="#92400e">0=video / 1=text / 2=audio</text>
+  <text x="750" y="246" font-size="11" fill="#713f12" font-weight="700">position_ids</text>
+  <text x="750" y="264" font-size="10" fill="#92400e">(t, h, w) 三轴 → MM-RoPE</text>
+  <text x="750" y="290" font-size="11" fill="#713f12" font-weight="700">timestep_indices</text>
+  <text x="750" y="308" font-size="10" fill="#92400e">指向 timestep 集合（两调度器并集）</text>
+  <text x="750" y="334" font-size="10.5" fill="#b45309" font-weight="700">派生：adaln_indices =</text>
+  <text x="750" y="350" font-size="10.5" fill="#b45309" font-weight="700">timestep_indices × 3 + token_tags</text>
+  <line x1="688" y1="240" x2="732" y2="240" stroke="#b08c00" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#pkD)"/>
+</svg>
+<p class="figcap"><b>图 3-1</b>　packed sequence 行布局。四段按序拼接；每行带三个坐标，其中派生的 <code>adaln_indices</code> 决定该行在 AdaLN 调制表里取哪一组 (timestep, modality) 参数——这是「双调度单 forward」得以成立的机关（第 8 章）。</p>
+</div>
+
+<p>源码里，模态编号是一个模块级常量，输出则是一个双字段 dataclass——注意 video 与 audio 的速度预测<strong>共用一次 forward</strong>产出：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python"># MiniMax-H3 tags every row of the packed sequence with the modality it belongs to and keeps one set of AdaLN
+# modulation parameters per (timestep, modality) pair: 0 = video, 1 = text, 2 = audio.
+MINIMAX_H3_MODALITY_NUM = 3
+
+
+@dataclass
+class MiniMaxH3TransformerOutput(BaseOutput):
+    r"""
+    The output of [`MiniMaxH3Transformer3DModel`].
+    Args:
+        sample (`torch.Tensor` of shape `(batch_size, num_video_tokens, in_channels * prod(patch_size))`):
+            The video velocity prediction for the rows addressed by `video_indices`, in the same order. Conditioning
+            rows are returned unmasked — masking them out before the scheduler step is the caller's job.
+        audio_sample (`torch.Tensor` of shape `(batch_size, num_audio_tokens, audio_in_channels)`, defaults to `None`):
+            The audio velocity prediction for the rows addressed by `audio_indices`, in the same order. `forward`
+            always populates it; it only defaults to `None` so that the output can be rebuilt from a plain dict of
+            its fields, which is how the accelerate offload hooks move a `BaseOutput` back to the input device.
+    """
+    sample: torch.Tensor
+    audio_sample: torch.Tensor | None = None</code></pre>
+</div>
+<p>两个值得划线的细节：<strong>① 条件行的速度预测「原样返回、不做屏蔽」</strong>——屏蔽/丢弃是调用方（管线）的职责，transformer 不越界；<strong>② audio_sample 仅为了 accelerate offload 钩子能从普通 dict 重建输出才默认 None</strong>，forward 本身总是会填它。这是工程代码里「职责边界」写得很干净的一个例子。</p>
+
+<h3>3.3 每行三个坐标：tags、位置、timestep</h3>
+<table class="tbl">
+  <tr><th>字段</th><th>形状</th><th>取值</th><th>用途</th></tr>
+  <tr><td class="num">token_tags</td><td class="num">(seq,)</td><td>0 = video，1 = text，2 = audio</td><td>AdaLN 调制表的<strong>模态维度</strong></td></tr>
+  <tr><td class="num">position_ids</td><td class="num">(seq, 3)</td><td>(t, h, w) 整数坐标</td><td>MM-RoPE 三轴频率（第 7.3 节）</td></tr>
+  <tr><td class="num">timestep_indices</td><td class="num">(seq,)</td><td>指向 timestep 集合（两个调度器 timesteps 的并集）</td><td>AdaLN 调制表的<strong>时间步维度</strong></td></tr>
+  <tr class="hl"><td class="num">adaln_indices（派生）</td><td class="num">(seq,)</td><td class="num">timestep_indices × 3 + token_tags</td><td>在每块 6 × (T×3) 的调制表里<strong>逐行</strong>取参（第 7.4 节）</td></tr>
+</table>
+<p>把训练画布 1344×768、时长 124 帧（5.17 s）的请求算一遍 token 预算，就能体会这个序列的规模：</p>
+<div class="flow">
+  画布 <b>1344×768</b> <span class="arr">→ 空间 16× 压缩 →</span> latent <b>84×48</b>
+  <span class="arr">→ patchify (1,2,2) →</span> <b>42×24 = 1008 token</b> / latent 帧<br>
+  <b>1008 × 37 latent 帧（=124 像素帧）= 37,296 个 video token</b>
+  <span class="tag">每行 96 通道 = 24 latent 通道 × patch 1×2×2</span><br>
+  音频 <b>124 帧 ÷ 24 fps × 40 Hz ≈ 207 个 audio token</b> / 声道
+  <span class="tag">每行 32 通道；文本与条件媒体行数取决于结构化表示与参考数量</span>
+</div>
+<p>也就是说，一次典型 forward 的序列长度在<strong>四万行上下</strong>，其中视频行占九成以上——这解释了为什么 H3 的工程重心全在序列侧：MM-RoPE 共享频率表（省显存）、AdaLN 表格化寻址（免逐行投影）、注意力后端可替换（FlashAttention-3 等，第 10 章）。</p>
+
+<h3>3.4 单流设计：cross-attention 的消失</h3>
+<p>传统视频 DiT（包括 Wan 2.1）的文本注入靠 cross-attention：视频 token 当 Q，文本 token 当 K/V。H3 的注意力处理器源码里有一句斩钉截铁的注释：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">MiniMaxH3AttnProcessor 类 docstring（原文）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AttnProcessor:
+    r"""
+    Full self-attention over one packed sequence. There is no cross-attention anywhere in MiniMax-H3.
+    """</code></pre>
+</div>
+<p>条件注入改走三条<strong>正交通道</strong>，各管一件事：</p>
+<ul>
+  <li><strong>序列拼接（内容）</strong>：文本行、媒体行就在序列里，视频行做 self-attention 时自然 attend 到它们——跨模态对齐不再是专门的模块，而是注意力的副产品；</li>
+  <li><strong>MM-RoPE（位置）</strong>：文本行、视频行、音频行共用 (t, h, w) 三轴坐标系，参考媒体的顺序天然编码在位置里；</li>
+  <li><strong>AdaLN（噪声水平 × 模态）</strong>：每行按自己的 (timestep, modality) 取调制参数——噪声水平不同的行在同一层里被「区别对待」。</li>
+</ul>
+<p>代价与收益都很清楚：注意力与 FFN 的权重<strong>完全跨模态共享</strong>（没有 per-modality 专家），模型必须学会在同一组参数下同时服务三种分布；换来的是参数效率、以及「画面看声音、声音看画面」这种细粒度跨模态交互在架构层面免费获得——对口型（lip-sync）正是 ref2va 的招牌能力（第 9 章）。</p>
+
+<div class="callout note">
+  <span class="co-title">为什么条件行也要过完整的 50 层？</span>
+  <p>因为序列是拼在一起的，注意力无法跳过某些行。条件行一路被更新，但其<strong>速度输出会被管线丢弃</strong>（transformer 只原样返回，见 3.2 代码注释），只有目标行进入调度器的 <code>step()</code>。这让「条件」与「目标」的区别退化为每行的 timestep 标签：条件行 timestep 固定，目标行随调度推进。</p>
+</div>
+</section>
+
+<!-- ==================== 第 4 章 ==================== -->
+<section id="ch4">
+<h2><span class="ch-no">04</span>H3-Encoder：Qwen3-VL 与 TokenRefiner</h2>
+<p class="ch-intro">文本（以及结构化表示里的媒体占位标签）由一个完整的 Qwen3-VL 编码——这是 H3 仓库里最大的单一组件（62.1 GB bfloat16），也是「全模态输入」在编码侧的落点。本章讲它怎么被使用，以及上面那层轻得出奇的 TokenRefiner。</p>
+
+<h3>4.1 一个 62 GB 的「文本编码器」</h3>
+<p>diffusers 转换后的组件清单里，conditioner 是 <code>Qwen3VLForConditionalGeneration</code>——一个完整的视觉语言模型。H3 对它的用法非常克制：</p>
+<ul>
+  <li><strong>读第 50 层 decoder 层的 unnormalized hidden state</strong>，而不是最后一层；语言模型头（LM head）<strong>完全不用</strong>——官方文档原话是「the full released checkpoint is used with its language-model head unused」；</li>
+  <li>输出维度 <code>text_dim = 5120</code>，由 transformer 侧的 <code>context_embedder</code> 投影到 5376（第 7.2 节）；</li>
+  <li>tokenizer 带 <code>&lt;d&gt;</code> 台词特殊 token，台词在结构化表示里就位后由它标出；</li>
+  <li>本身就是 VL 模型，天然消化 <code>&lt;Picture 1&gt;</code> 这类图文混合占位标签。</li>
+</ul>
+<div class="callout tip">
+  <span class="co-title">为什么取中间层、为什么 unnormalized</span>
+  <p>最后一层 hidden state 高度特化于 next-token 预测（且常带最终 RMSNorm 的「归一化风味」），对「当条件用」并不最优；中间层保留了更丰富的语义表征。类似的取法在 SD3（取 T5 倒数第二层）等模型里也出现过。对 H3 更关键的是：Context-IR 的结构化表示里混着媒体占位标签与台词标记，需要一个真正理解多模态文本的编码器——通用 T5 类模型不够用，这就是 62 GB 花得值的原因。</p>
+</div>
+<div class="flow">
+  结构化表示 <span class="arr">→ Qwen3-VL（第 50 层, unnormalized）→</span> <b>(num_text_tokens, 5120)</b>
+  <span class="arr">→ context_embedder →</span> <b>(num_text_tokens, 5376)</b>
+  <span class="arr">→ token_refiner →</span> 文本条件行
+  <span class="tag">tags=1，进入 packed sequence ① 段</span>
+</div>
+
+<h3>4.2 TokenRefiner：两层的「域适配器」</h3>
+<p>Qwen3-VL 的输出之上，H3 只加了一个极轻的精炼器：<strong>2 层普通 pre-norm transformer block + 一个 final norm</strong>。没有 AdaLN、没有 RoPE——因为它处理的是无噪声概念的条件流，不参与去噪调度。完整源码：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3TokenRefinerBlock(nn.Module):
+    r"""
+    Plain pre-norm transformer block used to refine the projected text stream. No AdaLN and no rotary embedding.
+    """
+    def __init__(
+        self,
+        hidden_size: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        ffn_dim: int,
+        norm_eps: float,
+        qk_norm_eps: float,
+    ):
+        super().__init__()
+        self.norm1 = nn.RMSNorm(hidden_size, eps=norm_eps)
+        self.attn = MiniMaxH3Attention(
+            hidden_size=hidden_size,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            qk_norm_eps=qk_norm_eps,
+        )
+        self.norm2 = nn.RMSNorm(hidden_size, eps=norm_eps)
+        self.ff = FeedForward(hidden_size, inner_dim=ffn_dim, activation_fn="swiglu", bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        hidden_states = hidden_states + self.attn(self.norm1(hidden_states))
+        hidden_states = hidden_states + self.ff(self.norm2(hidden_states))
+        return hidden_states
+
+
+class MiniMaxH3TokenRefiner(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        ffn_dim: int,
+        num_layers: int,
+        norm_eps: float,
+        qk_norm_eps: float,
+        final_norm_eps: float,
+    ):
+        super().__init__()
+        self.refiner_blocks = nn.ModuleList(
+            [
+                MiniMaxH3TokenRefinerBlock(
+                    hidden_size=hidden_size,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
+                    ffn_dim=ffn_dim,
+                    norm_eps=norm_eps,
+                    qk_norm_eps=qk_norm_eps,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+        self.final_norm = nn.RMSNorm(hidden_size, eps=final_norm_eps)
+        self.gradient_checkpointing = False
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        for block in self.refiner_blocks:
+            if torch.is_grad_enabled() and self.gradient_checkpointing:
+                hidden_states = self._gradient_checkpointing_func(block, hidden_states)
+            else:
+                hidden_states = block(hidden_states)
+        return self.final_norm(hidden_states)</code></pre>
+</div>
+<p>逐行看几个点：</p>
+<ul>
+  <li><strong>复用主干的注意力类</strong>：<code>MiniMaxH3Attention</code> 与第 7.5 节的主干注意力是同一个类（含 QK-Norm），只是这里不传 RoPE——一套实现两处使用，减少转换时的形状分歧；</li>
+  <li><strong>SwiGLU FFN</strong>：与主干 block 的 FFN 结构一致（<code>activation_fn="swiglu"</code>，无 bias），同样是为权重布局统一；</li>
+  <li><strong>final_norm 用独立的 eps</strong>（config 里 <code>final_norm_eps</code> 与 <code>norm_eps</code> 分开登记），说明训练时这两处是分开调的；</li>
+  <li><strong>保留了 gradient_checkpointing 分支</strong>：推理用不到，但为社区微调留了路。</li>
+</ul>
+<div class="callout note">
+  <span class="co-title">为什么 refiner 这么薄？</span>
+  <p>Qwen3-VL 输出的已经是高质量语义特征，refiner 的任务不是「理解」而是<strong>域适配</strong>：把语言模型的表征分布平移到扩散模型条件分布上。两层的容量足够完成这件事——对照 Wan 2.1 时代 umT5 输出直接进 cross-attention 的做法，H3 等于把「cross-attention 的适配职责」压缩成了这两层 + 序列拼接。</p>
+</div>
+</section>
+
+<!-- ==================== 第 5 章 ==================== -->
+<section id="ch5">
+<h2><span class="ch-no">05</span>H3-VisualVAE：17n+5 的因果几何</h2>
+<p class="ch-intro">视频自编码器 <code>AutoencoderKLMiniMaxH3</code> 是 H3 里最「不对称」的组件：encoder 是因果 3D CNN（为了流式与参考编码），decoder 却是一个 36 层的非因果 ViT（为了重建质量）。它还带来一个所有用户都会撞上的规则：帧数必须是 <strong>17n+5</strong>。</p>
+
+<h3>5.1 分工：因果 encoder + 非因果 ViT decoder</h3>
+<table class="tbl">
+  <tr><th></th><th>Encoder</th><th>Decoder</th></tr>
+  <tr><td><strong>结构</strong></td><td>因果 3D CNN（仓库内 <code>EncoderFCN3D</code>，含 FusedGroupNorm3D、SpatialParallelConv3d 等工程化组件）</td><td class="hl"><strong>非因果 ViT</strong>（<code>ViTBase</code>，36 层）</td></tr>
+  <tr><td><strong>感受野</strong></td><td>时间维只看过去（causal）</td><td>全部 latent 帧双向可见</td></tr>
+  <tr><td><strong>为什么</strong></td><td>因果性支持分块/流式编码，也用于编码参考视频（第 9 章）</td><td>解码是离线一次性操作，非因果视野换来更高的重建上限</td></tr>
+  <tr><td><strong>压缩率</strong></td><td colspan="2" style="text-align:center">时间 4× · 空间 16× · latent 通道 24（无 scaling_factor，逐通道 mean/std 归一化）</td></tr>
+</table>
+<p>diffusers 侧对仓库原始实现的包装是 <code>trust_remote_code</code> 式的：仓库里 <code>FL2VA/video_vae/minimax_h3_video_vae.py</code> 提供 <code>MiniMaxH3VideoVAE</code> 包装器，内部组合 <code>vae_cnn.EncoderFCN3D</code> 与 <code>vae_vit.ViTBase</code>，并把 tiling 参数暴露成构造参数——权重与命名与原 checkpoint 一致，转换是直通的。</p>
+
+<h3>5.2 帧数吸附：17n+5 ↔ 5n+2</h3>
+<p>VAE 的时间维按 <code>clip_length = 17</code> 的段处理、段间有 <code>token_drop = 3</code> 的衔接扣除，最终外显为一条极其简单的规则：</p>
+<div class="formula">
+  像素帧数 = 17n + 5　⟷　latent 帧数 = 5n + 2，&nbsp;&nbsp; n = 0, 1, 2, …
+  <span class="note-below">管线会把请求的 num_frames 向上吸附（snap up）到最近的 17n+5，吸附后的时长必须落在 5–15 秒窗口内</span>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 960 200" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <text x="30" y="30" font-size="13" font-weight="700" fill="#24292f">像素帧（124 = 5 + 7×17，24 fps ≈ 5.17 s）</text>
+  <rect x="30" y="42" width="36" height="30" fill="#10b981"/>
+  <text x="48" y="61" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">5</text>
+  <rect x="68" y="42" width="122.4" height="30" fill="#5845e6" opacity=".9"/>
+  <text x="129" y="61" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">17</text>
+  <rect x="192" y="42" width="122.4" height="30" fill="#5845e6" opacity=".72"/>
+  <rect x="316" y="42" width="122.4" height="30" fill="#5845e6" opacity=".9"/>
+  <rect x="440" y="42" width="122.4" height="30" fill="#5845e6" opacity=".72"/>
+  <rect x="564" y="42" width="122.4" height="30" fill="#5845e6" opacity=".9"/>
+  <rect x="688" y="42" width="122.4" height="30" fill="#5845e6" opacity=".72"/>
+  <rect x="812" y="42" width="122.4" height="30" fill="#5845e6" opacity=".9"/>
+  <text x="500" y="92" font-size="10.5" fill="#8a8799" text-anchor="middle">↓ 时间压缩 4×（clip_length=17，段间 token_drop=3）↓</text>
+  <text x="30" y="128" font-size="13" font-weight="700" fill="#24292f">latent 帧（37 = 2 + 7×5）</text>
+  <rect x="30" y="140" width="60" height="30" fill="#10b981"/>
+  <text x="60" y="159" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">2</text>
+  <rect x="92" y="140" width="120" height="30" fill="#7c6cf0" opacity=".9"/>
+  <rect x="214" y="140" width="120" height="30" fill="#7c6cf0" opacity=".65"/>
+  <rect x="336" y="140" width="120" height="30" fill="#7c6cf0" opacity=".9"/>
+  <rect x="458" y="140" width="120" height="30" fill="#7c6cf0" opacity=".65"/>
+  <rect x="580" y="140" width="120" height="30" fill="#7c6cf0" opacity=".9"/>
+  <rect x="702" y="140" width="120" height="30" fill="#7c6cf0" opacity=".65"/>
+  <rect x="824" y="140" width="110" height="30" fill="#7c6cf0" opacity=".9"/>
+  <text x="884" y="159" font-size="9.5" fill="#fff" text-anchor="middle" font-weight="700">5×7</text>
+</svg>
+<p class="figcap"><b>图 5-1</b>　124 帧的切分：首段 5 帧产 2 个 latent 帧，之后每 17 帧产 5 个 latent 帧。绿色为首段，紫色为 7 个 17 帧 clip（隔行降透明度仅为视觉区分）。</p>
+</div>
+
+<p>把常用时长换算成对照表（生成前先对帧数，省得管线帮你吸附出一个意外时长）：</p>
+<table class="tbl">
+  <tr><th class="num">n</th><th class="num">像素帧（17n+5）</th><th class="num">时长 @24fps</th><th class="num">latent 帧（5n+2）</th><th>备注</th></tr>
+  <tr><td class="num">2</td><td class="num">39</td><td class="num">1.63 s</td><td class="num">12</td><td>短片段</td></tr>
+  <tr><td class="num">5</td><td class="num">90</td><td class="num">3.75 s</td><td class="num">27</td><td>低于 5 s 窗口，管线上仍会被推到 5 s 档</td></tr>
+  <tr class="hl"><td class="num">7</td><td class="num">124</td><td class="num">5.17 s</td><td class="num">37</td><td><strong>5 秒档</strong>（官方示例的默认请求）</td></tr>
+  <tr><td class="num">10</td><td class="num">175</td><td class="num">7.29 s</td><td class="num">52</td><td>—</td></tr>
+  <tr class="hl"><td class="num">14</td><td class="num">243</td><td class="num">10.1 s</td><td class="num">72</td><td><strong>10 秒档</strong></td></tr>
+  <tr class="hl"><td class="num">21</td><td class="num">362</td><td class="num">15.1 s</td><td class="num">107</td><td><strong>15 秒档</strong>（开源管线上限）</td></tr>
+</table>
+<div class="callout warn">
+  <span class="co-title">从 Wan 迁移过来的老习惯要改</span>
+  <p>Wan 2.1 的帧数是 <code>4n+1</code>（81、121、161），H3 是 <code>17n+5</code>（124、243、362）。另外注意「5–15 秒」的窗口作用在<strong>吸附后</strong>的时长上：请求 88 帧会被吸附到 90 帧（3.75 s）——低于窗口下限，会被拒绝；正确做法是直接请求 124 起。</p>
+</div>
+
+<h3>5.3 ViT decoder：36 层、register token、低频 RoPE</h3>
+<p>decoder 的超参与常见 LLM 风格 ViT 截然不同，每一项都为潜空间坐标服务：</p>
+<table class="tbl">
+  <tr><th>超参</th><th class="num">值</th><th>解读</th></tr>
+  <tr><td>层数 / 头数 / head_dim</td><td class="num">36 / 32 / 64</td><td>hidden 2048 的标准 ViT-Base 加深版</td></tr>
+  <tr><td>register tokens</td><td class="num">4</td><td>寄存器 token：吸收注意力里的「信息垃圾桶」职责，让 latent token 专注于内容（Darcet et al. 的思路）</td></tr>
+  <tr class="hl"><td>rope_theta</td><td class="num">100</td><td>远小于 LLM 的 10000——潜空间坐标范围小，低基数避免高频分量浪费</td></tr>
+  <tr><td>rope_dim_ratio</td><td class="num">0.75</td><td>75% 的通道参与 RoPE 旋转，其余直通</td></tr>
+</table>
+
+<h3>5.4 tiling 默认开启、ImageNet 像素约定、逐通道归一化</h3>
+<ul>
+  <li><strong>空间 tiling 默认开启</strong>：768 短边的 latent 解码也走 blended-tile 路径——官方发布的所有结果都是 tiling 解码的产物，不是「关掉 tiling 会更好」的可选项，而是默认行为的一部分；</li>
+  <li><strong>ImageNet 像素约定</strong>：像素值落在 <strong>[0, 1]</strong>（ImageNet 风格），不是 SD 系的 [−1, 1]。自己喂数据时搞反符号，重建会糊成一团；</li>
+  <li><strong>逐通道归一化</strong>：latent 用 24 维的 <code>latents_mean</code> / <code>latents_std</code> 归一化，<strong>没有</strong>标量 <code>scaling_factor</code>——扩散发生在「按通道标准化后」的空间里，管线负责进出两侧的换算。</li>
+</ul>
+
+<h3>5.5 从 latent 到 DiT token</h3>
+<p>transformer 侧对视频 latent 的第一刀是 patchify，把每 latent 帧切成 2×2 的 token：</p>
+<div class="flow">
+  像素 <b>(3, 124, 768, 1344)</b> <span class="arr">→ encode →</span> latent <b>(24, 37, 48, 84)</b>
+  <span class="arr">→ patchify (1,2,2) →</span> <b>(37, 24, 24, 42, 96)</b>
+  <span class="tag">每 token = 24 通道 × 2×2 邻域 = 96 通道</span><br>
+  <span class="arr">→ 展平为行 →</span> <b>(37×24×42, 96)</b> = <b>(37,296, 96)</b>
+  <span class="arr">→ proj_in →</span> <b>(37,296, 5376)</b>
+  <span class="tag">进入 packed sequence ③ 段</span>
+</div>
+<p>注意 patch 的<strong>时间步长是 1</strong>：每个 latent 帧独立切成 token，时间维不在 patch 内合并——时间感受野完全交给 MM-RoPE 的 t 轴与注意力的全局视野。这也是为什么音频行（每行 32 通道，无 patch）与视频行（每行 96 通道）宽度不同、各自走各的输入投影（<code>audio_proj_in</code> / <code>proj_in</code>），汇合后才统一到 5376。</p>
+</section>
+
+<!-- ==================== 第 6 章 ==================== -->
+<section id="ch6">
+<h2><span class="ch-no">06</span>H3-AudioVAE：从 DAC 到 BigVGAN</h2>
+<p class="ch-intro">音频自编码器 <code>AutoencoderKLMiniMaxH3Audio</code> 是一份「考古地层」：encoder 是 DAC 血统的波形卷积栈，decoder 是 BigVGAN，中间夹一层因果注意力投影。全波形进、全波形出——没有 mel 频谱前端，也没有独立 vocoder。本章按源码顺序逐段拆。</p>
+
+<h3>6.1 总览：800 倍时域压缩</h3>
+<p>模块 docstring 开宗明义（意译）：</p>
+<ul>
+  <li><strong>encoder</strong>：DAC 血统的跨步卷积栈（Snake 激活、weight-norm Conv1d），下采样 <code>prod(encoder_rates) = 800</code> 倍——32 kHz 下即 <strong>40 latents/s</strong>；</li>
+  <li><strong>pre_block</strong>：因果注意力投影，把 2048 宽的 encoder 主干「重排」到 32 通道的 latent 宽度；</li>
+  <li><strong>后验双头</strong>：<code>mean_proj</code> / <code>logs_proj</code> 两个独立 1×1 头（不是融合的单个 moments 投影）；</li>
+  <li><strong>decoder</strong>：BigVGAN（抗混叠 SnakeBeta、转置卷积上采样、AMP 残差块），前置 <code>dec_in_proj</code>，上采样同样 800 倍；</li>
+  <li><strong>单声道模型</strong>：立体声按 <strong>batch 维</strong>处理——管线把 <code>[2, 32, T]</code> 解码成 <code>[2, 1, samples]</code> 再在输出边界交错成立体声，VAE 内部没有任何立体声逻辑；</li>
+  <li><strong>命名直通</strong>：模块名与参数名和原 checkpoint 完全一致（包括 <code>weight_norm</code> 的 <code>weight_g/weight_v</code> 拼法、抗混叠激活注册的 Kaiser 窗 <code>filter</code> buffer），转换是纯直通。</li>
+</ul>
+<div class="flow">
+  波形 <b>(1, 160000)</b> <span class="arr">→ DAC encoder（800×）→</span> <b>(2048, 200)</b>
+  <span class="arr">→ pre_block（因果注意力重排 2048→32）→</span> <b>(32, 200)</b><br>
+  <span class="arr">→ mean_proj →</span> latent <b>(32, 200)</b> <span class="tag">40 Hz · 逐通道 mean/std 归一化 · 立体声即 (2, 32, 200)</span><br>
+  <span class="arr">→ dec_in_proj + BigVGAN decoder（800×）→</span> 波形 <b>(1, 160000)</b>
+</div>
+
+<h3>6.2 抗混叠积木：Kaiser-sinc 滤波器与 Snake 激活</h3>
+<p>先看两块最小积木。<code>kaiser_sinc_filter1d</code> 造出 Kaiser 窗加权的 sinc 低通核——它是所有上下采样器的抗混叠心脏：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/autoencoders/autoencoder_kl_minimax_h3_audio.py（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">def kaiser_sinc_filter1d(cutoff: float, half_width: float, kernel_size: int) -&gt; torch.Tensor:
+    r"""Kaiser-windowed sinc low-pass filter of shape `[1, 1, kernel_size]`.
+    Kept arithmetically identical to the `alias-free-torch` implementation the checkpoint was trained with, because the
+    resulting tensor is stored as a persistent buffer.
+    """
+    half_size = kernel_size // 2
+    attenuation = 2.285 * (half_size - 1) * math.pi * (4 * half_width) + 7.95
+    if attenuation &gt; 50.0:
+        beta = 0.1102 * (attenuation - 8.7)
+    elif attenuation &gt;= 21.0:
+        beta = 0.5842 * (attenuation - 21) ** 0.4 + 0.07886 * (attenuation - 21.0)
+    else:
+        beta = 0.0
+    window = torch.kaiser_window(kernel_size, beta=beta, periodic=False)
+    if kernel_size % 2 == 0:
+        time = torch.arange(-half_size, half_size) + 0.5
+    else:
+        time = torch.arange(kernel_size) - half_size
+    filter_ = 2 * cutoff * window * torch.sinc(2 * cutoff * time)
+    # Normalize to sum 1 so a constant input does not leak through the resampler.
+    filter_ /= filter_.sum()
+    return filter_.view(1, 1, kernel_size)</code></pre>
+</div>
+<p>两条工程注释值得停一下：<strong>① 数值上刻意与训练时的 <code>alias-free-torch</code> 保持逐位一致</strong>——因为滤波器作为 persistent buffer 存进 checkpoint，任何数值漂移都会造成加载不兼容；<strong>② 末尾的 sum-to-one 归一化</strong>保证直流分量无损通过（常数输入不泄漏）。</p>
+<p>接着是两种 Snake 周期激活——音频生成里比 ReLU/GELU 更契合波形周期性的选择：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">Snake 激活（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AudioSnake1d(nn.Module):
+    r"""`x + (alpha + 1e-9)^-1 * sin(alpha * x)^2` over `[batch_size, channels, length]`, with a
+    per-channel learnable `alpha` of shape `[1, channels, 1]`. Used throughout the DAC encoder."""
+    def __init__(self, channels: int):
+        super().__init__()
+        self.alpha = nn.Parameter(torch.ones(1, channels, 1))
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        return hidden_states + (self.alpha + 1e-9).reciprocal() * torch.sin(self.alpha * hidden_states).pow(2)
+
+
+class MiniMaxH3AudioSnakeBeta(nn.Module):
+    r"""`x + (exp(beta) + 1e-9)^-1 * sin(exp(alpha) * x)^2` over `[batch_size, channels, length]`.
+    The BigVGAN decoder's activation: separate frequency (`alpha`) and magnitude (`beta`) parameters, both stored in
+    log space as `[channels]` vectors.
+    """
+    def __init__(self, channels: int):
+        super().__init__()
+        self.alpha = nn.Parameter(torch.zeros(channels))
+        self.beta = nn.Parameter(torch.zeros(channels))
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        alpha = torch.exp(self.alpha.unsqueeze(0).unsqueeze(-1))
+        beta = torch.exp(self.beta.unsqueeze(0).unsqueeze(-1))
+        return hidden_states + (beta + 1e-9).reciprocal() * torch.sin(alpha * hidden_states).pow(2)</code></pre>
+</div>
+<p><code>Snake1d</code>（DAC 侧）一个可学的逐通道频率 <code>alpha</code>；<code>SnakeBeta</code>（BigVGAN 侧）拆成频率与幅度两个参数、且都存 log 空间保证为正。围绕它们还有四个薄包装：<code>LowPassFilter1d / UpSample1d / DownSample1d</code>（Kaiser-sinc 核的跨步/转置卷积实现）与 <code>Activation1d</code>（上采样 → 激活 → 下采样的 alias-free 激活包装，BigVGAN 的招牌操作）。</p>
+
+<h3>6.3 DAC encoder 主干：残差单元 → 编码块 → 栈</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">残差单元与编码块（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AudioResidualUnit(nn.Module):
+    r"""DAC residual unit: `Snake -&gt; dilated Conv1d(k=7) -&gt; Snake -&gt; Conv1d(k=1)`, plus a shortcut
+    that is center-cropped when the dilated convolution shrinks the time axis."""
+    def __init__(self, dim: int, dilation: int):
+        super().__init__()
+        self.block = nn.Sequential(
+            MiniMaxH3AudioSnake1d(dim),
+            weight_norm(nn.Conv1d(dim, dim, kernel_size=7, dilation=dilation, padding=((7 - 1) * dilation) // 2)),
+            MiniMaxH3AudioSnake1d(dim),
+            weight_norm(nn.Conv1d(dim, dim, kernel_size=1)),
+        )
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        residual = self.block(hidden_states)
+        pad = (hidden_states.shape[-1] - residual.shape[-1]) // 2
+        if pad &gt; 0:
+            hidden_states = hidden_states[..., pad:-pad]
+        return hidden_states + residual
+
+
+class MiniMaxH3AudioEncoderBlock(nn.Module):
+    r"""Three residual units at dilations 1/3/9, then a strided channel-doubling convolution."""
+    def __init__(self, dim: int, stride: int):
+        super().__init__()
+        self.block = nn.Sequential(
+            MiniMaxH3AudioResidualUnit(dim // 2, dilation=1),
+            MiniMaxH3AudioResidualUnit(dim // 2, dilation=3),
+            MiniMaxH3AudioResidualUnit(dim // 2, dilation=9),
+            MiniMaxH3AudioSnake1d(dim // 2),
+            weight_norm(
+                nn.Conv1d(
+                    dim // 2,
+                    dim,
+                    kernel_size=2 * stride,
+                    stride=stride,
+                    padding=math.ceil(stride / 2),
+                )
+            ),
+        )
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        return self.block(hidden_states)
+
+
+class MiniMaxH3AudioEncoder(nn.Module):
+    r"""DAC waveform encoder: `[batch_size, 1, samples] -&gt; [batch_size, latent_dim, samples / 800]`."""
+    def __init__(self, d_model: int, strides: tuple[int, ...], d_latent: int):
+        super().__init__()
+        block: list[nn.Module] = [weight_norm(nn.Conv1d(1, d_model, kernel_size=7, padding=3))]
+        for stride in strides:
+            d_model *= 2
+            block.append(MiniMaxH3AudioEncoderBlock(d_model, stride=stride))
+        block += [
+            MiniMaxH3AudioSnake1d(d_model),
+            weight_norm(nn.Conv1d(d_model, d_latent, kernel_size=3, padding=1)),
+        ]
+        self.block = nn.Sequential(*block)
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        return self.block(hidden_states)</code></pre>
+</div>
+<p>逐级展开（config：<code>encoder_dim = 64</code>，<code>encoder_rates = [2, 4, 4, 5, 5]</code>，<code>latent_dim = 2048</code>）：</p>
+<table class="tbl">
+  <tr><th>级</th><th>结构</th><th class="num">stride</th><th class="num">输出通道</th><th class="num">输出速率（32 kHz 基）</th></tr>
+  <tr><td>stem</td><td>Conv1d(k=7) + weight_norm</td><td class="num">—</td><td class="num">64</td><td class="num">32000 Hz</td></tr>
+  <tr><td>block 1</td><td>3×ResidualUnit(d=1,3,9) + Snake + stride Conv</td><td class="num">2</td><td class="num">128</td><td class="num">16000</td></tr>
+  <tr><td>block 2</td><td>同上</td><td class="num">4</td><td class="num">256</td><td class="num">4000</td></tr>
+  <tr><td>block 3</td><td>同上</td><td class="num">4</td><td class="num">512</td><td class="num">1000</td></tr>
+  <tr><td>block 4</td><td>同上</td><td class="num">5</td><td class="num">1024</td><td class="num">200</td></tr>
+  <tr class="hl"><td>block 5</td><td>同上</td><td class="num">5</td><td class="num">2048</td><td class="num"><strong>40 Hz</strong></td></tr>
+  <tr><td>tail</td><td>Snake + Conv1d(k=3) → d_latent</td><td class="num">—</td><td class="num">2048</td><td class="num">40 Hz</td></tr>
+</table>
+<p>几个容易看漏的点：<strong>① 每个 EncoderBlock 的残差单元跑在 dim/2 宽度</strong>，块尾的 stride 卷积才把通道翻倍（DAC 的「半宽处理 + 翻倍下采样」模式）；<strong>② 膨胀率固定 1/3/9</strong>，靠 stride 而不是膨胀率换感受野；<strong>③ shortcut 的 center-crop</strong>（ResidualUnit.forward 里那段 pad 逻辑）处理膨胀卷积偶数核造成的奇偶错位。</p>
+
+<h3>6.4 pre_block：因果注意力「重排」</h3>
+<p>encoder 输出是 2048 通道、40 Hz 的特征图，而 latent 只要 32 通道。H3 没有用一个 1×1 卷积草草了事，而是插入一个<strong>因果注意力 + GeGLU</strong> 的残差块（checkpoint 名 <code>pre_block</code>），让 32 个 latent 通道各自「挑」自己需要的 encoder 通道组合：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">pre_block 三件套（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AudioGeGluMlp(nn.Module):
+    r"""Pre-norm GeGLU MLP used inside the attention projection block."""
+    def __init__(self, in_features: int, hidden_features: int):
+        super().__init__()
+        self.norm = nn.LayerNorm(in_features)
+        self.act = nn.GELU(approximate="tanh")
+        self.w0 = nn.Linear(in_features, hidden_features)
+        self.w1 = nn.Linear(in_features, hidden_features)
+        self.w2 = nn.Linear(hidden_features, in_features)
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        hidden_states = self.norm(hidden_states)
+        hidden_states = self.act(self.w0(hidden_states)) * self.w1(hidden_states)
+        return self.w2(hidden_states)
+
+
+class MiniMaxH3AudioAttnProcessor:
+    r"""Processor of [`MiniMaxH3AudioCausalAttention`].
+    The causal mask is expressed as `is_causal=True` rather than as a materialized mask. Every attention backend
+    honours that flag, with two exceptions: `_native_npu`, whose kernel takes no causal argument and would compute
+    *bidirectional* attention, and context parallelism, which raises for causal attention.
+    """
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(self, attn: "MiniMaxH3AudioCausalAttention", hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        batch_size, seq_len, _ = hidden_states.shape
+        qkv = F.linear(
+            input=hidden_states,
+            weight=attn.qkv.weight,
+            bias=torch.cat((attn.q_bias, attn.zero_k_bias, attn.v_bias)),
+        )
+        query, key, value = (
+            qkv.reshape(batch_size, seq_len, 3, attn.num_heads, attn.head_dim).permute(2, 0, 1, 3, 4).unbind(0)
+        )
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=None,
+            is_causal=True,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        # The heads are mean-pooled away instead of being concatenated, and the head dimension that
+        # remains is adaptively average-pooled down to `out_dim`.
+        hidden_states = torch.mean(hidden_states, dim=2)
+        hidden_states = F.adaptive_avg_pool1d(hidden_states, attn.out_dim)
+        return attn.proj(hidden_states)
+
+
+class MiniMaxH3AudioCausalAttention(nn.Module, AttentionModuleMixin):
+    r"""Causal self-attention that narrows the feature width from `in_dim` to `out_dim`.
+    QKV is a single bias-less `nn.Linear`; query and value biases are separate parameters and the key bias is a frozen
+    zero buffer (`zero_k_bias`), exactly as stored in the checkpoint. Heads are `in_dim // num_heads` wide; instead of
+    being concatenated they are **mean-pooled away**, and the remaining head dimension is adaptively average-pooled
+    down to `out_dim`.
+    """
+    _default_processor_cls = MiniMaxH3AudioAttnProcessor
+    _available_processors = [MiniMaxH3AudioAttnProcessor]
+    # The checkpoint stores one fused `qkv` projection, so there is nothing to fuse.
+    _supports_qkv_fusion = False
+
+    def __init__(self, in_dim: int, out_dim: int, num_heads: int):
+        super().__init__()
+        self.out_dim = out_dim
+        self.num_heads = num_heads
+        self.head_dim = in_dim // num_heads
+        self.qkv = nn.Linear(in_dim, in_dim * 3, bias=False)
+        self.q_bias = nn.Parameter(torch.zeros(in_dim))
+        self.v_bias = nn.Parameter(torch.zeros(in_dim))
+        self.register_buffer("zero_k_bias", torch.zeros(in_dim))
+        self.proj = nn.Linear(out_dim, out_dim)
+        self.set_processor(MiniMaxH3AudioAttnProcessor())
+
+    def forward(self, hidden_states: torch.Tensor) -&gt; torch.Tensor:
+        return self.processor(self, hidden_states)</code></pre>
+</div>
+<p>这个类浓缩了四个「checkpoint 兼容优先」的教科书案例：</p>
+<ul>
+  <li><strong>融合 QKV 的手拼 bias</strong>：<code>F.linear(input, qkv.weight, bias=cat(q_bias, zero_k_bias, v_bias))</code>——权重存成一个 3in_dim×3in_dim 矩阵，但 q/v bias 是独立参数、k 的 bias 是<strong>冻结的零 buffer</strong>（<code>zero_k_bias</code>），前向时三段拼接。这也是 <code>_supports_qkv_fusion = False</code> 的原因：本来就是融合的，没有再融合的空间；</li>
+  <li><strong>因果性用 is_causal=True 表达</strong>而非实体 mask——但 docstring 提醒：NPU 原生后端不接受 causal 参数、会算成双向，上下文并行则直接 raise；</li>
+  <li><strong>heads 被均值池化掉</strong>（<code>torch.mean(hidden_states, dim=2)</code>）而不是拼接，剩下的 head_dim 再用 <code>adaptive_avg_pool1d</code> 压到 <code>out_dim</code>——「2048 → 8 头 × 256 → mean → 256 → pool → 32」，宽度收缩全靠两次平均；</li>
+  <li><strong>GeGLU 的 tanh 近似</strong>：GELU(approximate="tanh")，与编码器主干的数值行为保持一致。</li>
+</ul>
+
+<h3>6.5 后验双头：logs 是 log std，不是 log variance</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">后验分布（完整）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AudioDiagonalGaussianDistribution:
+    r"""Posterior of the MiniMax-H3 audio autoencoder, parameterized as `(mean, log_std)`.
+    The checkpoint keeps two separate `Conv1d` heads (`mean_proj`, `logs_proj`) instead of one fused moments
+    projection, and the second head predicts the **log standard deviation**, not the log variance. The two tensors are
+    therefore stored as produced, and `mode()` is bit-for-bit `mean_proj`'s output.
+    Args:
+        mean (`torch.Tensor`): Posterior mean, `[batch_size, latent_channels, num_frames]`.
+        logs (`torch.Tensor`): Posterior log standard deviation, same shape as `mean`.
+    """
+    def __init__(self, mean: torch.Tensor, logs: torch.Tensor):
+        self.mean = mean
+        self.logs = logs
+        self.std = torch.exp(logs)
+
+    def mode(self) -&gt; torch.Tensor:
+        return self.mean
+
+    def sample(self, generator: torch.Generator | None = None) -&gt; torch.Tensor:
+        noise = randn_tensor(self.mean.shape, generator=generator, device=self.mean.device, dtype=self.mean.dtype)
+        return self.mean + self.std * noise</code></pre>
+</div>
+<p>diffusers 其余 KL 自编码器的惯例是单个 <code>proj</code> 输出双倍通道然后 chunk 成 (mean, logvar)；H3 音频 VAE 是<strong>两个独立头</strong>，且第二个头预测 <strong>log 标准差</strong>。如果你要写自己的采样代码，<code>std = exp(logs)</code> 这行就是全部区别所在——当成 logvar 用会开错一次方。<code>mode()</code> 逐位等于 <code>mean_proj</code> 的输出，而 H3 的管线<strong>总是取 mode()</strong>（编码条件音频时不加采样噪声）。</p>
+
+<h3>6.6 decoder：BigVGAN 一侧</h3>
+<p>decoder 侧（<code>decoder_dim = 1024</code>，<code>decoder_rates = [5, 5, 2, 2, 2, 2, 2]</code>，积同样是 800）走 BigVGAN 配方：<code>dec_in_proj</code> 把 32 通道 latent 抬到 1024 宽；每一级是「AMP 残差块（SnakeBeta 激活、膨胀卷积）+ 转置卷积上采样 + 通道折半」；<code>Activation1d</code> 包装让非线性也发生在 2 倍上采样域里以抑制混叠。结构上是 encoder 的镜像，不再贴代码——重点是它继承了 BigVGAN 的全部抗混叠纪律，32 kHz 全带宽重建靠的就是这套。</p>
+<div class="callout note">
+  <span class="co-title">把第 5、6 章的数字放在一起看</span>
+  <p>视频 24 fps、音频 40 Hz——比例 3:5。124 帧的请求对应约 207 个音频 latent 帧（5.17 s × 40）；两模态的 token 数（37,296 vs ~207/声道）、通道数（96 vs 32）、调度 shift（12.0 vs 3.0）全都不同，却挤在同一个序列、同一套注意力权重里——这就是第 3 章「单流」的全部代价与魅力。</p>
+</div>
+</section>
+
+<section id="ch7">
+<h2><span class="ch-no">07</span>H3-Omni-Transformer 逐层精讲</h2>
+<p class="ch-intro">33B 的主干是一个再「普通」不过的 pre-norm DiT：50 层，每层自注意力 + SwiGLU FFN + AdaLN，没有 cross-attention，没有模态特化的权重。所有 omni 魔法都被压进三个不起眼的机关里：一套三轴 RoPE、一张按行寻址的 AdaLN 调制表、以及把四种输入拼成一条序列的工程。本章逐层拆开看。</p>
+
+<h3>7.1 从 config.json 读起</h3>
+<p>diffusers 转换后的 <code>transformer/config.json</code> 是了解主干最可靠的入口——每个数字都对得上 checkpoint 的权重形状。FL2VA 任务子树（t2va 与之完全相同）的配置全文如下：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">MiniMax-H3/FL2VA/transformer/config.json（全文）</span><span class="lang">JSON</span></div>
+<pre><code class="language-json">{
+  "_class_name": "MiniMaxH3DiTModel",
+  "_diffusers_version": "0.32.2",
+  "hidden_size": 5376,
+  "num_layers": 50,
+  "token_refiner_num_layers": 2,
+  "num_attention_heads": 56,
+  "attention_head_dim": 128,
+  "ffn_hidden_size": 14336,
+  "latents_dim": 24,
+  "audio_latents_dim": 32,
+  "patch_size": [1, 2, 2],
+  "text_dim": 5120,
+  "timestep_input_dim": 256,
+  "time_embed_hidden_size": 5376,
+  "time_embed_dim": 2688,
+  "adaln_out_features": 96768,
+  "final_adaln_out_features": 10752,
+  "rope_inv_freq_len": 16,
+  "norm_eps": 1e-05,
+  "qk_norm_eps": 1e-05,
+  "final_norm_eps": 1e-05
+}</code></pre>
+</div>
+<p>逐项解读——多数值之间有精确的倍数关系，这些关系就是第 1.4 节参数账本的来源：</p>
+<table class="tbl">
+  <tr><th>字段</th><th class="num">值</th><th>怎么读它</th></tr>
+  <tr><td><code>hidden_size</code></td><td class="num">5376</td><td>主干统一宽度。视频 token、音频 token、文本 token 全部升到这个宽度上流动</td></tr>
+  <tr><td><code>num_layers</code></td><td class="num">50</td><td>TransformerBlock 层数；单块 ≈645M → 主干 ≈32.3B（第 1.4 节）</td></tr>
+  <tr class="hl"><td><code>num_attention_heads</code> × <code>attention_head_dim</code></td><td class="num">56 × 128</td><td><strong>inner_dim = 7168 &gt; 5376</strong>：「宽注意力」——QKV 先升维 1.33×，输出投影再压回 5376（7.5 节）</td></tr>
+  <tr><td><code>ffn_hidden_size</code></td><td class="num">14336</td><td>= 8/3 × 5376。SwiGLU 三矩阵（gate/up/down，无 bias）下等价于传统 4×hidden FFN 的算力</td></tr>
+  <tr><td><code>latents_dim</code> / <code>audio_latents_dim</code></td><td class="num">24 / 32</td><td>两路 VAE 的 latent 通道数（第 5、6 章），分别经 proj_in / audio_proj_in 进主干</td></tr>
+  <tr><td><code>patch_size</code></td><td class="num">[1, 2, 2]</td><td>时间不 patch、空间 2×2 → 每视频 token = 24×2×2 = <strong>96</strong> 通道</td></tr>
+  <tr><td><code>text_dim</code></td><td class="num">5120</td><td>Qwen3-VL hidden 宽度；context_embedder 把它抬到 5376（第 4 章）</td></tr>
+  <tr><td><code>timestep_input_dim</code></td><td class="num">256</td><td>time_proj 正弦嵌入的输出宽度</td></tr>
+  <tr><td><code>time_embed_hidden_size</code> / <code>time_embed_dim</code></td><td class="num">5376 / 2688</td><td>time_embedder 两级 MLP：256 → 5376 → <strong>2688 = hidden/2</strong>；2688 是喂给每个 AdaLN 投影的宽度</td></tr>
+  <tr class="hl"><td><code>adaln_out_features</code></td><td class="num">96768</td><td>= 6 × 5376 × 3：6 组调制参数 × 3 个模态。这就是每块 260M 的那个矩阵（7.4 节）</td></tr>
+  <tr><td><code>final_adaln_out_features</code></td><td class="num">10752</td><td>= 2 × 5376：最终 RMSNorm 的 shift/scale，只按 timestep（不分模态）寻址</td></tr>
+  <tr><td><code>rope_inv_freq_len</code></td><td class="num">16</td><td>每轴 16 个频率 → 每头旋转 2×3×16 = 96 维；head_dim 128 中余 32 维直通（7.3 节）</td></tr>
+  <tr><td>三个 eps</td><td class="num">1e-5</td><td>块内 RMSNorm、QK 头维 RMSNorm、输出 RMSNorm 的 ε</td></tr>
+</table>
+
+<h3>7.2 主类模块地图：MiniMaxH3Transformer3DModel</h3>
+<p>主类 <code>MiniMaxH3Transformer3DModel</code>（checkpoint 类名 <code>MiniMaxH3DiTModel</code>）的职责是：把四路输入各自投到 5376、拼成 packed sequence、过 50 层、再从两个头里读出视频与音频的速度预测。它的全部子模块都可以从 diffusers 文档页的 int8 量化排除清单（第 10 章）里核对——那份清单列出的正是不该量化的 checkpoint 实际键名：</p>
+<table class="tbl">
+  <tr><th>模块（checkpoint 键名）</th><th>结构</th><th>作用</th></tr>
+  <tr><td><code>proj_in</code></td><td class="num">Linear(96 → 5376)</td><td>视频 patch token 进主干</td></tr>
+  <tr><td><code>audio_proj_in</code></td><td class="num">Linear(32 → 5376)</td><td>音频 latent token 进主干</td></tr>
+  <tr><td><code>context_embedder</code></td><td class="num">Linear(5120 → 5376)</td><td>Qwen3-VL hidden 进主干（第 4 章）</td></tr>
+  <tr><td><code>token_refiner</code></td><td class="num">2 层 pre-norm 块</td><td>精炼文本流（第 4 章，逐字代码在彼处）</td></tr>
+  <tr><td><code>time_proj</code></td><td class="num">Timesteps → 256</td><td>正弦 timestep 嵌入</td></tr>
+  <tr><td><code>time_embedder</code></td><td class="num">TimestepEmbedding<br>256 → 5376 → 2688</td><td>两级 MLP，<strong>fp32 模块</strong>（混合精度 checkpoint 的精度锚点，见 7.4）</td></tr>
+  <tr class="hl"><td><code>blocks</code></td><td class="num">50 × TransformerBlock</td><td>主干（7.5、7.6 节）</td></tr>
+  <tr><td><code>norm_out</code></td><td class="num">RMSNorm + Linear(2688→10752)</td><td>最终按 timestep 的 shift/scale 调制（7.4 节）</td></tr>
+  <tr><td><code>proj_out</code></td><td class="num">Linear(5376 → 96)</td><td>视频速度头：把行还原成 96 通道 patch</td></tr>
+  <tr><td><code>audio_proj_out</code></td><td class="num">Linear(5376 → 32)</td><td>音频速度头：把行还原成 32 通道 latent</td></tr>
+</table>
+<p>以 1344×768、124 帧的请求为例，数据流全程形状如下：</p>
+<div class="flow">
+  视频 latent <b>(24, 37, 48, 84)</b> <span class="arr">→ patchify (1,2,2) →</span> <b>(37,296 行, 96)</b> <span class="arr">→ proj_in →</span> <b>5376</b>
+  <span class="tag">每 latent 帧产 24×42 = 1008 个 token，37 帧共 37,296 行</span><br>
+  音频 latent <b>(2 声道 × 32, ≈207)</b> <span class="arr">→ 展平 →</span> <b>(≈414 行, 32)</b> <span class="arr">→ audio_proj_in →</span> <b>5376</b>
+  <span class="tag">立体声按 batch 维展开（第 6 章）</span><br>
+  文本 hidden <b>(n_text, 5120)</b> <span class="arr">→ context_embedder →</span> <b>5376</b> <span class="arr">→ token_refiner →</span> <b>5376</b>
+  <span class="tag">第 4 章</span><br>
+  timestep <b>(T 个)</b> <span class="arr">→ time_proj →</span> <b>256</b> <span class="arr">→ time_embedder →</span> <b>(T, 2688)</b> fp32
+  <span class="tag">T = 两个调度器 timestep 的并集去重</span><br>
+  四路 <span class="arr">→ cat 成 packed sequence →</span> <b>50 × Block</b> <span class="arr">→ norm_out →</span> <b>proj_out →</b> 视频 96 通道/行
+  <span class="arr">｜ audio_proj_out →</span> 音频 32 通道/行
+</div>
+<p>输出按 <code>video_indices</code> / <code>audio_indices</code> 从 packed 序列里取行（第 3 章的 <code>MiniMaxH3TransformerOutput</code>）——条件行（参考图、参考视频、台词文本）不做输出 mask，原样混在预测里返回，<strong>把它们清零是调度器调用方的职责</strong>（第 8 章的 <code>video_conditional_mask</code>）。</p>
+
+<h3>7.3 MM-RoPE：三轴共享频率的旋转位置编码</h3>
+<p>第 3 章说过每行 token 携带 <code>(t, h, w)</code> 三坐标。把它们变成注意力内的相对位置信号的，是下面两个逐字摘录的函数/模块——H3 的 RoPE 与多数视频模型「按轴切分 head_dim」的做法不同：三轴<strong>共享同一组 16 个频率</strong>，每轴各产 16 个角度，三个块拼成 48 维再自拼成 96 维。</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">def _apply_rotary_emb(hidden_states: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -&gt; torch.Tensor:
+    r"""
+    Rotate the leading `rotary_dim` channels of every head and pass the remaining channels through unchanged.
+    `hidden_states` is `(batch_size, seq_len, num_heads, head_dim)` and `cos`/`sin` are `(seq_len, rotary_dim)`.
+    """
+    rotary_dim = cos.shape[-1]
+    hidden_states_rotary = hidden_states[..., :rotary_dim]
+    hidden_states_pass = hidden_states[..., rotary_dim:]
+    cos = cos.to(hidden_states.dtype)[None, :, None, :]
+    sin = sin.to(hidden_states.dtype)[None, :, None, :]
+    x1, x2 = hidden_states_rotary.chunk(2, dim=-1)
+    hidden_states_rotated = torch.cat((-x2, x1), dim=-1)
+    hidden_states_rotary = hidden_states_rotary * cos + hidden_states_rotated * sin
+    return torch.cat((hidden_states_rotary, hidden_states_pass), dim=-1).contiguous()
+
+
+class MiniMaxH3RotaryPosEmbed(nn.Module):
+    r"""
+    3-axis rotary embedding over the `(t, h, w)` coordinates of the packed sequence.
+    A single `inv_freq` buffer of `rope_freq_dim` frequencies is shared by the three axes. Each axis contributes
+    `rope_freq_dim` angles, the three blocks are concatenated to `3 * rope_freq_dim` and then concatenated with
+    themselves so that the `rotate_half` convention rotates `2 * 3 * rope_freq_dim` of the `head_dim` channels.
+    """
+    def __init__(self, rope_freq_dim: int = 16, rope_theta: float = 10000.0):
+        super().__init__()
+        self.rope_freq_dim = rope_freq_dim
+        inv_freq = 1.0 / (
+            rope_theta ** (torch.arange(0, 2 * rope_freq_dim, 2, dtype=torch.float32) / (2 * rope_freq_dim))
+        )
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+    def forward(self, position_ids: torch.Tensor) -&gt; tuple[torch.Tensor, torch.Tensor]:
+        # position_ids: (seq_len, 3) -&gt; cos/sin: (seq_len, 2 * 3 * rope_freq_dim)
+        position_ids = position_ids.to(torch.float32)
+        freqs = position_ids.unsqueeze(-1) * self.inv_freq.view(1, 1, -1)  # (seq_len, 3, rope_freq_dim)
+        freqs_t, freqs_h, freqs_w = freqs.unbind(dim=1)
+        freqs = torch.cat((freqs_t, freqs_h, freqs_w), dim=-1)
+        freqs = torch.cat((freqs, freqs), dim=-1)
+        return freqs.cos(), freqs.sin()</code></pre>
+</div>
+<p>四个值得停下来的细节：</p>
+<p><strong>(1) 16 频率 × 3 轴，角度拼接而非维度切分。</strong>常见 3D-RoPE（包括很多视频 DiT）把 head_dim 切成 t/h/w 三段，每轴独占一段维度、用各自的 inv_freq。H3 不切——每个头 128 维里，<strong>三轴用的是同一组频率</strong>（theta=10000，指数 0/32, 2/32, …, 30/32，共 16 档），时间角度、行角度、列角度在 96 维里首尾相接。位置区分完全靠 (t,h,w) 三元组的组合，所以文本行、音频行、参考行只要各自有合法坐标，就和视频行住在同一套约定里——第 9 章 ref2va 的「参考 token 与目标 token 共享同一 rotary clock、按插入顺序推进」正是这么落地的。</p>
+<p><strong>(2) 96 旋转、32 直通。</strong><code>rotary_dim = 2 × 3 × 16 = 96</code>：每轴 16 频率对应每头 32 个角度维，三轴 96 个角度维参与旋转，head_dim=128 的最后 32 维原样通过。这 32 维是内容通道，不编码位置。</p>
+<p><strong>(3) 自拼与 rotate_half 的配对。</strong><code>freqs = cat(freqs, freqs)</code> 把 48 维角度复制成 96 维，与 <code>torch.cat((-x2, x1))</code> 的 rotate_half 约定严格匹配——前 48 维乘 cos、把「另一半」（-x2）乘 sin 相加，等价于标准 RoPE 的复数旋转，只是拼接顺序写在了 cos/sin 侧而不是 x 侧。</p>
+<p><strong>(4) 只旋转 Q 和 K。</strong>调用发生在注意力 processor 里（7.5 节的逐字代码），V 与输出不进 RoPE——注意力的位置敏感性只体现在 logits 的 QKᵀ 上。</p>
+
+<h3>7.4 AdaLN：把 (timestep, modality) 调成 6 组向量</h3>
+<p>AdaLN 是 H3 里参数最重的部件（每块 260M，全模型 13B，第 1.4 节），逻辑却只有三步：<code>adaln_proj</code> 把 (T, 2688) 的 temb 投成 6 组 (3T, 5376) 的调制表，块的 <code>forward</code> 再按每行的 <code>adaln_indices</code> 从表里<strong>逐行</strong>取参。逐字代码：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AdaLayerNormModulation(nn.Module):
+    r"""
+    Projects the shared timestep embedding into the six per-(timestep, modality) modulation parameters of one
+    transformer block.
+    `(num_timesteps, time_embed_dim)` -&gt; six tensors of shape `(num_timesteps * MINIMAX_H3_MODALITY_NUM, hidden_size)`,
+    in the diffusers `shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp` order. The row layout of the
+    returned tensors is `[t0_mod0, t0_mod1, t0_mod2, t1_mod0, ...]`, which is what `timestep_indices *
+    MINIMAX_H3_MODALITY_NUM + token_tags` addresses.
+    A single projection is shared by `norm1` and `norm2` and by the three modalities, so it cannot be folded into
+    either norm the way [`~models.normalization.AdaLayerNormZero`] does. It is therefore a block-level module of its
+    own, named after the checkpoint's `adaln_proj`, with the modulation projection under the `linear` name diffusers
+    uses inside every AdaLN module.
+    """
+    def __init__(self, time_embed_dim: int, hidden_size: int):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.linear = nn.Linear(time_embed_dim, 6 * hidden_size * MINIMAX_H3_MODALITY_NUM, bias=True)
+
+    def forward(self, temb: torch.Tensor) -&gt; tuple[torch.Tensor, ...]:
+        # The activation runs at `temb`'s own precision — float32, since `time_embedder` is a float32 module in this
+        # mixed-precision checkpoint — and only its result is cast down to the bfloat16 projection. Every block reads
+        # the same `temb`, so a rounding applied before the activation biases every block's modulation parameters
+        # identically at every sampling step, which accumulates coherently over the denoising trajectory.
+        temb = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear)))
+        temb = temb.view(-1, 6 * self.hidden_size)
+        return temb.chunk(6, dim=-1)</code></pre>
+</div>
+<p>形状链值得手工推一遍——<code>view</code> 那一行是整个机关：</p>
+<div class="flow">
+  <b>(T, 2688)</b> <span class="arr">→ silu(fp32) → cast bf16 → Linear(2688→96768) →</span> <b>(T, 96768)</b>
+  <span class="tag">96768 = 6 × 5376 × 3，内存布局按 [timestep][模态][6 组 × 5376] 排</span><br>
+  <b>(T, 96768)</b> <span class="arr">→ view(-1, 32256) →</span> <b>(3T, 32256)</b> <span class="arr">→ chunk(6, dim=-1) →</span> <b>6 × (3T, 5376)</b>
+  <span class="tag">行布局 [t0·m0, t0·m1, t0·m2, t1·m0, …]——正是 adaln_indices = timestep_idx×3 + tag 的寻址表</span>
+</div>
+
+<div class="figure">
+<svg viewBox="0 0 960 470" width="960" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="alA" markerWidth="9" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#5845e6"/></marker>
+  </defs>
+  <!-- ① -->
+  <text x="30" y="24" font-size="12.5" font-weight="800" fill="#24292f">① adaln_proj：一次投影产出全部调制参数（T 个 timestep → 3T 行）</text>
+  <rect x="30" y="38" width="150" height="48" rx="8" fill="#f3f0ff" stroke="#5845e6" stroke-width="1.4"/>
+  <text x="105" y="58" font-size="11" font-weight="700" fill="#4636c4" text-anchor="middle">temb (T, 2688)</text>
+  <text x="105" y="75" font-size="9.5" fill="#6b5fd6" text-anchor="middle">fp32（time_embedder 是 fp32 模块）</text>
+  <line x1="180" y1="62" x2="222" y2="62" stroke="#5845e6" stroke-width="1.6" marker-end="url(#alA)"/>
+  <text x="201" y="50" font-size="9.5" fill="#5a6070" text-anchor="middle">silu</text>
+  <rect x="226" y="38" width="120" height="48" rx="8" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="286" y="58" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">.to(bf16)</text>
+  <text x="286" y="75" font-size="9.5" fill="#8a8799" text-anchor="middle">cast 在激活之后</text>
+  <line x1="346" y1="62" x2="388" y2="62" stroke="#5845e6" stroke-width="1.6" marker-end="url(#alA)"/>
+  <rect x="392" y="38" width="240" height="48" rx="8" fill="#f3f0ff" stroke="#5845e6" stroke-width="1.4"/>
+  <text x="512" y="58" font-size="11" font-weight="700" fill="#4636c4" text-anchor="middle">Linear(2688 → 96768)</text>
+  <text x="512" y="75" font-size="9.5" fill="#6b5fd6" text-anchor="middle">6×5376×3 + bias（bf16 权重）</text>
+  <line x1="632" y1="62" x2="674" y2="62" stroke="#5845e6" stroke-width="1.6" marker-end="url(#alA)"/>
+  <rect x="678" y="38" width="130" height="48" rx="8" fill="#fbfbff" stroke="#5845e6" stroke-width="1.4"/>
+  <text x="743" y="58" font-size="11" font-weight="700" fill="#4636c4" text-anchor="middle">(T, 96768)</text>
+  <text x="743" y="75" font-size="9.5" fill="#6b5fd6" text-anchor="middle">每块各一份权重</text>
+  <text x="828" y="58" font-size="10.5" fill="#5a6070">temb 全局共享</text>
+  <text x="828" y="75" font-size="9.5" fill="#8a8799">50 块读同一输入</text>
+  <!-- ② -->
+  <text x="30" y="124" font-size="12.5" font-weight="800" fill="#24292f">② view(-1, 32256) → (3T, 32256)：调制表按 [timestep × 模态] 行排布</text>
+  <rect x="30" y="140" width="145" height="40" rx="6" fill="#5845e6" opacity=".92"/>
+  <text x="102" y="157" font-size="10.5" fill="#fff" text-anchor="middle" font-weight="700">t0 · m0 视频</text>
+  <text x="102" y="172" font-size="9" fill="#eee9ff" text-anchor="middle">32256 = 6×5376</text>
+  <rect x="180" y="140" width="145" height="40" rx="6" fill="#79c0ff" opacity=".9"/>
+  <text x="252" y="157" font-size="10.5" fill="#0b2a4a" text-anchor="middle" font-weight="700">t0 · m1 文本</text>
+  <text x="252" y="172" font-size="9" fill="#123a63" text-anchor="middle">同一 timestep</text>
+  <rect x="330" y="140" width="145" height="40" rx="6" fill="#ffa657" opacity=".9"/>
+  <text x="402" y="157" font-size="10.5" fill="#3d2500" text-anchor="middle" font-weight="700">t0 · m2 音频</text>
+  <text x="402" y="172" font-size="9" fill="#4a2e05" text-anchor="middle">双调度器：同一步≠同 t</text>
+  <rect x="480" y="140" width="145" height="40" rx="6" fill="#5845e6" opacity=".55"/>
+  <text x="552" y="157" font-size="10.5" fill="#fff" text-anchor="middle" font-weight="700">t1 · m0 视频</text>
+  <text x="552" y="172" font-size="9" fill="#eee9ff" text-anchor="middle">若 T=1 则不存在</text>
+  <rect x="630" y="140" width="145" height="40" rx="6" fill="#79c0ff" opacity=".55"/>
+  <text x="702" y="157" font-size="10.5" fill="#0b2a4a" text-anchor="middle" font-weight="700">t1 · m1 文本</text>
+  <rect x="780" y="140" width="145" height="40" rx="6" fill="#ffa657" opacity=".55"/>
+  <text x="852" y="157" font-size="10.5" fill="#3d2500" text-anchor="middle" font-weight="700">t1 · m2 音频</text>
+  <!-- ③ -->
+  <text x="30" y="224" font-size="12.5" font-weight="800" fill="#24292f">③ chunk(6, dim=-1)：每行拆成 6 组 hidden_size 向量</text>
+  <rect x="30" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="102" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">shift_msa</text>
+  <text x="102" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <rect x="180" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="252" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">scale_msa</text>
+  <text x="252" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <rect x="330" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="402" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">gate_msa</text>
+  <text x="402" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <rect x="480" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="552" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">shift_mlp</text>
+  <text x="552" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <rect x="630" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="702" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">scale_mlp</text>
+  <text x="702" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <rect x="780" y="240" width="145" height="42" rx="6" fill="#fbfbff" stroke="#8a8799" stroke-width="1.2"/>
+  <text x="852" y="258" font-size="10.5" font-weight="700" fill="#5a6070" text-anchor="middle">gate_mlp</text>
+  <text x="852" y="274" font-size="9" fill="#8a8799" text-anchor="middle">(3T, 5376)</text>
+  <line x1="490" y1="188" x2="490" y2="236" stroke="#5845e6" stroke-width="1.6" marker-end="url(#alA)"/>
+  <!-- ④ -->
+  <text x="30" y="328" font-size="12.5" font-weight="800" fill="#24292f">④ index_select(0, adaln_indices)：packed 序列的每一行取走自己的 6 组向量</text>
+  <rect x="30" y="344" width="290" height="52" rx="8" fill="#5845e6" opacity=".92"/>
+  <text x="175" y="364" font-size="11" fill="#fff" text-anchor="middle" font-weight="700">视频行：tag=0，t_idx=0</text>
+  <text x="175" y="382" font-size="10" fill="#eee9ff" text-anchor="middle">adaln_index = 0×3+0 = 0</text>
+  <rect x="336" y="344" width="290" height="52" rx="8" fill="#79c0ff" opacity=".9"/>
+  <text x="481" y="364" font-size="11" fill="#0b2a4a" text-anchor="middle" font-weight="700">文本行：tag=1，t_idx=0</text>
+  <text x="481" y="382" font-size="10" fill="#123a63" text-anchor="middle">adaln_index = 0×3+1 = 1</text>
+  <rect x="642" y="344" width="283" height="52" rx="8" fill="#ffa657" opacity=".9"/>
+  <text x="783" y="364" font-size="11" fill="#3d2500" text-anchor="middle" font-weight="700">音频行：tag=2，t_idx=0</text>
+  <text x="783" y="382" font-size="10" fill="#4a2e05" text-anchor="middle">adaln_index = 0×3+2 = 2</text>
+  <line x1="175" y1="288" x2="175" y2="340" stroke="#5845e6" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#alA)"/>
+  <line x1="481" y1="288" x2="481" y2="340" stroke="#5845e6" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#alA)"/>
+  <line x1="783" y1="288" x2="783" y2="340" stroke="#5845e6" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#alA)"/>
+  <text x="500" y="432" font-size="10.5" fill="#5a6070" text-anchor="middle">双调度单 forward 的物理基础：视频行与音频行在同一步取走同一 timestep 下不同模态的参数（第 8 章）</text>
+  <text x="500" y="452" font-size="10.5" fill="#8a8799" text-anchor="middle">代价：表是按「全部 (timestep, modality) 组合」生成的，T 个 timestep × 3 模态行 × 6 组 × 5376 —— 但只算一次、可预计算</text>
+</svg>
+<p class="figcap"><b>图 7-1</b>　AdaLN 的 per-row 调制：<code>adaln_proj</code> 的输出经 <code>view</code> 重排成 (3T, 32256)、<code>chunk</code> 成 6 组 (3T, 5376)，packed 序列的每一行用 <code>adaln_indices = timestep_idx × 3 + tag</code> 各取所需。同一行在 50 个 block 里各自取的是<strong>不同投影矩阵产出</strong>的表、但<strong>同一套索引</strong>。</p>
+</div>
+
+<p>主类最终层的 <code>norm_out</code> 用的是同一个思想的不带模态版本——只按 timestep 出 shift/scale（10752 = 2×5376），仍逐行寻址：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AdaLayerNormOut(nn.Module):
+    r"""
+    Final norm of the packed sequence, shift/scale modulated per row.
+    Same module layout and checkpoint keys as [`~models.normalization.AdaLayerNormContinuous`] (`norm` plus a `linear`
+    projecting the conditioning embedding to `2 * hidden_size`), with two MiniMax-H3 specifics: the modulation table
+    holds one row per *timestep* and is addressed per row of the packed sequence rather than per batch item, and the
+    two halves of the projection are `shift` then `scale`, the order `LTX2Transformer3DModel` and
+    `WanTransformer3DModel` also use in their output layers.
+    """
+    def __init__(self, hidden_size: int, time_embed_dim: int, eps: float):
+        super().__init__()
+        self.norm = nn.RMSNorm(hidden_size, eps=eps)
+        self.linear = nn.Linear(time_embed_dim, 2 * hidden_size, bias=True)
+
+    def forward(self, hidden_states: torch.Tensor, temb: torch.Tensor, timestep_indices: torch.Tensor) -&gt; torch.Tensor:
+        # As in `MiniMaxH3AdaLayerNormModulation`: activate at `temb`'s precision, cast to the projection's dtype after.
+        shift, scale = self.linear(nn.functional.silu(temb).to(get_parameter_dtype(self.linear))).chunk(2, dim=-1)
+        # The modulation itself stays at the block stack's precision; `forward` casts to the output heads' dtype.
+        hidden_states = self.norm(hidden_states)
+        return hidden_states * (1.0 + scale.index_select(0, timestep_indices)) + shift.index_select(
+            0, timestep_indices
+        )</code></pre>
+</div>
+<p>三处工程细节值得点名：</p>
+<p><strong>fp32 silu。</strong>两个 AdaLN 模块的注释都强调：激活在 temb 自身的精度（fp32，因为 time_embedder 是 fp32 模块）上计算，<strong>之后才</strong> cast 到 bf16 权重做投影。理由写在源码里——50 个 block 读同一 temb，若先把 temb 舍入再激活，这个舍入偏置会在<strong>所有 block、每一步采样</strong>里同向累积。这是混合精度训练/推理里典型的「精度锚点」设计。</p>
+<p><strong>投影不可折叠。</strong>diffusers 的 <code>AdaLayerNormZero</code> 惯例是把调制投影做成 norm 模块的一部分；H3 的这个投影被 norm1 和 norm2 <strong>以及三个模态共享</strong>，只能独立成块级的 <code>adaln_proj</code>——这也解释了 96768 为什么一次性生成 6 组：省掉任何重复权重。</p>
+<p><strong>可预计算。</strong>temb 与调制表只依赖 timestep 集合（与序列内容无关），<code>adaln_proj(temb)</code> 的 6 组输出可以在采样循环外对全部 timestep 一次算完、进循环后只做 <code>index_select</code>——第 10 章 int8 部署把 <code>time_embedder</code> 排除在量化与 offload 之外，正是围绕这个精度锚点做的保守选择。第 1.4 节说过：13B 的 AdaLN 权重不等于每步 13B 的算力。</p>
+
+<h3>7.5 注意力：7168 宽的全局自注意力，且仅此一种</h3>
+<p>注意力是 H3 里唯一「贵」的计算。逐字代码分两段——先是 processor（真正干活的地方），再是模块本体：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3AttnProcessor:
+    r"""
+    Full self-attention over one packed sequence. There is no cross-attention anywhere in MiniMax-H3.
+    """
+    _attention_backend = None
+    _parallel_config = None
+
+    def __call__(
+        self,
+        attn: "MiniMaxH3Attention",
+        hidden_states: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -&gt; torch.Tensor:
+        if attn.fused_projections:
+            query, key, value = attn.to_qkv(hidden_states).chunk(3, dim=-1)
+        else:
+            query = attn.to_q(hidden_states)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
+        query = query.unflatten(-1, (attn.heads, -1))
+        key = key.unflatten(-1, (attn.heads, -1))
+        value = value.unflatten(-1, (attn.heads, -1))
+        query = attn.norm_q(query)
+        key = attn.norm_k(key)
+        if rotary_emb is not None:
+            query = _apply_rotary_emb(query, *rotary_emb)
+            key = _apply_rotary_emb(key, *rotary_emb)
+        # MiniMax-H3 packs one request into a single attention document, so the model passes no mask and every
+        # attention backend stays available; `attention_mask` is here because it is the processor signature every
+        # other one in diffusers has, and a custom processor may need it.
+        hidden_states = dispatch_attention_fn(
+            query,
+            key,
+            value,
+            attn_mask=attention_mask,
+            dropout_p=0.0,
+            is_causal=False,
+            backend=self._attention_backend,
+            parallel_config=self._parallel_config,
+        )
+        hidden_states = hidden_states.flatten(2, 3).type_as(query)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
+class MiniMaxH3Attention(nn.Module, AttentionModuleMixin):
+    _default_processor_cls = MiniMaxH3AttnProcessor
+    _available_processors = [MiniMaxH3AttnProcessor]
+
+    def __init__(
+        self,
+        hidden_size: int,
+        heads: int,
+        dim_head: int,
+        qk_norm_eps: float = 1e-5,
+        processor=None,
+    ):
+        super().__init__()
+        self.heads = heads
+        self.head_dim = dim_head
+        self.inner_dim = heads * dim_head
+        self.use_bias = False
+        self.to_q = nn.Linear(hidden_size, self.inner_dim, bias=False)
+        self.to_k = nn.Linear(hidden_size, self.inner_dim, bias=False)
+        self.to_v = nn.Linear(hidden_size, self.inner_dim, bias=False)
+        self.norm_q = nn.RMSNorm(dim_head, eps=qk_norm_eps)
+        self.norm_k = nn.RMSNorm(dim_head, eps=qk_norm_eps)
+        self.to_out = nn.ModuleList([nn.Linear(self.inner_dim, hidden_size, bias=False), nn.Dropout(0.0)])
+        if processor is None:
+            processor = self._default_processor_cls()
+        self.set_processor(processor)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor] | None = None,
+        attention_mask: torch.Tensor | None = None,
+    ) -&gt; torch.Tensor:
+        return self.processor(self, hidden_states, rotary_emb, attention_mask)</code></pre>
+</div>
+<p>投影维度链一表汇总（以主干宽度 5376、56 头 × 128 为例）：</p>
+<table class="tbl">
+  <tr><th>子模块</th><th class="num">形状</th><th>说明</th></tr>
+  <tr><td><code>to_q</code> / <code>to_k</code> / <code>to_v</code></td><td class="num">5376 → 7168 ×3</td><td>升维 1.33× 的「宽注意力」，全部 <code>bias=False</code></td></tr>
+  <tr><td><code>norm_q</code> / <code>norm_k</code></td><td class="num">RMSNorm(128)</td><td>QK 归一化作用在<strong>头维</strong>（输入已 unflatten 成 (b, s, 56, 128) 的最后一维）</td></tr>
+  <tr><td><code>to_out[0]</code></td><td class="num">7168 → 5376</td><td>压回主干宽度，<code>bias=False</code></td></tr>
+  <tr><td><code>to_out[1]</code></td><td class="num">Dropout(0.0)</td><td>推理时恒等；做成 ModuleList 是为了与 diffusers 注意力接口的键名兼容</td></tr>
+</table>
+<p>五个结构性事实，每个都有下文：</p>
+<p><strong>(1) 没有 cross-attention，一个字都没有。</strong>processor 的 docstring 说得直白：<em>There is no cross-attention anywhere in MiniMax-H3</em>。文本 token 不是「条件」，它们就是 packed 序列里的行（第 3 章段①），和视频、音频行一起进同一套 QKV。这与 Wan 2.1 t2v 的 cross-attention、MMDiT 的双流设计都不同——H3 是彻底的单流。</p>
+<p><strong>(2) 单请求 = 单 document，所以无 mask。</strong>一个请求的全部 token 拼成一条序列后，任意两行互相可见——包括条件行与目标行、视频行与音频行。<code>attention_mask</code> 参数存在只是为了兼容 diffusers 的 processor 签名。这也是「不传 mask、所有注意力后端都可用」的原因（见 (4)）。</p>
+<p><strong>(3) RoPE 时机在 QK-norm 之后。</strong>顺序是投影 → unflatten 成头 → RMSNorm(头维) → 旋转 → 注意力。先归一化再旋转，保证进入旋转的每对 (cos, sin) 乘的是单位 RMS 的向量。</p>
+<p><strong>(4) 后端可插拔。</strong>注意力本体走 <code>dispatch_attention_fn</code>，processor 的类属性 <code>_attention_backend</code> 可以换成 <code>"_flash_3_hub"</code> 等（第 10 章：Hopper 上官方报告约 3× 提速），SGLang 部署则用 ulysses 序列并行切分这条长序列（第 11 章）。<code>is_causal=False</code>：非因果，双向可见。</p>
+<p><strong>(5) fused 分支。</strong><code>attn.fused_projections</code> 为真时走 <code>to_qkv</code> 单矩阵（一次 GEMM 出三份），否则三次独立 GEMM——两条路径数学等价，选哪条由部署时的算子融合配置决定。</p>
+
+<h3>7.6 TransformerBlock：一次 forward 的完整生命周期</h3>
+<p>把 7.3–7.5 的零件装回一个 block。<code>__init__</code> 与 <code>forward</code> 前半逐字摘录；FFN 半段（最后三行）在公开抓取中截断，按注意力分支的严格同构模式补全并标注：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/models/transformers/transformer_minimax_h3.py（逐字摘录 + 尾部补全）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">class MiniMaxH3TransformerBlock(nn.Module):
+    r"""
+    MiniMax-H3 block: pre-norm self-attention and feed-forward, each modulated by AdaLN parameters selected per row of
+    the packed sequence from the `(timestep, modality)` table.
+    """
+    def __init__(
+        self,
+        hidden_size: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        ffn_dim: int,
+        time_embed_dim: int,
+        norm_eps: float,
+        qk_norm_eps: float,
+    ):
+        super().__init__()
+        self.norm1 = nn.RMSNorm(hidden_size, eps=norm_eps)
+        self.attn = MiniMaxH3Attention(
+            hidden_size=hidden_size,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            qk_norm_eps=qk_norm_eps,
+        )
+        self.norm2 = nn.RMSNorm(hidden_size, eps=norm_eps)
+        self.ff = FeedForward(hidden_size, inner_dim=ffn_dim, activation_fn="swiglu", bias=False)
+        self.adaln_proj = MiniMaxH3AdaLayerNormModulation(time_embed_dim=time_embed_dim, hidden_size=hidden_size)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        temb: torch.Tensor,
+        adaln_indices: torch.Tensor,
+        rotary_emb: tuple[torch.Tensor, torch.Tensor],
+        attention_mask: torch.Tensor | None = None,
+    ) -&gt; torch.Tensor:
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaln_proj(temb)
+        residual = hidden_states
+        norm_hidden_states = self.norm1(hidden_states)
+        norm_hidden_states = norm_hidden_states * (
+            1.0 + scale_msa.index_select(0, adaln_indices)
+        ) + shift_msa.index_select(0, adaln_indices)
+        attn_output = self.attn(norm_hidden_states, rotary_emb, attention_mask)
+        hidden_states = residual + gate_msa.index_select(0, adaln_indices) * attn_output
+        residual = hidden_states
+        norm_hidden_states = self.norm2(hidden_states)
+        norm_hidden_states = norm_hidden_states * (
+            1.0 + scale_mlp.index_select(0, adaln_indices)
+        ) + shift_mlp.index_select(0, adaln_indices)
+        # —— 以下三行按注意力分支的同构模式补全（WebFetch 抓取截断于上一行）：
+        ff_output = self.ff(norm_hidden_states)
+        hidden_states = residual + gate_mlp.index_select(0, adaln_indices) * ff_output
+        return hidden_states</code></pre>
+</div>
+<p>和第 4 章的 <code>MiniMaxH3TokenRefinerBlock</code> 并排看，差别一目了然——骨架完全相同，H3 只是往三个位置插了 per-row 调制：</p>
+<table class="tbl">
+  <tr><th></th><th>TokenRefinerBlock（第 4 章）</th><th>TransformerBlock（本节）</th></tr>
+  <tr><td>norm1 后</td><td>直接 <code>attn(norm1(x))</code></td><td class="hl"><code>×(1+scale_msa[idx]) + shift_msa[idx]</code> 再进 attn</td></tr>
+  <tr><td>注意力残差</td><td><code>x + attn_out</code></td><td class="hl"><code>x + gate_msa[idx] * attn_out</code>（门控）</td></tr>
+  <tr><td>norm2 后</td><td>直接 <code>ff(norm2(x))</code></td><td class="hl"><code>×(1+scale_mlp[idx]) + shift_mlp[idx]</code> 再进 ff</td></tr>
+  <tr><td>FFN 残差</td><td><code>x + ff_out</code></td><td class="hl"><code>x + gate_mlp[idx] * ff_out</code>（门控）</td></tr>
+  <tr><td>额外依赖</td><td>无（纯序列函数）</td><td><code>temb</code>、<code>adaln_indices</code>、<code>rotary_emb</code></td></tr>
+</table>
+<p>注意三处 <code>index_select(0, adaln_indices)</code> 的语义：同一个 <code>adaln_indices</code>（每行一个 int）在 shift、scale、gate 上各查一次表，把 <strong>(seq_len, 5376)</strong> 的 hidden_states 与 <strong>(3T, 5376)</strong> 的参数表对齐——高 token 数（37,700 行）与低参数行数（3T 行）之间的桥梁就这一句广播式的 gather。50 个 block 全部如此，唯一的层间状态就是 hidden_states 本身：没有 KV cache（去噪不需要）、没有层间旁路。</p>
+
+<h3>7.7 小结：为什么「最普通」的结构反而是 omni 的正确答案</h3>
+<p>把本章零件拼起来，一个 block 的完整生命周期是：</p>
+<div class="flow">
+  <b>(seq, 5376)</b> + <b>(T, 2688)</b> fp32 + <b>(seq,)</b> adaln_indices + <b>(seq, 96)</b> cos/sin
+  <span class="arr">→ adaln_proj 产 6 组 (3T, 5376) →</span>
+  <span class="arr">norm1 → shift/scale per-row →</span> <b>7168 宽自注意力（QK-norm + RoPE，无 mask）</b>
+  <span class="arr">→ gate per-row → 残差 →</span>
+  <span class="arr">norm2 → shift/scale per-row → SwiGLU →</span> <b>gate per-row → 残差</b>
+  <span class="tag">× 50 层，层间只传 hidden_states</span>
+</div>
+<p>回看设计选择：权重<strong>完全模态无关</strong>（attention 与 FFN 没有一行代码知道 token 是视频还是音频），模态差异全部外置到三样「数据」里——<strong>tag（查哪行 AdaLN 参数）</strong>、<strong>(t,h,w) 坐标（RoPE 位置）</strong>、<strong>token 本身的通道布局</strong>（进主干前的三个投影负责对齐）。这使得：同一个 checkpoint 无改动能吃下 t2va / fl2va / ref2va 三种任务（第 9 章，后者甚至只要换一份权重同结构的 ref2va 分支）；视频与音频可以在同一 forward 里用<strong>不同的噪声水平</strong>去噪（第 8 章的双调度）；音频这种 token 数少两个量级的模态不会稀释训练（它共享全部注意力容量，只占序列尾部一小段）。</p>
+<p>代价同样清晰：注意力长度是<strong>全部模态 token 之和</strong>（O((N_v+N_a+N_t)²)），37,296 个视频 token 的平方级注意力是显存与延迟的大头——这也是官方把「原生稀疏注意力」留在闭源侧、开源侧靠 FlashAttention 后端与序列并行兜底的原因（第 11 章）。下一章看这些速度预测如何被两个调度器消费。</p>
+</section>
+
+<section id="ch8">
+<h2><span class="ch-no">08</span>MiniMaxH3Scheduler：双调度单 forward</h2>
+<p class="ch-intro">第 2 章讲过 H3 的 Flow Matching 镜像约定，第 7 章看过 AdaLN 如何按 (timestep, modality) 行寻址。把两者接起来的就是 <code>MiniMaxH3Scheduler</code>——一个看似平凡的 rectified-flow Euler 调度器，却因为三个「符号级」差异无法复用 diffusers 的 <code>FlowMatchEulerDiscreteScheduler</code>，而且每个管线要同时持有<strong>两个</strong>实例。</p>
+
+<h3>8.1 三大差异：为什么不复用现成的调度器</h3>
+<p>模块 docstring 把动机写得非常清楚，逐字摘录：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/schedulers/scheduling_minimax_h3.py（模块 docstring，逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">"""Rectified-flow Euler scheduler for MiniMax-H3.
+
+Three things make this incompatible with a [`FlowMatchEulerDiscreteScheduler`] config, which is why it is a separate
+class:
+
+1. **The velocity sign is reversed.** MiniMax-H3's transformer predicts a *data-ward* velocity, so `x0 = x_t + sigma *
+   v` instead of diffusers' `x0 = x_t - sigma * v`.
+
+2. **Timesteps are `t = 1 - sigma` in `[0, 1]`**, with `t = 1` meaning *clean*. Flow-match schedulers expose `timesteps
+   = sigma * num_train_timesteps`, i.e. the opposite direction on a 1000x scale. The transformer's AdaLN consumes the
+   H3 convention directly.
+
+3. **The sigma grid starts from `linspace(1, 0, num_inference_steps)`** — the terminal zero is part of the requested
+   step count, and duplicates created by the shift are collapsed with `unique_consecutive`.
+   `FlowMatchEulerDiscreteScheduler` instead builds `linspace(1, 1/num_train_timesteps, ...)` and appends a terminal
+   sigma afterwards, so `len(sigmas)` and every interior value differ.
+
+Everything else is ordinary rectified flow: the exponential shift `sigma' = s*sigma / (1 + (s-1)*sigma)`, and an Euler
+update written as the `x_t` / `x0` blend `x_next = r*x_t + (1 - r)*x0` with `r = sigma_next / sigma`, evaluated in
+float32. Despite the reference class being named "euler ancestral", `eta` is 0.
+
+With `stochastic_sampling=True` the Euler blend is replaced by a re-noising update: each step predicts the clean sample
+`x0`, then re-noises it to the next sigma with fresh noise, so the last step (`sigma_next = 0`) returns `x0`. The
+few-step Pika H3 Flex adapters post-trained on MiniMax-H3 were trained for this update. They run a fixed schedule of
+six steps, which their pipeline passes to `set_timesteps` as explicit `sigmas`; with `shift_provided_sigmas=True` the
+scheduler shifts that grid like its own `linspace` grid. Explicit sigmas used to be taken verbatim; that default is
+deprecated and flips in 0.44.0.
+
+MiniMax-H3 runs **two schedules per request**, one per modality (`shift=12.0` for video, `shift=3.0` for audio). The
+modality is not a property of the scheduler: a pipeline holds two instances, e.g. `scheduler` and `audio_scheduler`.
+"""</code></pre>
+</div>
+<p>构造与每请求覆盖 shift 的代码：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/schedulers/scheduling_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">    @register_to_config
+    def __init__(
+        self, shift: float = 12.0, stochastic_sampling: bool = False, shift_provided_sigmas: bool | None = None
+    ):
+        if shift &lt;= 0:
+            raise ValueError(f"`shift` must be positive, got {shift}.")
+        self.num_inference_steps: int | None = None
+        self.sigmas: torch.Tensor | None = None
+        self.timesteps: torch.Tensor | None = None
+        self._shift = float(shift)
+        self._step_index: int | None = None
+        self._begin_index: int | None = None
+
+    def set_shift(self, shift: float) -&gt; None:
+        """
+        Overrides the configured sigma shift; call before [`~MiniMaxH3Scheduler.set_timesteps`].
+        MiniMax-H3 exposes this per request as `flow_shift` (video) / `audio_flow_shift` (audio).
+        """
+        if shift &lt;= 0:
+            raise ValueError(f"`shift` must be positive, got {shift}.")
+        self._shift = float(shift)</code></pre>
+</div>
+<p>注意默认值 <code>shift=12.0</code> 就是视频值——音频实例在 checkpoint 的 <code>model_index</code> 里显式写 <code>shift=3.0</code>。<code>set_shift</code> 的存在让用户按请求调 <code>flow_shift</code> / <code>audio_flow_shift</code>（运动大的镜头调高视频 shift、对白密集的调低音频 shift 是常见玩法），但必须在 <code>set_timesteps</code> <strong>之前</strong>调用。</p>
+
+<h3>8.2 set_timesteps：σ 网格的构造</h3>
+<p>这是「N 个网格点、N−1 次 forward」规则的出处，逐字摘录：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/schedulers/scheduling_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">    def set_timesteps(
+        self,
+        num_inference_steps: int | None = None,
+        device: str | torch.device | None = None,
+        sigmas: list[float] | torch.Tensor | None = None,
+    ) -&gt; None:
+        r"""
+        Build the sigma / timestep schedule.
+
+        The grid is `linspace(1, 0, num_inference_steps)` pushed through the exponential shift, with consecutive
+        duplicates collapsed, or the explicit `sigmas`, shifted as well when `shift_provided_sigmas` is set. The
+        terminal `0` is already part of the grid — the shift maps `0` to exactly `0` — so the schedule holds
+        `num_inference_steps` sigmas and drives `num_inference_steps - 1` model evaluations, exposed as `self.timesteps
+        = 1 - sigmas[:-1]`.
+        """
+        if sigmas is None:
+            if num_inference_steps is None or num_inference_steps &lt; 2:
+                raise ValueError(
+                    "`set_timesteps` requires either an explicit `sigmas` schedule or "
+                    f"`num_inference_steps` &gt;= 2, got {num_inference_steps}."
+                )
+            # The rectified-flow sigma range is fixed at [1.0, 0.0].
+            base = torch.linspace(1.0, 0.0, int(num_inference_steps), dtype=torch.float32)
+            sigmas = self._shift * base / (1 + (self._shift - 1) * base)
+            # The shift compresses the grid near sigma = 1; collapse any float32 collisions it creates.
+            sigmas = torch.unique_consecutive(sigmas)
+        else:
+            sigmas = torch.as_tensor(sigmas, dtype=torch.float64).flatten().cpu()
+            if self.config.shift_provided_sigmas is None:
+                deprecate(
+                    "sigmas",
+                    "0.44.0",
+                    "`MiniMaxH3Scheduler.set_timesteps` takes explicit `sigmas` verbatim, but from 0.44.0 it will "
+                    "push them through the scheduler's shift. Set `shift_provided_sigmas=True` in the scheduler "
+                    "config to opt in now, or `shift_provided_sigmas=False` to keep passing a finished schedule.",
+                    standard_warn=False,
+                )
+            if self.config.shift_provided_sigmas:
+                # Shifted in float64 before the float32 cast, which is how the few-step reference builds its schedule.
+                sigmas = self._shift * sigmas / (1 + (self._shift - 1) * sigmas)
+            sigmas = sigmas.to(torch.float32)
+            if sigmas.numel() &lt; 2 or not bool((sigmas[1:] &lt; sigmas[:-1]).all()) or sigmas[-1].item() != 0.0:
+                raise ValueError("`sigmas` must hold at least two strictly decreasing values ending at 0.0.")
+        self.sigmas = sigmas.to(device=device)
+        # t = 1 - sigma, and t = 1 is clean. The terminal sigma has no model evaluation.
+        self.timesteps = (1.0 - sigmas[:-1]).to(device=device)
+        self.num_inference_steps = int(self.timesteps.numel())
+        self._step_index = None
+        self._begin_index = None</code></pre>
+</div>
+<p>四个要点，每个都对着上面的代码行：</p>
+<p><strong>(1) linspace 含终点 0。</strong>请求 <code>num_inference_steps=50</code> 时网格有 50 个点（σ=1 起步、σ=0 收尾），<code>timesteps = 1 - sigmas[:-1]</code> 砍掉终态 σ=0（那里没有模型评估），所以 forward 次数是 49。这也是管线文档强调「num_inference_steps 数的是 σ 网格点、含 0」的原因——用户直觉里的「50 步」实际跑 49 次模型。</p>
+<p><strong>(2) 指数 shift 只在构造时应用一次。</strong>σ' = s·σ/(1+(s−1)·σ)，s=12（视频）把网格压向高噪声端（前几步 σ 掉得慢、后面收得快），s=3（音频）温和得多——两组具体数值见第 2 章的 N=6 对照表。shift 是纯 σ 域的操作，t 由 σ 反推。</p>
+<p><strong>(3) unique_consecutive 收拾 fp32 碰撞。</strong>shift 在 σ→1 端把网格压得很密，fp32 表示下相邻点可能舍入成同一个值；<code>unique_consecutive</code> 把重复折叠掉，保证 timesteps 严格递增——代价是<strong>实际步数可能少于请求值</strong>（N 很大时才会发生）。</p>
+<p><strong>(4) 显式 sigmas 分支是为 few-step 适配器准备的。</strong>Pika H3 Flex 少步适配器（后训练在 H3 上）跑固定的 6 步调度，由管线以显式 <code>sigmas</code> 传入；<code>shift_provided_sigmas=True</code> 表示这是「基网格」、还要过一遍 shift（float64 中转再降 fp32，与参考实现一致），False 表示成品调度原样使用。旧默认（原样使用）已弃用，0.44.0 起默认翻转。校验三连：至少两个值、严格递减、以 0 结尾。</p>
+
+<h3>8.3 scale_noise：给条件锚加噪</h3>
+<p>调度器还提供了一个不属于去噪循环的方法——把干净 latent 与噪声按 H3 的 t 口径混合，用于<strong>条件锚的噪声增强</strong>（keyframe / 参考 latent 不能以完全干净的状态进序列，否则与去噪目标之间的分布落差太大）：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/schedulers/scheduling_minimax_h3.py（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">    def scale_noise(
+        self,
+        sample: torch.FloatTensor,
+        timestep: float | torch.FloatTensor,
+        noise: torch.FloatTensor,
+    ) -&gt; torch.FloatTensor:
+        r"""
+        Rectified-flow forward process, in MiniMax-H3's `t` convention: `x_t = t*x_0 + (1 - t)*noise`.
+
+        MiniMax-H3 uses this to noise its conditioning anchors, where `t` is the `noise_aug` level rather than a
+        schedule entry, so `timestep` is taken at face value and is *not* looked up in `self.timesteps`.
+        """
+        if not isinstance(timestep, torch.Tensor):
+            # A Python float keeps `1 - t` at double precision: `1 - 0.999` evaluated in float32 comes out 1.3e-5
+            # relative too small, which the bfloat16 forward amplifies into a visibly different sample.
+            return timestep * sample + (1.0 - timestep) * noise
+        timestep = timestep.to(device=sample.device, dtype=sample.dtype)
+        while timestep.ndim &lt; sample.ndim:
+            timestep = timestep.unsqueeze(-1)
+        return timestep * sample + (1.0 - timestep) * noise</code></pre>
+</div>
+<p>两个细节：第一，这里的 <code>timestep</code> 是 <code>noise_aug</code> 档位（比如 0.999 意味着锚几乎干净），<strong>不查调度表</strong>——它是前向加噪公式而非去噪步。第二，注释里那句 fp32 教训值得抄下来：<code>1 - 0.999</code> 在 float32 里相对误差 1.3e-5，会被 bfloat16 的 forward 放大成<strong>肉眼可见的样本差异</strong>——所以 Python float 路径保留双精度、只在最后与张量相乘时才降精度。这与第 7.4 节 AdaLN 的 fp32 silu 是同一种工程纪律：精度损失的来源要一个一个掐掉。</p>
+
+<h3>8.4 step：Euler 混合与随机重噪化两个分支</h3>
+<p><code>step</code> 是整个采样循环的心脏。开头与 stochastic 分支逐字摘录；Euler 分支摘录到公开抓取截断处，尾部按 docstring 给出的公式补全并标注：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers/schedulers/scheduling_minimax_h3.py（逐字摘录 + Euler 尾部补全）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">    def step(
+        self,
+        model_output: torch.FloatTensor,
+        timestep: float | torch.FloatTensor,
+        sample: torch.FloatTensor,
+        generator: torch.Generator | None = None,
+        return_dict: bool = True,
+    ) -&gt; MiniMaxH3SchedulerOutput | tuple:
+        r"""
+        Take one Euler (`eta = 0`) step, or one re-noising step with `stochastic_sampling`.
+
+        The model output is a data-ward velocity, so the denoised estimate is `x0 = x_t + (1 - t) * v` — note the `+`,
+        the opposite of the usual flow-match convention. The update is then the blend `x_next = r*x_t + (1 - r)*x0`
+        with `r = sigma_next / sigma`, evaluated in float32 for half-precision samples. With `stochastic_sampling` the
+        update is `x_next = (1 - sigma_next) * x0 + sigma_next * noise` with fresh noise from `generator`, everything
+        in float32, so the last step (`sigma_next = 0`) returns `x0`.
+        """
+        if isinstance(timestep, int) or (isinstance(timestep, torch.Tensor) and not timestep.is_floating_point()):
+            raise ValueError(
+                "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
+                " `MiniMaxH3Scheduler.step()` is not supported. Make sure to pass one of the"
+                " `scheduler.timesteps` values."
+            )
+        if self._step_index is None:
+            self._step_index = self.index_for_timestep(timestep) if self._begin_index is None else self._begin_index
+        if self.config.stochastic_sampling:
+            # Few-step re-noising: x0 from the grid sigma, then re-noised to the next sigma with fresh noise. The
+            # released few-step sampler works in float32 off the grid sigma, so this branch does too.
+            sigma = self.sigmas[self._step_index].to(device=sample.device, dtype=torch.float32)
+            sigma_next = self.sigmas[self._step_index + 1].to(device=sample.device, dtype=torch.float32)
+            denoised = sample.to(torch.float32) + sigma * model_output.to(torch.float32)
+            noise = randn_tensor(sample.shape, generator=generator, device=sample.device, dtype=torch.float32)
+            prev_sample = ((1.0 - sigma_next) * denoised + sigma_next * noise).to(dtype=sample.dtype)
+            self._step_index += 1
+            if not return_dict:
+                return (prev_sample,)
+            return MiniMaxH3SchedulerOutput(prev_sample=prev_sample)
+        # x0 from the data-ward velocity. The sigma used here is recovered from the *timestep* the
+        # transformer was conditioned on, whereas the Euler ratio below uses the sigma grid: for
+        # sigma < 0.5 the float32 round trip `1 - (1 - sigma)` is not exact, and the reference keeps
+        # the two sources apart.
+        if not isinstance(timestep, torch.Tensor):
+            timestep = torch.tensor(timestep, dtype=sample.dtype)
+        sigma_from_timestep = 1 - timestep.to(device=sample.device, dtype=torch.float32)
+        # —— 抓取截断于上行参数列表中途（device= 之后）；dtype 参数及以下按 stochastic 分支的
+        # 同构取参模式与 step docstring 给出的公式补全：
+        sigma = self.sigmas[self._step_index].to(device=sample.device, dtype=torch.float32)
+        sigma_next = self.sigmas[self._step_index + 1].to(device=sample.device, dtype=torch.float32)
+        denoised = sample.to(torch.float32) + sigma_from_timestep * model_output.to(torch.float32)
+        ratio = sigma_next / sigma
+        prev_sample = (ratio * sample.to(torch.float32) + (1.0 - ratio) * denoised).to(dtype=sample.dtype)
+        self._step_index += 1
+        if not return_dict:
+            return (prev_sample,)
+        return MiniMaxH3SchedulerOutput(prev_sample=prev_sample)</code></pre>
+</div>
+<p>两条更新规则并排看（公式里的 σ 均取自网格，t 为行内 timestep）：</p>
+<div class="formula">
+  Euler（默认）：x₀ = x_t + (1−t)·v，　r = σ_next / σ，　x_next = r·x_t + (1−r)·x₀　（全程 fp32）
+  <span class="note-below">注意 x₀ 用的 (1−t) 来自 timestep 反推、r 用的 σ 来自网格——两个来源刻意不合并，因为 σ&lt;0.5 时 fp32 往返 1−(1−σ) 不精确</span>
+</div>
+<div class="formula">
+  stochastic（few-step 适配器）：x_next = (1−σ_next)·x₀ + σ_next·ε_fresh　（ε_fresh 每步新抽，fp32）
+  <span class="note-below">最后一步 σ_next = 0，恰好返回 x₀——「重噪化」链条自然终止；base 权重没有为此训练过，别对 base 开这个开关</span>
+</div>
+<p>把 Euler 分支展开成代码里没有直说的形式：x_next = r·x_t + (1−r)·(x_t + σ·v) = x_t + σ·(1−r)·v = <strong>x_t + (σ−σ_next)·v</strong>——正是数据向速度意义下的标准 Euler 步（diffusers 通用符号约定里是 x_t − (σ−σ_next)·v）。写成混合式而非增量式是为了 fp32 数值稳定，第 2 章图 2-1 的右半幅画的就是这件事。</p>
+
+<h3>8.5 管线编排：一次 forward，两次 step</h3>
+<p>最后把双调度装回采样循环。管线持有 <code>scheduler</code>（视频，s=12）与 <code>audio_scheduler</code>（音频，s=3）两个实例，每步的编排是：</p>
+<div class="flow">
+  初始化 <span class="arr">→</span> 两个调度器各自 <b>set_timesteps(N)</b> <span class="arr">→</span> 三连抽噪声（条件锚 → 视频 → 音频，同一 generator）
+  <span class="tag">生成约束之一：同 generator 状态 → 同样的视频+音轨</span><br>
+  每步 i = 0 … N−2：
+  <b>t_v = 1−σᵛᵢ</b>、<b>t_a = 1−σᵃᵢ</b> <span class="arr">→ timestep 并集去重 → time_embedder →</span> <b>(T, 2688)</b>
+  <span class="arr">→</span> <b>一次 transformer forward</b>（packed 序列全行）
+  <span class="tag">视频行按 t_v、音频行按 t_a 标注，AdaLN 各查各的表（第 7.4 节）</span><br>
+  <span class="arr">→</span> <b>scheduler.step</b>（video latent，mask 条件行）<span class="arr">＋</span> <b>audio_scheduler.step</b>（audio latent）
+  <span class="tag">两个 _step_index 各自独立推进；输出条件行清零是调用方职责</span><br>
+  收尾 <span class="arr">→</span> VisualVAE decode（36 层 ViT）<span class="arr">＋</span> AudioVAE decode（BigVGAN）<span class="arr">→</span> 24fps 视频 + 32kHz 立体声
+</div>
+<div class="callout note">
+  <span class="co-title">CFG 蒸馏贯穿所有工作流</span>
+  <p>两个 transformer 分区（<code>transformer/</code> 与 <code>transformer_ref/</code>）都是 guidance 蒸馏过的：没有 guider、没有 <code>negative_prompt</code>、没有 <code>guidance_scale</code>，<strong>每步恰好一次 forward</strong>。上面流程图里的「一次 forward」不是优化，是权重本身的性质——这也是 61.7GB 的分区能以可接受速度跑完 49 步的前提之一。</p>
+</div>
+<p>至此，生成系统的全链路已经闭环：第 4 章的文本编码、第 5/6 章的两路 VAE、第 7 章的 33B 主干、本章的双调度。剩下的问题是——三种任务（t2va / fl2va / ref2va）在这个底座上各自怎么用。下一章讲任务变体。</p>
+</section>
+
+<section id="ch9">
+<h2><span class="ch-no">09</span>任务变体：FL2VA 与 Ref2VA</h2>
+<p class="ch-intro">第 3 章的 packed sequence 有四段，但只有段③④（目标视频/音频行）是所有任务共有的；段①文本与段②条件媒体的长短与内容，就是三个工作流的全部区别。diffusers 把三个任务做成同一个 <code>MiniMaxH3Blocks</code> 管线的三个 <strong>workflow</strong>——这也是为什么 H3 没有传统 DiffusionPipeline 集成（与 Anima 同样的 Modular-only 模式）。</p>
+
+<h3>9.1 三个工作流，一个管线</h3>
+<p>两个 checkpoint 分区共享除 transformer 外的一切组件，diffusers 转换后放进同一个仓库：<code>transformer/</code> 服务 t2va 与 fl2va，<code>transformer_ref/</code> 服务 ref2va；视频 VAE、音频 VAE、Qwen3-VL（及其 tokenizer/processor）、两个调度器只存一份。仓库的 <code>modular_model_index.json</code> 给每个组件写各自的加载规格，选一个 workflow 加载时只取该任务需要的子目录——t2va/fl2va 管线永远不碰 <code>transformer_ref/</code>，反之亦然：</p>
+<table class="tbl">
+  <tr><th>工作流</th><th>条件输入</th><th>transformer 分区</th><th>画布规则</th></tr>
+  <tr><td><code>t2va</code></td><td>仅 prompt</td><td class="num">transformer/（61.7 GB）</td><td>默认 16:9、768 短边</td></tr>
+  <tr><td><code>fl2va</code></td><td>prompt + <code>image</code>（首帧）± <code>last_image</code>（末帧）</td><td class="num">transformer/（同上，不重复存储）</td><td class="hl"><strong>随首帧宽高比</strong></td></tr>
+  <tr><td><code>ref2va</code></td><td>prompt + 有序参考列表（≤9 图、≤3 视频、≤3 音频、共 ≤12）</td><td class="num">transformer_ref/（61.7 GB）</td><td>默认 16:9——<strong>参考不绑定画布</strong>（按自身分辨率编码）</td></tr>
+</table>
+<p>三种加载姿势（整理自官方文档）：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">三种加载方式（按官方文档整理）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ModularPipeline
+
+# ① 单工作流管线：签名（pipe.doc）、组件声明、子目录加载都只有这个任务
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va")
+pipe.load_components(dtype=torch.bfloat16)
+
+# ② 全量管线：不带 workflow=，每次调用按传入的输入自动选工作流
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe.load_components(workflow="t2va", dtype=torch.bfloat16)   # 只取 transformer/ + 共享组件
+# ↑ 想三工作流全开，就调用不带 workflow= 的 load_components()：
+#   它会同时拉取两个 61.7GB 分区，之后一个管线服务全部工作流，无需再加载
+
+# pipe.doc 打印眼前这个管线的完整签名：每个输入及其默认值、期望的组件、产出——
+# 单工作流管线打印的就是该任务的输入，是发起请求前最快的核对方式</code></pre>
+</div>
+<div class="callout note">
+  <span class="co-title">生成约束速查（三个工作流通用）</span>
+  <p>① 24 fps、5–15 秒：<code>num_frames</code> 向上吸附到最近的 17n+5（第 5 章），吸附后时长须落在窗口内；② 768 像素短边：<code>height</code>/<code>width</code> 默认取首帧宽高比（无首帧则 16:9），且必须是 32 的倍数；③ <strong>一个 generator 三连抽</strong>：条件噪声 → 视频噪声 → 音频噪声，同一 generator 状态可复现同样的视频+音轨（<code>latents</code>/<code>audio_latents</code> 可替换对应抽签）；④ <code>num_inference_steps</code> 数的是 σ 网格点（含终点 0），驱动 N−1 次模型评估（第 8 章）。</p>
+</div>
+
+<h3>9.2 t2va / fl2va：文本与关键帧</h3>
+<p>fl2va 的完整官方示例（逐字摘录）——一个 <code>ComponentsManager</code> 管住两个大组件的进出显存，一次调用同时产出视频与音轨：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers 官方文档 · fl2va 示例（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.utils import load_image
+from diffusers.utils.export_utils import encode_video
+
+# 61.7GB of transformer and 62.1GB of conditioner do not sit on one accelerator, so the components are
+# registered in a manager that moves each one on and off as the blocks reach it. See [Memory](#memory).
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
+pipe.load_components(workflow="fl2va", dtype=torch.bfloat16)
+
+prompt = "A red fox trotting through a snowy pine forest, snow crunching underfoot"
+# `output=` returns exactly the named outputs instead of the whole pipeline state.
+outputs = ["videos", "audio", "sampling_rate"]
+
+# Text to video + audio.
+results = pipe(prompt=prompt, num_frames=124, generator=torch.Generator().manual_seed(42), output=outputs)
+
+# First frame (and optionally last frame) to video + audio. The canvas follows the first keyframe.
+image = load_image(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+)
+results = pipe(prompt=prompt, image=image, num_frames=124, generator=torch.Generator().manual_seed(42), output=outputs)
+
+encode_video(
+    results["videos"][0],
+    fps=24,
+    output_path="minimax_h3_fl2va.mp4",
+    audio=results["audio"][0],
+    audio_sample_rate=results["sampling_rate"],
+)</code></pre>
+</div>
+<p>四件事值得点破：</p>
+<p><strong>(1) 视频与音轨是两个并列输出。</strong>管线产出 <code>videos</code>、<code>audio</code>、<code>sampling_rate</code> 三样（<code>output=</code> 让返回只含指定字段而不是整个管线状态）；混流成单文件是调用方的事，<code>encode_video(..., audio=..., audio_sample_rate=...)</code> 就是一例。</p>
+<p><strong>(2) 关键帧锚定的是 packed 序列的段②。</strong><code>image</code> 的 latent 经 <code>scale_noise</code>（第 8.3 节的 noise_aug）加噪后作为条件行进入序列——这就是第 3 章图 3-1 里「条件媒体行」的来源。首帧+末帧（<code>last_image</code>）同时给定时，模型拿到的是「开头+结尾、中间自由发挥」的约束。</p>
+<p><strong>(3) 画布跟首帧走。</strong>有首帧时 height/width 默认取其宽高比（仍要 32 倍数、768 短边），无首帧则 16:9。</p>
+<p><strong>(4) 调度参数在请求级覆盖。</strong><code>flow_shift</code> / <code>audio_flow_shift</code>、<code>num_inference_steps</code>、<code>noise_aug</code> 都是调用参数（经 <code>set_shift</code> / <code>set_timesteps</code> / <code>scale_noise</code> 生效，第 8 章）。</p>
+
+<h3>9.3 ref2va：全模态有序参考</h3>
+<p>ref2va 是 H3「全模态」的完全体：条件是一个<strong>有序</strong>的参考列表——最多 9 张图、3 段视频、3 段音频，合计 12 项。顺序是语义的一部分：管线在 prompt 呈现里给参考编号（&lt;Picture 1&gt;、&lt;Audio 1&gt;、&lt;Video 1&gt;……），并且<strong>推进共享的音/视频 rotary clock</strong>（第 7.3 节）——同样的参考换个顺序，就是不同的请求。</p>
+<p>每个模态一个参考类，自带媒体与它携带的「率」：</p>
+<table class="tbl">
+  <tr><th>类</th><th>媒体字段</th><th>需要声明的率</th></tr>
+  <tr><td><code>MiniMaxH3ImageReference</code></td><td class="num">image</td><td>—</td></tr>
+  <tr><td><code>MiniMaxH3VideoReference</code></td><td class="num">frames（+ audio 自带音轨）</td><td><code>fps</code>（默认 H3 的 24.0）、<code>sample_rate</code></td></tr>
+  <tr><td><code>MiniMaxH3AudioReference</code></td><td class="num">audio</td><td><code>sample_rate</code>（默认音频 VAE 自己的）</td></tr>
+</table>
+<p>「率」是一切重采样的依据：帧以整帧丢弃/复制对齐到 24 fps，波形重采样到音频 VAE 的采样率；已在 H3 自身率上的媒体<strong>原样通过</strong>。参考的两种构造方式：从文件解码（<code>from_file</code> 类方法，收路径或 URL，视频/音频经 PyAV）或直接用内存中的媒体构造。块本身从不打开媒体文件——解码路径是调用方的事，这与 diffusers 全库的约定一致。</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers 官方文档 · ref2va 示例（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.modular_pipelines.minimax_h3 import (
+    MiniMaxH3AudioReference,
+    MiniMaxH3ImageReference,
+    MiniMaxH3VideoReference,
+)
+from diffusers.utils import load_video
+from diffusers.utils.export_utils import encode_video
+
+# `ref2va` is a workflow of the one MiniMax-H3 pipeline; selecting it loads only the `transformer_ref/`
+# checkpoint partition, and the manager moves each component on and off the accelerator in turn.
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", workflow="ref2va", components_manager=manager)
+pipe.load_components(dtype=torch.bfloat16)
+
+subject = MiniMaxH3ImageReference.from_file(
+    "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/astronaut.jpg"
+)
+
+# Decoding a file brings its rates along: the video its own frame rate and its soundtrack, the clip its sample rate.
+results = pipe(
+    prompt="The character speaks in time with the reference recording, natural lip movement",
+    references=[
+        subject,
+        MiniMaxH3VideoReference.from_file(
+            "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/hiker.mp4"
+        ),
+        MiniMaxH3AudioReference.from_file("voice.wav"),
+    ],
+    num_frames=124,
+    output=["videos", "audio", "sampling_rate"],
+)
+
+# Frames a request already holds declare the rate they carry — `load_video` does not preserve it.
+motion = load_video("motion_ref.mp4")
+results = pipe(
+    prompt="The subject walks toward camera, matching the reference video's shot rhythm",
+    references=[subject, MiniMaxH3VideoReference(frames=motion, fps=30.0)],
+    num_frames=124,
+    output=["videos", "audio", "sampling_rate"],
+)
+
+encode_video(
+    results["videos"][0],
+    fps=24,
+    output_path="minimax_h3_ref2va.mp4",
+    audio=results["audio"][0],
+    audio_sample_rate=results["sampling_rate"],
+)</code></pre>
+</div>
+<p>几个官方特意写明的坑：</p>
+<p><strong>(1) <code>num_frames</code> 对 ref2va 是必填项</strong>——参考不绑定画布（含时长），目标几何必须显式给出。要与一段参考音轨等长时，先按 <code>round(samples / sample_rate * 24)</code> 算帧数，随后仍要过 17n+5 向上吸附、并保证落在 5–15 秒内。</p>
+<p><strong>(2) <code>load_video()</code> 会丢帧率。</strong>文档明确建议优先 <code>from_file</code>：用丢失了真实帧率的帧构造参考，等于让模型按错误的速度理解参考——<strong>没有任何报错</strong>。内存里的帧必须自己声明率（示例里的 <code>fps=30.0</code>）。</p>
+<p><strong>(3) 顺序语义与 rotary clock。</strong>参考按列表顺序进入 packed 序列的条件段并推进共享时钟——这既是「&lt;Picture 2&gt; 里的角色」这种指代能被理解的原因，也是 9.4 节链式生成能成立的基础。</p>
+
+<h3>9.4 生成即参考：t2va 的输出直接喂回 ref2va</h3>
+<p>因为三个工作流共享一个管线，一次 t2va 生成的产物可以<strong>不经任何有损容器往返</strong>直接作为 ref2va 的参考：生成物本来就在 H3 自身的率上（帧 24 fps、音轨即音频 VAE 的采样率），内存构造一个 <code>MiniMaxH3VideoReference</code> 即可，无需任何率参数：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">生成即参考（按官方文档说明整理的示例）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ComponentsManager, ModularPipeline
+from diffusers.modular_pipelines.minimax_h3 import MiniMaxH3VideoReference
+
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda")
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
+pipe.load_components(dtype=torch.bfloat16)   # 不带 workflow=：两个 61.7GB 分区都进来
+
+# 第一代：纯文生
+first = pipe(
+    prompt="A red fox trots through a snowy pine forest",
+    num_frames=124,
+    generator=torch.Generator().manual_seed(42),
+    output=["videos", "audio", "sampling_rate"],
+)
+
+# 生成物已在 H3 自身的率上：内存构造免掉一切率参数，也没有有损容器往返
+reference = MiniMaxH3VideoReference(frames=first["videos"][0], audio=first["audio"][0])
+
+# 第二代：把上一代作为「运动 + 声音」参考，续写镜头
+second = pipe(
+    prompt="The same fox continues through the forest, same gait, camera slowly pushes in",
+    references=[reference],
+    num_frames=124,
+    output=["videos", "audio", "sampling_rate"],
+)</code></pre>
+</div>
+<p>这套「生成 → 参考 → 再生成」的环路正是 H3-Regenerate-2K（闭源）在 API 侧做的 in-context 再生成的开源同构：ref2va 分区训练的就是「把已有内容当条件、在同一 forward 里联合去噪新内容」的能力。开源管线没有 2K 超分头，但<strong>把生成物喂回去</strong>这条路是完整可用的——画质增强、动作续写、配音替换（只喂视频不喂音轨）都是这个环路的变体。</p>
+<p>至此，开源侧的全部机制已经讲完：文本怎么编码（第 4 章）、两路 VAE 怎么压和解（第 5、6 章）、33B 主干怎么联合去噪（第 7 章）、双调度怎么消费（第 8 章）、三个任务怎么用（本章）。剩下的都是工程：显存怎么塞下 124GB 权重、生态怎么部署、许可证允许什么——下一章讲推理与显存攻略。</p>
+</section>
+
+<section id="ch10">
+<h2><span class="ch-no">10</span>推理管线与显存攻略</h2>
+<p class="ch-intro">H3 的推理难题很纯粹：一个任务的工作集就是 <strong>61.7 GB 的 transformer + 62.1 GB 的 Qwen3-VL</strong>，外加两个 VAE——bf16 下任何单张消费级卡都放不下，80GB 单卡也得靠 offload。官方 diffusers 文档按硬件分了四档配方，全部只用支持的加载器、零 monkey patch、直接从 bf16 checkpoint 出发。</p>
+
+<h3>10.1 显存地图：先算清楚要装什么</h3>
+<table class="tbl">
+  <tr><th>组件</th><th class="num">bfloat16 大小</th><th>备注</th></tr>
+  <tr class="hl"><td>transformer（单分区）</td><td class="num">61.7 GB</td><td>33B 主干；两个分区各这么大，任务只加载其一</td></tr>
+  <tr class="hl"><td>text_encoder（Qwen3-VL）</td><td class="num">62.1 GB</td><td>第 4 章；LM head 不用但权重在 checkpoint 里</td></tr>
+  <tr><td>video_vae + audio_vae</td><td class="num">GB 级</td><td>3D CNN + 36 层 ViT / DAC + BigVGAN，相对小头</td></tr>
+  <tr><td><strong>单任务合计</strong></td><td class="num">≈ 124 GB+</td><td>bf16 常驻任何单卡都装不下 → 显存攻略的全部出发点</td></tr>
+</table>
+<p>另一个杠杆比显存更便宜：<strong>画布尺寸</strong>。height/width 只要求 32 的倍数，960×544 的每步耗时约为训练分辨率 1344×768 的 <strong>1/2.3</strong>（token 数随面积线性下降、注意力随 token 数平方下降）——这是所有档位上最大的提速开关。</p>
+
+<h3>10.2 一张 80GB：自动 CPU offload + Hopper 注意力后端</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers 官方文档 · 80GB 单卡配方（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ComponentsManager, ModularPipeline
+
+manager = ComponentsManager()
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3", components_manager=manager)
+pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
+manager.enable_auto_cpu_offload(device="cuda", memory_reserve_margin="12GB")
+pipe.transformer.set_attention_backend("_flash_3_hub")  # Hopper, roughly 3x faster; kernels fetched from the Hub</code></pre>
+</div>
+<p>三行配置各管一件事：<code>ComponentsManager</code> 让权重常驻 host RAM、块执行到谁就把谁搬上加速器（第 7.4 节说过 AdaLN 表可预计算，这里的搬运粒度是组件级）；<code>memory_reserve_margin="12GB"</code> 给非权重开销（激活、CUDA 图、临时张量）留出安全垫，避免「刚好装下」的 OOM；<code>set_attention_backend("_flash_3_hub")</code> 就是第 7.5 节 processor 的 <code>_attention_backend</code>——Hopper 上官方报告约 3× 注意力提速，kernel 从 Hub 拉取。</p>
+
+<h3>10.3 24–32GB 消费卡：int8 量化 + 块级流式 offload</h3>
+<p>两步走：把两个大组件在加载时就量化到 int8（weight-only），再让 transformer 的 50 个 block 以每块一组的方式从 host RAM 流式进出：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers 官方文档 · int8 配方（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import MiniMaxH3Transformer3DModel, ModularPipeline, TorchAoConfig
+from diffusers.hooks import apply_group_offloading
+from transformers import Qwen3VLForConditionalGeneration
+from transformers import TorchAoConfig as TransformersTorchAoConfig
+from torchao.quantization import Int8WeightOnlyConfig
+
+pipe = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3")
+pipe.update_components(
+    transformer=MiniMaxH3Transformer3DModel.from_pretrained(
+        "MiniMaxAI/MiniMax-H3", subfolder="transformer", dtype=torch.bfloat16,
+        quantization_config=TorchAoConfig(
+            Int8WeightOnlyConfig(version=2),
+            modules_to_not_convert=[
+                "proj_in", "audio_proj_in", "context_embedder", "time_embedder", "time_proj",
+                "token_refiner", "norm_out", "proj_out", "audio_proj_out",
+            ],
+        ),
+        low_cpu_mem_usage=False,
+    ),
+    text_encoder=Qwen3VLForConditionalGeneration.from_pretrained(
+        "MiniMaxAI/MiniMax-H3", subfolder="text_encoder", dtype=torch.bfloat16,
+        quantization_config=TransformersTorchAoConfig(
+            Int8WeightOnlyConfig(version=2),
+            modules_to_not_convert=["model.visual", "model.language_model.embed_tokens", "model.language_model.norm", "lm_head"],
+        ),
+    ),
+)
+pipe.load_components(workflow="t2va", dtype=torch.bfloat16)
+
+# version=2 int8 tensors are pinnable, which streamed offload needs, and freezing removes the one autograd
+# path the quantized tensors cannot serve.
+pipe.transformer.requires_grad_(False)
+pipe.text_encoder.requires_grad_(False)
+
+offload = dict(onload_device=torch.device("cuda"), offload_device=torch.device("cpu"), use_stream=True)
+pipe.transformer.enable_group_offload(offload_type="block_level", num_blocks_per_group=1, **offload)
+apply_group_offloading(pipe.text_encoder.model, offload_type="leaf_level", **offload)
+pipe.vae.to("cuda")
+pipe.audio_vae.to("cuda")</code></pre>
+</div>
+<p>两个排除清单值得对照第 7.2 节的模块地图读——被排除的恰好是<strong>全部小模块</strong>：</p>
+<p><strong>transformer 排除的 9 个名字</strong>（proj_in、audio_proj_in、context_embedder、time_embedder、time_proj、token_refiner、norm_out、proj_out、audio_proj_out）就是第 7.2 节模块地图里 blocks 之外的一切——量化只打 50 个 block 的主体权重，输入/输出投影与 AdaLN 精度锚点全部保持 bf16。这解释了第 7.2 节那张表的来历：官方文档正是用这份清单「自证」了模块结构。</p>
+<p><strong>text_encoder 排除的 4 项</strong>（model.visual、embed_tokens、language_model.norm、lm_head）——视觉塔与词嵌入不量化（第 4 章说过 H3 用的是 50 层处的 unnormalized hidden，视觉塔负责吃图）；lm_head 虽不用也排除在外。</p>
+<p>两个工程注释直接写在代码里：<code>version=2</code> 的 int8 张量是 <strong>pinnable</strong> 的（流式 offload 需要页锁定内存）；<code>requires_grad_(False)</code> 砍掉量化张量无法服务的 autograd 路径。offload 一侧：transformer 用 <code>block_level</code>、每组 1 个 block、<code>use_stream=True</code>（异步搬运与计算重叠）；Qwen3-VL 用 <code>leaf_level</code>（按叶子模块搬运）。两个 VAE 小到可以常驻。代价是 host RAM：int8 下预期 <strong>约 75 GB</strong> 的系统内存占用。</p>
+
+<h3>10.4 12–16GB：再挤一层 + 小画布</h3>
+<p>同一套 int8 配方再加两个动作即可下探到 12–16GB：① 视频 VAE 也做组 offload（<code>offload_type="leaf_level"</code>、不开 stream——36 层 ViT 解码是一次性操作，同步搬运可接受）；② 画布换 960×544 一类的小尺寸。官方口径：这套组合下权重全部住在 host RAM，12–16GB 显存即可完整跑通开源管线。</p>
+
+<h3>10.5 双卡：把 conditioner 拆出去，一卡一半</h3>
+<p>有两张卡就什么都不用 offload：把管线沿「文本编码 / 其余」切成两半，各自常驻一张卡。官方示例（逐字摘录）——注意它顺带展示了 ModularPipeline 的两段式调用（<code>conditioner</code> 先算出 state、<code>rest</code> 再消费）：</p>
+<div class="codeblock">
+<div class="codehead"><span class="fname">diffusers 官方文档 · 双卡拆分（逐字摘录）</span><span class="lang">Python</span></div>
+<pre><code class="language-python">import torch
+from diffusers import ComponentsManager, ModularPipeline
+
+workflow = ModularPipeline.from_pretrained("MiniMaxAI/MiniMax-H3").blocks.get_workflow("t2va")
+
+text_manager = ComponentsManager()
+text_manager.enable_auto_cpu_offload(device="cuda:1")
+conditioner = workflow.sub_blocks.pop("text_encoder").init_pipeline(
+    "MiniMaxAI/MiniMax-H3", components_manager=text_manager
+)
+conditioner.load_components(dtype=torch.bfloat16)
+
+manager = ComponentsManager()
+manager.enable_auto_cpu_offload(device="cuda:0")
+rest = workflow.init_pipeline("MiniMaxAI/MiniMax-H3", components_manager=manager)
+rest.load_components(dtype=torch.bfloat16)
+
+prompt = "A red fox trotting through a snowy pine forest, snow crunching underfoot"
+state = conditioner(prompt=prompt)
+results = rest(
+    state=state,
+    num_frames=124,
+    generator=torch.Generator().manual_seed(42),
+    output=["videos", "audio", "sampling_rate"],
+)</code></pre>
+</div>
+<p>两张 80GB 卡这样跑<strong>全量 bf16</strong>：每半各有一整卡，权重一旦常驻就不再回退到 host 内存；两张 48GB 卡则把 10.3 节的 int8 加载应用到两个组件上，同样布局。</p>
+
+<h3>10.6 配方速查</h3>
+<table class="tbl">
+  <tr><th>硬件</th><th>配方</th><th>精度</th><th>host RAM 需求</th></tr>
+  <tr><td class="num">1 × 80GB</td><td>ComponentsManager 自动 offload（margin 12GB）+ <code>_flash_3_hub</code>（Hopper）</td><td>bf16</td><td>大（组件级换入换出）</td></tr>
+  <tr><td class="num">1 × 24–32GB</td><td>两个大组件 int8（version=2）+ transformer 块级流式 offload + Qwen3-VL 叶级</td><td>int8 weight-only</td><td class="hl">≈ 75 GB</td></tr>
+  <tr><td class="num">1 × 12–16GB</td><td>同上 + 视频 VAE 叶级 offload + 960×544 小画布</td><td>int8 weight-only</td><td>≈ 75 GB</td></tr>
+  <tr><td class="num">2 × 80GB</td><td>conditioner 在 cuda:1、其余在 cuda:0，全部常驻</td><td>bf16</td><td>—（不回退）</td></tr>
+  <tr><td class="num">2 × 48GB</td><td>同上布局 + 双组件 int8</td><td>int8 weight-only</td><td>—</td></tr>
+</table>
+<div class="callout note">
+  <span class="co-title">所有档位共用的三个提速开关</span>
+  <p>① <strong>画布</strong>：960×544 ≈ 2.3×/步（相对 1344×768），只要求 32 的倍数；② <strong>步数</strong>：<code>num_inference_steps</code> 直接决定 forward 次数（N−1），换 few-step 适配器（Pika H3 Flex，第 8 章）是另一档量级；③ <strong>注意力后端</strong>：Hopper 上 <code>_flash_3_hub</code> 约 3×。三个开关彼此独立、可叠加。</p>
+</div>
+</section>
+
+<section id="ch11">
+<h2><span class="ch-no">11</span>部署生态、许可证与局限</h2>
+<p class="ch-intro">前十章是「它怎么工作」，本章是「你怎么用它」的边界条件：哪些推理栈已经支持、许可证允许什么、闭源的那部分拿什么替代、以及上手前该知道的能力边界。所有事实均出自官方公告与仓库 README。</p>
+
+<h3>11.1 推理后端与芯片生态</h3>
+<p>官方开源的第一天就有完整的推理栈矩阵——这对一个 33B 全模态模型来说相当罕见：</p>
+<table class="tbl">
+  <tr><th>推理栈</th><th>说明</th></tr>
+  <tr class="hl"><td>diffusers（本文主线）</td><td>ModularPipeline 唯一官方集成路径（无 DiffusionPipeline 半边）；第 10 章的全部显存配方</td></tr>
+  <tr><td>SGLang</td><td>高吞吐服务化部署，<strong>ulysses 序列并行</strong>切分第 7 章那条 3 万+ token 的长序列——单流架构的注意力成本由多卡摊薄</td></tr>
+  <tr><td>vLLM-Omni</td><td>vLLM 的全模态分支，同为服务化路线</td></tr>
+  <tr><td>ComfyUI</td><td>社区节点 + <strong>GGUF 量化</strong>权重，消费级工作流的入口</td></tr>
+  <tr><td>Day-0 芯片适配</td><td>昇腾、摩尔线程、沐曦、海光、昆仑芯、天数智芯、壁仞，以及 AMD / Intel——开源即多后端可用</td></tr>
+</table>
+<p>开源仓库本身只包含<strong>推理侧</strong>：权重、VAE 实现、推理脚本与 diffusers 集成。<strong>没有训练代码、没有数据</strong>——想复现或后训练，训练管线要自建（社区已有 Sol-H3、VDN-H3 等基于 H3 的后训练/蒸馏变体出现，生态尚在早期）。</p>
+
+<h3>11.2 许可证：MiniMax H3 Community License</h3>
+<p>H3 不是 Apache/MIT。Community License 是一套带地域与规模条款的自定义许可证，核心约束三条：</p>
+<table class="tbl">
+  <tr><th>条款</th><th>内容</th></tr>
+  <tr class="hl"><td>地域限制</td><td>美国、英国、欧盟、韩国境内使用需另行取得授权——不在名单内的地区（含中国大陆）按许可证条款正常使用</td></tr>
+  <tr><td>大型商用附加条件</td><td>超过一定规模（用户量/收入口径见许可证原文）的商业化需满足附加义务</td></tr>
+  <tr><td>输出用途限制</td><td><strong>禁止用 H3 的生成输出去训练或改进其他模型</strong>——输出可用于内容用途，不可回流为竞品的训练数据</td></tr>
+</table>
+<div class="callout danger">
+  <span class="co-title">商用前读原文</span>
+  <p>上表是条款的<strong>意图摘要，不是法律意见</strong>。地域、规模阈值、附加义务的精确定义以 <a href="https://github.com/MiniMax-AI/MiniMax-H3">仓库内许可证原文</a>为准——涉及商业化决策时请以原文（必要时咨询法务）为准。</p>
+</div>
+
+<h3>11.3 未开源的三件套：闭源组件的开源替代路径</h3>
+<p>第 1 章图 1-1 的三个橙色块，在开源侧各有替代方案，成色不同：</p>
+<table class="tbl">
+  <tr><th>闭源组件</th><th>开源替代</th><th>成色</th></tr>
+  <tr><td>H3-Context-IR（指令解析 → 结构化表示）</td><td>接入其 API，或自建等价物（LLM 指令改写、结构化序列化）</td><td class="hl"><strong>可完全替代，但有工作量</strong>——官方强烈建议不要裸 prompt 直连（1.2 节）</td></tr>
+  <tr><td>H3-Regenerate-2K（in-context 2K 再生成）</td><td>9.4 节「生成即参考」环路：把 768p 结果喂回 ref2va 再生成</td><td>机制同构、<strong>无 2K 头</strong>——分辨率上限仍是 768 短边</td></tr>
+  <tr><td>原生稀疏注意力</td><td>FlashAttention 后端（Hopper <code>_flash_3_hub</code> 约 3×）+ SGLang ulysses 序列并行</td><td>是稠密注意力的高效实现，<strong>不是稀疏化</strong>——长序列平方成本仍在</td></tr>
+</table>
+<p>换句话说：闭源三件套影响的是<strong>复杂指令的理解上限、2K 分辨率、超长序列的成本</strong>；「文/图/视频/音频进、视频+立体声出」的核心生成能力完整在开源权重里。</p>
+
+<h3>11.4 能力边界速查</h3>
+<p>读完前十章后，把「边界」也摆清楚——多数踩坑都发生在没有预期的地方：</p>
+<table class="tbl">
+  <tr><th>维度</th><th>开源管线边界</th><th>出处</th></tr>
+  <tr><td>时长</td><td>5–15 秒；<code>num_frames</code> 吸附到 17n+5</td><td>第 5 章</td></tr>
+  <tr><td>分辨率</td><td>短边 768、宽高 32 倍数；2K 需走闭源 Regenerate-2K</td><td>第 1、10 章</td></tr>
+  <tr><td>步数</td><td>CFG 蒸馏：无 negative_prompt / guidance_scale；few-step 需换 Pika H3 Flex 适配器</td><td>第 8 章</td></tr>
+  <tr><td>参考容量</td><td>≤9 图 + ≤3 视频 + ≤3 音频，共 ≤12；顺序语义</td><td>第 9 章</td></tr>
+  <tr><td>参考帧率</td><td><code>load_video</code> 丢帧率且<strong>无报错</strong>——必须 <code>from_file</code> 或显式声明率</td><td>第 9 章</td></tr>
+  <tr><td>音频形态</td><td>32kHz 立体声；模型单声道、立体声按 batch 展开</td><td>第 6 章</td></tr>
+  <tr><td>算力门槛</td><td>bf16 单任务工作集 ≈124GB；最低 12–16GB 显存（int8 + offload + 小画布）</td><td>第 10 章</td></tr>
+</table>
+</section>
+
+<section id="ch12">
+<h2><span class="ch-no">12</span>参考资料</h2>
+<p class="ch-intro">本文档的全部事实与代码出处，按权威程度排列。</p>
+<table class="tbl">
+  <tr><th>资料</th><th>链接</th><th>覆盖内容</th></tr>
+  <tr class="hl"><td>官方开源公告</td><td><a href="https://www.minimaxi.com/news/minimax-h3-open-source">minimaxi.com/news/minimax-h3-open-source</a></td><td>系统设计、三模块定位、许可证要点、生态矩阵</td></tr>
+  <tr class="hl"><td>官方 GitHub 仓库</td><td><a href="https://github.com/MiniMax-AI/MiniMax-H3">github.com/MiniMax-AI/MiniMax-H3</a></td><td>权重结构、VAE 原始实现、推理脚本、许可证原文</td></tr>
+  <tr class="hl"><td>diffusers 官方文档</td><td><a href="https://huggingface.co/docs/diffusers/api/pipelines/minimax_h3">huggingface.co/docs/diffusers/api/pipelines/minimax_h3</a></td><td>管线用法、约束、显存配方（第 9、10 章代码的来源）</td></tr>
+  <tr><td>HuggingFace 仓库</td><td><a href="https://huggingface.co/MiniMaxAI/MiniMax-H3">huggingface.co/MiniMaxAI/MiniMax-H3</a></td><td>diffusers 转换后的权重与 config.json（第 7 章）</td></tr>
+  <tr><td>ModelScope 仓库</td><td><a href="https://modelscope.cn/models/MiniMax/MiniMax-H3">modelscope.cn/models/MiniMax/MiniMax-H3</a></td><td>国内镜像下载</td></tr>
+  <tr><td>diffusers 源码</td><td><a href="https://github.com/huggingface/diffusers">github.com/huggingface/diffusers</a>（Apache 2.0）</td><td>transformer / scheduler / 两个 VAE 的逐字代码（第 4–8 章）</td></tr>
+  <tr><td>本系列上一篇</td><td><a href="Wan2.1-详解.html">Wan 2.1 从原理到源码</a></td><td>同系列文档；1.5 节的迁移地图两边对照</td></tr>
+</table>
+<p>给不同读者的最短路径：</p>
+<table class="tbl">
+  <tr><th>你想要</th><th>建议路径</th></tr>
+  <tr><td>十分钟了解 H3 是什么</td><td>第 1 章 + 第 3 章</td></tr>
+  <tr><td>把模型跑起来</td><td>第 9 章 → 第 10 章（按显卡挑一节）→ 第 11.2 节（许可证）</td></tr>
+  <tr><td>读懂代码 / 做二次开发</td><td>第 2 章 → 第 7 章 → 第 8 章（符号约定是其余一切的前置）</td></tr>
+  <tr><td>研究 VAE / 音频生成</td><td>第 5 章 → 第 6 章</td></tr>
+</table>
+<p>最后一句总结：MiniMax H3 的「全模态」不靠任何花哨结构——一个模态无关的 33B DiT、一张按行寻址的 AdaLN 表、一套三轴 RoPE、两条不同 shift 的调度，外加把一切拼成一条序列的工程纪律。理解了这四件事，就理解了全部。</p>
+</section>
+
+<footer>
+  <p>本文档由 AI 辅助整理。Python 代码逐段摘自 HuggingFace diffusers 官方集成实现（Apache 2.0）与 MiniMax-AI/MiniMax-H3 官方开源仓库（MiniMax H3 Community License）；标注「补全」的代码段为按源码同构模式机械补写，标注「整理」的代码段为按官方文档示例改写。事实与数据以 <a href="https://www.minimaxi.com/news/minimax-h3-open-source">官方公告</a>、<a href="https://github.com/MiniMax-AI/MiniMax-H3">GitHub 仓库</a>与 <a href="https://huggingface.co/docs/diffusers/api/pipelines/minimax_h3">diffusers 官方文档</a>为准。</p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function(){
+  // ---------- Python / Bash / JSON 代码高亮（正则单遍 tokenizer） ----------
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var PY_RE = /(#[^\n]*)|((?:[rbfu]?)(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"))|(@[A-Za-z_][\w.]*)|(\b\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)(?=\s*\()|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|self|print|range|len|enumerate|zip|int|float|str|bool|list|dict|tuple|set|min|max|abs|round|super|getattr|hasattr|isinstance)\b)/g;
+
+  var BASH_RE = /(#[^\n]*)|((?:"[^"\n]*"|'[^'\n]*'))|(\b(?:python|python3|git|cd|pip|pip3|export|source|conda|torchrun|huggingface-cli|modelscope|accelerate|wget|curl|nvidia-smi|nvcc|apt|sudo|make|tar|unzip|cp|mv|ls|mkdir|sglang|comfyui|node)\b)/g;
+
+  var JSON_RE = /("(?:\\.|[^"\\])*")(\s*:)?|(\b(?:true|false|null)\b)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)/g;
+
+  function paint(src, re){
+    var out = esc(src).replace(re, function(m, c, s, d, n, f, kw){
+      if (c) return '<span class="tk-c">' + c + '</span>';
+      if (s) return '<span class="tk-s">' + s + '</span>';
+      if (d) return '<span class="tk-d">' + d + '</span>';
+      if (n) return '<span class="tk-n">' + n + '</span>';
+      if (f) return '<span class="tk-f">' + f + '</span>';
+      if (kw) return '<span class="tk-k">' + kw + '</span>';
+      return m;
+    });
+    return out;
+  }
+
+  function paintJson(src){
+    return esc(src).replace(JSON_RE, function(m, s, colon, kw, n){
+      if (s) return colon ? '<span class="tk-d">' + s + '</span>' + colon : '<span class="tk-s">' + s + '</span>';
+      if (kw) return '<span class="tk-k">' + kw + '</span>';
+      if (n) return '<span class="tk-n">' + n + '</span>';
+      return m;
+    });
+  }
+
+  document.querySelectorAll('pre code').forEach(function(el){
+    var cls = el.className || '';
+    var src = el.textContent;
+    if (/\bpython\b/.test(cls)) {
+      el.innerHTML = paint(src, PY_RE);
+    } else if (/\bbash\b/.test(cls)) {
+      el.innerHTML = paint(src, BASH_RE);
+    } else if (/\bjson\b/.test(cls)) {
+      el.innerHTML = paintJson(src);
+    }
+  });
+
+  // ---------- 侧边目录 scrollspy ----------
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var secs = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  function spy(){
+    var cur = secs.length ? secs[0] : null;
+    for (var i = 0; i < secs.length; i++){
+      if (secs[i].getBoundingClientRect().top <= 140) cur = secs[i];
+    }
+    tocLinks.forEach(function(a){
+      a.classList.toggle('active', cur && a.getAttribute('href') === '#' + cur.id);
+    });
+  }
+  window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
+  spy();
+})();
+</script>
+</body>
+</html>
