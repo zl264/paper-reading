@@ -234,6 +234,30 @@
       </a>
     </li>
 
+    <li>
+      <a class="doc" href="GAD-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">07</span>
+        <div>
+          <h2>GAD 几何注意力蒸馏</h2>
+          <p>Geometry Attention Distillation 论文精读：跨帧对应蒸馏、噪声时间步路由与视频生成一致性。</p>
+          <div class="tags"><span class="tag">视频生成</span><span class="tag">一致性</span><span class="tag">论文精读</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="MiniMax-H3-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">08</span>
+        <div>
+          <h2>MiniMax H3 从原理到源码</h2>
+          <p>全模态视频生成模型全面详解：Flow Matching 约定、packed 多模态序列与四大组件源码走读。</p>
+          <div class="tags"><span class="tag">视频生成</span><span class="tag">全模态</span><span class="tag">源码解析</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
   </ol>
 
   <footer class="site">
@@ -242,5 +266,65 @@
   </footer>
 
 </div>
+
+<script>
+/* 自动发现：加载时扫描仓库根目录，把未收录的 .html 笔记追加到列表末尾 */
+(function () {
+  var API = 'https://api.github.com/repos/zl264/paper-reading/contents/';
+  var list = document.querySelector('ol.list');
+  if (!list || !window.fetch) return;
+
+  var known = {};
+  Array.prototype.forEach.call(list.querySelectorAll('a.doc'), function (a) {
+    var href = a.getAttribute('href') || '';
+    try { known[decodeURIComponent(href).toLowerCase()] = true; }
+    catch (e) { known[href.toLowerCase()] = true; }
+  });
+
+  fetch(API)
+    .then(function (r) { return r.json(); })
+    .then(function (files) {
+      if (!Array.isArray(files)) return;
+      var fresh = files.filter(function (f) {
+        return f && f.type === 'file' && /\.html?$/i.test(f.name) &&
+               f.name.toLowerCase() !== 'index.html' &&
+               !known[f.name.toLowerCase()];
+      });
+      return Promise.all(fresh.map(function (f) {
+        return fetch(encodeURIComponent(f.name))
+          .then(function (r) { return r.text(); })
+          .then(function (html) {
+            var t = html.match(/<title>([^<]*)<\/title>/i);
+            var meta = html.match(/<meta[^>]*description[^>]*>/i);
+            var desc = '';
+            if (meta) {
+              var c = meta[0].match(/content=["']([^"']*)["']/i);
+              if (c) desc = c[1];
+            }
+            return { name: f.name, title: t ? t[1].trim() : f.name, desc: desc };
+          })
+          .catch(function () { return { name: f.name, title: f.name, desc: '' }; });
+      }));
+    })
+    .then(function (docs) {
+      if (!docs || !docs.length) return;
+      var base = list.children.length;
+      docs.forEach(function (d, i) {
+        var li = document.createElement('li');
+        li.innerHTML =
+          '<a class="doc" href="' + encodeURIComponent(d.name) + '">' +
+          '<span class="no"></span>' +
+          '<div><h2></h2><p></p>' +
+          '<div class="tags"><span class="tag">新笔记</span></div></div>' +
+          '<span class="go">→</span></a>';
+        li.querySelector('.no').textContent = String(base + i + 1).padStart(2, '0');
+        li.querySelector('h2').textContent = d.title || d.name;
+        li.querySelector('p').textContent = d.desc || '新上传的阅读笔记，点击查看全文。';
+        list.appendChild(li);
+      });
+    })
+    .catch(function () { /* 网络或接口异常时静默，静态列表不受影响 */ });
+})();
+</script>
 </body>
 </html>
