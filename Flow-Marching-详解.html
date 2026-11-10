@@ -1,0 +1,1164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Marching 从原理到代码：全面详解</title>
+<style>
+:root{
+  --bg:#f7f7fa; --fg:#24292f; --muted:#5a6070;
+  --accent:#5845e6; --accent-2:#7c6cf0; --accent-soft:#eeecfc; --accent-deep:#4636c4;
+  --border:#e3e4ec; --card:#ffffff;
+  --code-bg:#0d1117; --code-head:#161b22; --code-fg:#e6edf3;
+  --tk-c:#8b949e; --tk-k:#ff7b72; --tk-s:#a5d6ff; --tk-n:#79c0ff; --tk-d:#d2a8ff; --tk-f:#d2a8ff; --tk-b:#ffa657;
+  --note-bg:#eff6ff; --note-bd:#3b82f6;
+  --warn-bg:#fffbeb; --warn-bd:#d97706;
+  --tip-bg:#ecfdf5; --tip-bd:#10b981;
+  --danger-bg:#fef2f2; --danger-bd:#ef4444;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth; scroll-padding-top:24px;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
+}
+.layout{display:flex; min-height:100vh;}
+.toc{
+  position:fixed; top:0; left:0; bottom:0; width:284px;
+  background:#ffffff; border-right:1px solid var(--border);
+  overflow-y:auto; padding:28px 18px 40px; z-index:10;
+}
+.toc-title{font-size:15px; font-weight:700; color:var(--accent-deep); padding:0 10px 14px; letter-spacing:.5px;}
+.toc a{
+  display:block; padding:5px 10px; margin:1px 0; border-radius:7px;
+  color:var(--muted); text-decoration:none; font-size:13.5px; line-height:1.45;
+  border-left:3px solid transparent; transition:all .15s ease;
+}
+.toc a:hover{color:var(--accent); background:var(--accent-soft);}
+.toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
+.content{
+  margin-left:284px; width:calc(100% - 284px);
+  max-width:960px; padding:56px 56px 80px;
+}
+@media (max-width:1180px){
+  .toc{display:none;}
+  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+}
+.doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
+.doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
+h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+.doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
+.doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
+.doc-meta span{
+  font-size:12.5px; color:var(--accent-deep); background:var(--accent-soft);
+  border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
+}
+h2{
+  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  display:flex; align-items:baseline; gap:14px;
+}
+h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
+h2::after{content:""; display:block;}
+.ch-intro{color:var(--muted); font-size:15.5px; margin:8px 0 24px; border-left:3px solid var(--accent-2); padding-left:14px;}
+h3{
+  font-size:20px; font-weight:700; margin:40px 0 14px; padding-left:12px;
+  border-left:4px solid var(--accent); line-height:1.4;
+}
+h4{font-size:16.5px; font-weight:700; margin:28px 0 10px; color:#383e4c;}
+p{margin:14px 0;}
+strong{font-weight:700; color:#1a1f2b;}
+em{font-style:normal; background:linear-gradient(transparent 62%, #e8e2ff 62%); font-weight:600;}
+ul,ol{padding-left:26px; margin:12px 0;}
+li{margin:7px 0;}
+hr{border:none; border-top:1px solid var(--border); margin:36px 0;}
+a{color:var(--accent); text-decoration:none;}
+a:hover{text-decoration:underline;}
+code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,"Cascadia Code",Menlo,monospace;
+  font-size:.86em; background:var(--accent-soft); color:var(--accent-deep);
+  padding:2px 6px; border-radius:5px; white-space:nowrap;
+}
+.codeblock{margin:20px 0; border-radius:11px; overflow:hidden; border:1px solid #262b36; box-shadow:0 6px 24px rgba(15,17,32,.10);}
+.codehead{
+  display:flex; justify-content:space-between; align-items:center;
+  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232833;
+}
+.codehead .fname{color:#9aa4b2; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;}
+.codehead .lang{color:#6e7681; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;}
+pre{
+  background:var(--code-bg); color:var(--code-fg); overflow-x:auto;
+  padding:16px 18px; font-size:13.5px; line-height:1.65; tab-size:4;
+}
+pre code{background:none; color:inherit; padding:0; font-size:inherit; white-space:pre; border-radius:0;}
+.tk-c{color:var(--tk-c); font-style:italic;}
+.tk-k{color:var(--tk-k);}
+.tk-s{color:var(--tk-s);}
+.tk-n{color:var(--tk-n);}
+.tk-d{color:var(--tk-d);}
+.tk-f{color:var(--tk-f);}
+.tk-b{color:var(--tk-b);}
+.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(20,22,40,.06);}
+.tbl th{
+  background:#f0eefb; color:#3b3480; text-align:left; padding:10px 14px;
+  font-weight:700; border-bottom:2px solid #ddd6f5; font-size:13.5px; white-space:nowrap;
+}
+.tbl td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:#faf9ff;}
+.tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
+.tbl .hl td{background:var(--accent-soft);}
+.callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
+.callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
+.callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
+.callout.note .co-title{color:#1d4ed8;}
+.callout.warn{background:var(--warn-bg); border-color:var(--warn-bd); color:#713f12;}
+.callout.warn .co-title{color:#b45309;}
+.callout.tip{background:var(--tip-bg); border-color:var(--tip-bd); color:#064e3b;}
+.callout.tip .co-title{color:#047857;}
+.callout p{margin:6px 0;}
+.formula{
+  background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
+  text-align:center; padding:18px 20px; margin:22px 0;
+  font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
+}
+.formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
+.flow{
+  background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;
+  margin:20px 0; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:2.1;
+  overflow-x:auto; white-space:nowrap;
+}
+.flow b{color:var(--accent-deep); font-weight:700;}
+.flow .arr{color:#b08c00; font-weight:700; margin:0 6px;}
+.flow .tag{color:var(--muted); font-size:11.5px; margin-left:8px;}
+.figure{margin:26px 0; text-align:center;}
+.figure svg{max-width:100%; height:auto; display:block; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:12px;}
+.figcap{margin-top:10px; font-size:13.5px; color:var(--muted); line-height:1.6;}
+.figcap b{color:var(--fg);}
+footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc" id="toc">
+  <div class="toc-title">Flow Marching 详解</div>
+  <a href="#ch1">1. Flow Marching 是什么</a>
+  <a href="#ch2">2. 背景预备：PDE 基础模型与误差累积</a>
+  <a href="#ch3">3. 核心原理：桥接参数 k 与位置-尺度插值</a>
+  <a href="#ch4">4. 误差累积的数学：为什么 FM 不爆炸</a>
+  <a href="#ch5">5. 架构详解：P2VAE + FMT + 潜在时间金字塔</a>
+  <a href="#ch6">6. 推理与不确定性量化</a>
+  <a href="#ch7">7. 代码走读：从零复现核心模块</a>
+  <a href="#ch8">8. 实验与结果</a>
+  <a href="#ch9">9. 与视频生成方法的对照</a>
+  <a href="#ch10">10. 局限与后续演进</a>
+  <a href="#ch11">11. 参考资料</a>
+</nav>
+
+<main class="content">
+
+<header class="doc-header">
+  <div class="doc-kicker">Generative PDE Foundation Model Deep Dive</div>
+  <h1>Flow Marching 从原理到代码：全面详解</h1>
+  <p class="doc-sub">一份把「确定性神经算子」与「概率性 Flow Matching」用一条参数 k 缝起来的深度解析——从插值核的三种等价形式、误差累积的 Gronwall vs 收缩上界，到 P2VAE/FMT/潜在时间金字塔的逐层结构，再到可运行的参考实现与不确定性双旋钮。</p>
+  <div class="doc-meta">
+    <span>arXiv:2509.18611（MIT · 机械工程系）</span>
+    <span>v1 2025-09 / v2 2026-04</span>
+    <span>官方代码未发布 · 本文代码为公式复现</span>
+    <span>2026-11 整理</span>
+  </div>
+</header>
+
+<!-- ==================== 第 1 章 ==================== -->
+<section id="ch1">
+<h2><span class="ch-no">01</span>Flow Marching 是什么</h2>
+<p class="ch-intro">一句话：Flow Marching 是 MIT 机械工程系 Zituo Chen 与 Sili Deng 提出的「生成式 PDE 基础模型」训练框架，它用一个连续参数 <em>k</em> 把「确定性神经算子（直接预测下一步）」和「Flow Matching（从噪声生成）」两条路统一成同一条插值路径，从而在长时程 rollout 中获得可证明的误差有界性与不确定性量化能力。</p>
+
+<div class="callout warn">
+  <span class="co-title">关于出处的重要澄清</span>
+  <p>Flow Marching <strong>不是</strong>视频生成领域的技术。你可能在 Self-Forcing、CausVid、MotionStream 等视频论文里听到过「forcing」「marching」这类词，但它们用的是不同方法（Diffusion Forcing、自回归去噪等），<strong>均不含 Flow Marching 这一术语</strong>。本技术唯一的正式出处是 PDE 基础模型论文 <a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611</a>。考虑到你此前的阅读背景是视频生成（Wan 系列），本文第 9 章会专门给出「PDE 世界 ↔ 视频世界」的概念映射表，帮助你迁移理解。</p>
+</div>
+
+<h3>1.1 它解决什么问题</h3>
+<p>PDE（偏微分方程）基础模型要做的事是：给定一个物理系统的当前状态 <code>x₀</code>（比如某一时刻的流场、温度场、电磁场），预测它下一时刻的状态 <code>x₁</code>，然后把预测结果再喂回去，<strong>一步步滚到很远的未来</strong>（long-term rollout）。</p>
+<p>现有两条路线各有致命伤：</p>
+<ul>
+  <li><strong>确定性神经算子</strong>（FNO、DeepONet、Graph Neural Operator 等）：直接学一个映射 <code>f<sub>θ</sub>: x₀ ↦ x₁</code>，训练快、推理一步到位。但<strong>误差会指数累积</strong>——每步哪怕只有 1% 的误差，滚 100 步就是 (1.01)<sup>100</sup> ≈ 2.7 倍，远期预测必然崩。而且无法给出不确定性。</li>
+  <li><strong>Flow Matching / 扩散模型</strong>（GenCast、Diffusion Forcing 思路）：从噪声出发积分 ODE/SDE 得到 <code>x₁</code>。误差天然有收缩、能给不确定性，但<strong>起点与当前状态 x₀ 无关</strong>，要把「已知 x₀」这件事塞进条件里，工程上别扭，且每步都要跑几十次网络前向（采样步数），rollout 极慢。</li>
+</ul>
+<p>Flow Marching 的回答是：<strong>用一个标量 k ∈ [0,1] 在两者之间连续插值</strong>。k=1 就是确定性残差预测（起点 = x₀），k=0 就是标准 Flow Matching（起点 = 噪声），中间值同时享受两边的好处——既以 x₀ 为锚点（信息不丢），又保留噪声注入带来的收缩性与随机性。</p>
+
+<h3>1.2 核心贡献一览</h3>
+<table class="tbl">
+  <tr><th>贡献</th><th>一句话</th></tr>
+  <tr class="hl"><td>位置-尺度插值核</td><td>x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z，用 k 统一确定性算子与 FM</td></tr>
+  <tr><td>k-free 目标</td><td>网络只吃 (x<sub>t</sub><sup>k</sup>, t) 不吃 k，避免梯度漂移与收敛变慢</td></tr>
+  <tr><td>误差有界性证明</td><td>附录 A 证明 FM 路径的误差被常数上界夹住，而非 Gronwall 指数增长</td></tr>
+  <tr><td>P2VAE + FMT</td><td>物理预训练 VAE + AdaLN-Zero 调制的 Transformer，12× 压缩、潜在时间金字塔省 15× 注意力</td></tr>
+  <tr><td>双旋钮不确定性</td><td>k₃ 控初始条件不确定性，η 控偶然不确定性，两者解耦</td></tr>
+</table>
+
+<h3>1.3 阅读路线</h3>
+<div class="callout note">
+  <span class="co-title">建议路径</span>
+  <p>有扩散/Flow Matching 基础：从第 3 章直接读插值核，第 4 章看误差证明，第 7 章看代码。<br>完全零基础：按 1→2→3→4 顺序建立直觉，再看 5（架构）、6（推理）、7（代码）。<br>视频背景读者：第 9 章的映射表会让你迅速把 k、h<sub>s</sub>、P2VAE 对应到熟悉的概念上。</p>
+</div>
+</section>
+
+<!-- ==================== 第 2 章 ==================== -->
+<section id="ch2">
+<h2><span class="ch-no">02</span>背景预备：PDE 基础模型与误差累积</h2>
+<p class="ch-intro">本章补两块拼图：PDE 基础模型在做什么、为什么长时程 rollout 是它的命门；以及 Flow Matching 的基本构造（注意本文的符号约定与视频领域常见约定不同）。</p>
+
+<h3>2.1 PDE 基础模型：从「解一个方程」到「解一族方程」</h3>
+<p>传统数值方法（有限元、有限差分）是「一方程一求解」：换个边界条件、换个系数，就得重新跑一遍求解器，动辄几小时到几天。神经算子（Neural Operator）的野心是：<strong>用一个神经网络学掉整族 PDE 的解算子</strong>——给定任意初始条件/边界条件/参数，直接输出解场，前向一次几毫秒。</p>
+<p>代表工作：</p>
+<ul>
+  <li><strong>FNO</strong>（Fourier Neural Operator）：在傅里叶空间做参数化的积分核，对周期性光滑 PDE 效果好；</li>
+  <li><strong>DeepONet</strong>：分支网编码输入函数、主干网编码查询坐标，输出解在该点的值；</li>
+  <li><strong>Graph Neural Operator / MeshGraphNets</strong>：用图神经网络处理非结构网格。</li>
+</ul>
+<p>这些模型通常被训练成「一步预测器」：输入 <code>x₀</code>，输出 <code>x₁ = x₀ + Δt · f(x₀)</code> 的近似。要得到长时程轨迹，就<strong>反复自回归调用</strong>。问题就出在这里。</p>
+
+<h3>2.2 误差累积：神经算子的阿喀琉斯之踵</h3>
+<p>设神经算子 <code>f<sub>θ</sub></code> 的单步误差上界为 ε，且 f 是 L-Lipschitz 的。N 步 rollout 后，累积误差满足 Gronwall 型不等式：</p>
+<div class="formula">
+  ‖e<sub>N</sub>‖ ≤ ε · (1 + L + L² + … + L<sup>N−1</sup>) &nbsp;≈&nbsp; ε · e<sup>LN</sup> &nbsp;（当 L &gt; 0）
+  <span class="note-below">误差随步数 N 指数增长；L 哪怕只有 0.05，滚 200 步也放大 e<sup>10</sup> ≈ 22000 倍</span>
+</div>
+<p>这就是为什么神经算子在短期（几步到几十步）看起来很准，<strong>一到成百上千步就数值崩溃、能量漂飞、湍流结构糊掉</strong>。要缓解，常见办法是：</p>
+<ul>
+  <li><strong>多步训练</strong>（rollout training / forcing）：训练时就展开多步，把累积误差纳入损失；但步数深了梯度爆炸/消失，且分布漂移（exposure bias）。</li>
+  <li><strong>加正则/稳定化</strong>：能量守恒约束、涡量约束等，治标不治本。</li>
+  <li><strong>改范式</strong>：不再做确定性残差，而是引入随机性——这就到了 Flow Matching。</li>
+</ul>
+
+<h3>2.3 Flow Matching 速通（本文符号约定）</h3>
+<div class="callout warn">
+  <span class="co-title">符号差异警告</span>
+  <p>在视频/图像的 Flow Matching 文献里，通常约定 <strong>x₀ = 噪声，x₁ = 数据</strong>。本文（Flow Marching 论文）的约定<strong>不同</strong>：</p>
+  <p><code>x₀</code> = 当前状态（已知的物理场）<br><code>x₁</code> = 下一时刻状态（要预测的目标）<br><code>z</code> = 标准高斯噪声</p>
+  <p>路径从「x₀ 与 z 的混合」走向「x₁」。读公式时务必按此约定理解。</p>
+</div>
+<p>Flow Matching 的核心：构造一条从噪声（或噪声+数据混合）到数据的插值路径 <code>x<sub>t</sub></code>，训练网络预测沿路径的<strong>速度场</strong> <code>v<sub>θ</sub>(x<sub>t</sub>, t)</code>。最简单的线性插值（也叫 Optimal Transport 路径）是：</p>
+<div class="formula">
+  x<sub>t</sub> = (1 − t) · z + t · x₁，&nbsp;&nbsp; t ∈ [0, 1]
+  <span class="note-below">t=0 是纯噪声 z，t=1 是目标数据 x₁</span>
+</div>
+<p>对应速度就是常向量 <code>v* = x₁ − z</code>。训练损失：</p>
+<div class="formula">
+  L<sub>FM</sub> = E<sub>x₁, z, t</sub> [ ‖ v<sub>θ</sub>(x<sub>t</sub>, t) − (x₁ − z) ‖² ]
+</div>
+<p>推理时从 t=0 的噪声出发，用欧拉法（或高阶 ODE 求解器）沿速度场积分到 t=1，得到 x₁ 的采样。关键好处：<strong>速度场的 ODE 流带有天然的收缩/耗散结构</strong>，使得误差不会像确定性残差那样无界增长——这正是第 4 章要证明的。</p>
+<p>Flow Marching 的问题意识是：<em>能不能让 Flow Matching 的起点不是「纯噪声」，而是「已知的当前状态 x₀」，从而把确定性算子的信息利用与 FM 的误差有界性结合起来？</em>答案就是下一章的参数 k。</p>
+</section>
+
+<!-- ==================== 第 3 章 ==================== -->
+<section id="ch3">
+<h2><span class="ch-no">03</span>核心原理：桥接参数 k 与位置-尺度插值</h2>
+<p class="ch-intro">本章是全文的数学核心。我们逐步推导 Flow Marching 的插值核、速度场、训练目标，以及那个看起来反直觉却极关键的「k-free」设计。</p>
+
+<h3>3.1 位置-尺度插值核（论文 Eq.4–6）</h3>
+<p>Flow Marching 定义带参数 k ∈ [0,1] 的插值路径：</p>
+<div class="formula">
+  x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub> · z
+  <span class="note-below">位置项 μ<sub>t</sub> 决定「路径往哪走」，尺度项 σ<sub>t</sub> 决定「噪声掺多少」</span>
+</div>
+<p>其中：</p>
+<div class="formula">
+  μ<sub>t</sub> = t · x₁ + k(1 − t) · x₀，&nbsp;&nbsp; σ<sub>t</sub> = (1 − t)(1 − k)
+  <span class="note-below">位置项是 x₁ 与 x₀ 的线性凸组合（权重随 t 变化），尺度项随 t 线性衰减到 0</span>
+</div>
+<p>等价地，可以把它写成「起点混合 + 线性走向」的形式，更直观：</p>
+<div class="formula">
+  x<sub>t</sub><sup>k</sup> = (1 − t) · [ k · x₀ + (1 − k) · z ] + t · x₁
+  <span class="note-below">t=0 时起点是 x₀ 与 z 的混合，t=1 时终点恒为 x₁</span>
+</div>
+<p>来看两个端点的行为：</p>
+<table class="tbl">
+  <tr><th>k</th><th>t=0 起点 x₀<sup>k</sup></th><th>t=1 终点</th><th>物理含义</th></tr>
+  <tr class="hl"><td>1</td><td>x₀（当前状态，确定）</td><td>x₁</td><td>确定性残差预测：从已知状态直接走向下一步</td></tr>
+  <tr><td>0</td><td>z（纯噪声）</td><td>x₁</td><td>标准 Flow Matching：从噪声生成下一步</td></tr>
+  <tr><td>0.5</td><td>0.5·x₀ + 0.5·z</td><td>x₁</td><td>起点半掺噪声，兼顾锚定与随机性</td></tr>
+</table>
+<p>σ<sub>t</sub> 的行为也值得玩味：k=1 时 σ<sub>t</sub> ≡ 0（全程无噪声，路径是 x₀→x₁ 的直线）；k=0 时 σ<sub>t</sub> = 1−t（噪声随 t 递减到 0，这正是 OT-FM 的标准形式）。</p>
+
+<div class="figure">
+<svg width="760" height="300" viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#5845e6"/>
+    </marker>
+  </defs>
+  <!-- axes -->
+  <line x1="60" y1="250" x2="720" y2="250" stroke="#ccc" stroke-width="1.5"/>
+  <line x1="60" y1="30" x2="60" y2="250" stroke="#ccc" stroke-width="1.5"/>
+  <text x="700" y="270" font-size="12" fill="#5a6070">t</text>
+  <text x="20" y="140" font-size="12" fill="#5a6070" transform="rotate(-90,20,140)">x<tspan font-size="9" baseline-shift="sub">t</tspan></text>
+  <!-- x0 line -->
+  <line x1="60" y1="200" x2="700" y2="200" stroke="#d97706" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="66" y="195" font-size="11" fill="#d97706">x₀（当前状态）</text>
+  <!-- x1 line -->
+  <line x1="60" y1="70" x2="700" y2="70" stroke="#10b981" stroke-width="1" stroke-dasharray="4,3"/>
+  <text x="66" y="65" font-size="11" fill="#10b981">x₁（下一状态）</text>
+  <!-- k=1 path: straight from x0 to x1 -->
+  <line x1="60" y1="200" x2="700" y2="70" stroke="#5845e6" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="380" y="120" font-size="12" fill="#5845e6" font-weight="700">k=1：确定性残差（σ=0，直线）</text>
+  <!-- k=0 path: from noise to x1, drawn as a band -->
+  <path d="M 60 240 Q 300 180 700 70" stroke="#7c6cf0" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+  <path d="M 60 160 Q 300 140 700 70" stroke="#7c6cf0" stroke-width="2" fill="none" stroke-dasharray="6,3"/>
+  <text x="380" y="200" font-size="12" fill="#7c6cf0" font-weight="700">k=0：标准 FM（σ=1−t，噪声起点）</text>
+  <!-- k=0.5 path -->
+  <path d="M 60 220 Q 380 150 700 70" stroke="#d97706" stroke-width="2" fill="none"/>
+  <text x="380" y="165" font-size="12" fill="#d97706" font-weight="700">k=0.5：起点半掺噪声，半锚定 x₀</text>
+  <!-- t ticks -->
+  <text x="60" y="265" font-size="11" fill="#5a6070">0</text>
+  <text x="700" y="265" font-size="11" fill="#5a6070">1</text>
+</svg>
+<div class="figcap"><b>图 1</b>：桥接参数 k 控制插值路径形态。k=1 退化为 x₀→x₁ 的确定性直线，k=0 退化为标准 Flow Matching 的噪声→数据路径，中间值连续过渡。三条路径的终点都是 x₁。</div>
+</div>
+
+<h3>3.2 速度场推导（论文 Eq.7–9）</h3>
+<p>对 x<sub>t</sub><sup>k</sup> 关于 t 求导，得到路径上的真实速度：</p>
+<div class="formula">
+  v<sub>t</sub><sup>k</sup> = d x<sub>t</sub><sup>k</sup> / d t = (x₁ − k · x₀) − (1 − k) · z
+  <span class="note-below">由 μ<sub>t</sub>' = x₁ − k·x₀ 与 σ<sub>t</sub>' = −(1−k) 相加得到</span>
+</div>
+<p>网络 <code>v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t)</code> 的训练目标就是逼近这个 v<sub>t</sub><sup>k</sup>。验证两个极限：</p>
+<ul>
+  <li><strong>k=1</strong>：v<sub>t</sub> = x₁ − x₀（常数，即残差）——网络只需预测状态增量，与神经算子完全一致；</li>
+  <li><strong>k=0</strong>：v<sub>t</sub> = x₁ − z（标准 FM 速度）。</li>
+</ul>
+<p>中间的 k 对应一个「介于残差预测和噪声速度之间」的目标。由于 v 同时依赖 x₁、x₀、z，而 x<sub>t</sub><sup>k</sup> 也由这三者构造，网络理论上可以从 x<sub>t</sub><sup>k</sup> 中反推出足够信息来预测 v——<strong>前提是 k 不被当作额外输入</strong>（见 3.4）。</p>
+
+<h3>3.3 训练目标与 (1−t) 预处理（论文 Eq.10）</h3>
+<p>条件 Flow Matching 损失为：</p>
+<div class="formula">
+  L<sub>FM</sub> = E<sub>x₀, x₁, z, t, k</sub> [ ‖ v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t) − v<sub>t</sub><sup>k</sup> ‖² ]
+</div>
+<p>论文在实现时对损失施加了 <strong>(1−t) 加权</strong>（或等价地对网络输出做 (1−t) 预处理），这与 Flow Matching 社区的常见做法一致：靠近 t=1 时目标已接近干净数据，权重降低；靠近 t=0 时噪声大，权重提高，加速收敛。</p>
+<div class="callout tip">
+  <span class="co-title">为什么要 (1−t) 加权？</span>
+  <p>直觉上，t→1 时 σ<sub>t</sub>→0，x<sub>t</sub> 几乎等于 x₁，预测 v 很容易（接近常数），梯度信号弱且易过拟合；t→0 时 σ<sub>t</sub> 最大，预测难度最高。用 (1−t) 重加权让优化器把更多容量花在难的区间。在视频生成的 Wan 模型里你也会看到类似的 <code>flow_shift</code> 调度，思想同源。</p>
+</div>
+
+<h3>3.4 k-free：为什么不把 k 喂给网络</h3>
+<p>一个自然的想法是：把 k 作为条件输入网络（像时间 t 那样），让它显式知道当前走的是哪条路径。但论文实验发现：<strong>把 k 作为输入会（1）减慢收敛，（2）在漂移（drift）时产生有偏梯度</strong>。因此采用 <em>k-free</em> 设计：</p>
+<div class="formula">
+  v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t) &nbsp;&nbsp;（输入只有 x<sub>t</sub><sup>k</sup> 和 t，<strong>不含 k</strong>）
+  <span class="note-below">训练时 k 从 [0,1] 均匀采样，仅用于构造 x<sub>t</sub><sup>k</sup>；网络通过 x<sub>t</sub><sup>k</sup> 的分布隐式感知 k</span>
+</div>
+<p>这背后的逻辑是：<strong>k 已经编码在 x<sub>t</sub><sup>k</sup> 的统计分布里了</strong>。给定 x<sub>t</sub><sup>k</sup> 和 t，网络能从「这一点离 x₀ 有多近、噪声有多大」反推 k 的后验。把 k 显式塞入反而引入了一个不必要的条件维度，干扰了速度场学习。</p>
+<p>这也是推理时的关键便利：<strong>用户可以自由选择 k 来控制行为</strong>，而网络本身不需要改。选 k=1 得到确定性预测，选 k=0 得到纯生成式采样，选中间值在两者间权衡。</p>
+
+<h3>3.5 附录 B：连续性方程视角（补充）</h3>
+<p>论文附录 B 从连续性方程（continuity equation）角度验证了该插值核的合法性：一族以 k 为参数的概率流 p<sub>t</sub><sup>k</sup>(x) 满足 ∂<sub>t</sub>p + ∇·(v·p) = 0，其中 v 是上面的速度场。这保证了通过 ODE 积分得到的样本确实服从目标分布 p<sub>1</sub>(x₁)。换言之，<strong>Flow Marching 不是「凑出来的插值」，而是一个合法的概率流模型</strong>，k 只是参数化了一族从不同起点流向同一终点的流。</p>
+</section>
+
+<!-- ==================== 第 4 章 ==================== -->
+<section id="ch4">
+<h2><span class="ch-no">04</span>误差累积的数学：为什么 FM 不爆炸</h2>
+<p class="ch-intro">Flow Marching 最硬核的理论贡献在附录 A：它证明了基于 Flow Matching 的 rollout 误差是<strong>常数有界</strong>的，而确定性算子的误差是<strong>指数增长</strong>的。本章把证明思路讲清楚。</p>
+
+<h3>4.1 确定性算子的 Gronwall 爆炸</h3>
+<p>回顾 2.2：设神经算子 f<sub>θ</sub> 是 L-Lipschitz，单步误差上界 ε。N 步后：</p>
+<div class="formula">
+  ‖x<sub>N</sub> − x̂<sub>N</sub>‖ ≤ ε · Σ<sub>i=0</sub><sup>N−1</sup> L<sup>i</sup> ≤ ε · e<sup>LN</sup>
+  <span class="note-below">几何级数和；当 L ≥ 1 时随 N 指数/多项式发散</span>
+</div>
+<p>即使 L &lt; 1，几何级数收敛到 ε/(1−L)，看似有界，但实际中神经算子的有效 Lipschitz 常数在分布外区域会急剧增大（数据漂移），导致 L 难以保持 &lt; 1，误差还是会涨。</p>
+
+<h3>4.2 Flow Matching 的收缩结构</h3>
+<p>Flow Marching 的关键观察是：<strong>FM 的速度场天然带有一个指向 x₀ 的收缩项</strong>。把速度场改写一下（以 k≠0 为例）：</p>
+<div class="formula">
+  v<sub>t</sub><sup>k</sup> = (x₁ − x₀) + (1−k)·(x₀ − z)·[1/(1−t)] · ... 
+  <span class="note-below">形式上可分离出一个与 −(x<sub>t</sub> − x₀)/(1−t) 成正比的耗散项</span>
+</div>
+<p>更严谨地，论文将误差动力学写成：</p>
+<div class="formula">
+  d e / d t = A(t) · e + δ(t)
+  <span class="note-below">e = x<sub>t</sub> − x̂<sub>t</sub> 为误差，A(t) 含收缩项 −1/(1−t)，δ(t) 为单步建模误差</span>
+</div>
+<p>这个 −1/(1−t) 项就是<strong>收缩/耗散的来源</strong>：它把误差往 0 拉，且 t 越接近 1 拉力越强（因为 1/(1−t) 发散）。这是 Flow Matching 概率流的固有性质——速度场把概率质量往数据分布 x₁「吸」，对偏离路径的误差起阻尼作用。</p>
+
+<h3>4.3 常数上界</h3>
+<p>对上述带收缩项的线性 ODE 用 Gronwall 引理的「收缩版」（即比较原理），论文得到：</p>
+<div class="formula">
+  ‖e<sub>N</sub>‖ ≤ [ ρ / ((1 − L)(e − 1)) ] · D<sub>max</sub>
+  <span class="note-below">ρ 是与路径有关的常数，L &lt; 1 是收缩率，D<sub>max</sub> 是单步最大建模误差</span>
+</div>
+<p>注意：<strong>这个上界与 N（rollout 步数）无关</strong>。只要单步误差 D<sub>max</sub> 有界、收缩率 L &lt; 1 成立，无论滚多少步，累积误差都被一个常数夹住。这与确定性算子的 e<sup>LN</sup> 形成鲜明对比。</p>
+
+<div class="figure">
+<svg width="760" height="280" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
+  <line x1="60" y1="230" x2="720" y2="230" stroke="#ccc" stroke-width="1.5"/>
+  <line x1="60" y1="30" x2="60" y2="230" stroke="#ccc" stroke-width="1.5"/>
+  <text x="700" y="250" font-size="12" fill="#5a6070">rollout 步数 N</text>
+  <text x="20" y="130" font-size="12" fill="#5a6070" transform="rotate(-90,20,130)">累积误差 ‖e<sub>N</sub>‖</text>
+  <!-- deterministic: exponential growth -->
+  <path d="M 60 225 Q 200 215 360 180 T 700 40" stroke="#ef4444" stroke-width="2.5" fill="none"/>
+  <text x="560" y="55" font-size="12" fill="#ef4444" font-weight="700">确定性算子：~ e<sup>LN</sup>（指数爆炸）</text>
+  <!-- FM: bounded constant -->
+  <line x1="60" y1="150" x2="700" y2="150" stroke="#10b981" stroke-width="2" stroke-dasharray="5,3"/>
+  <path d="M 60 220 Q 200 160 400 150 T 700 150" stroke="#5845e6" stroke-width="2.5" fill="none"/>
+  <text x="430" y="140" font-size="12" fill="#5845e6" font-weight="700">Flow Marching：被常数上界夹住</text>
+  <text x="430" y="165" font-size="11" fill="#10b981">上界 ρ/((1−L)(e−1))·D<sub>max</sub></text>
+  <text x="60" y="245" font-size="11" fill="#5a6070">0</text>
+</svg>
+<div class="figcap"><b>图 2</b>：误差随 rollout 步数的增长对比。确定性神经算子（红）呈指数增长，远期必然崩溃；Flow Marching（紫）因速度场的收缩项，误差被一个与 N 无关的常数（绿虚线）钳住。</div>
+</div>
+
+<div class="callout note">
+  <span class="co-title">证明的前提条件</span>
+  <p>常数上界成立需要：① 速度场 v<sub>θ</sub> 在数据分布附近是 L-Lipschitz 且 L &lt; 1（收缩）；② 单步建模误差 D<sub>max</sub> 有界。前者由 Flow Matching 的训练目标保证（网络学到的是指向数据的收敛流），后者是标准假设。在分布外区域 L 可能失效，这也是为什么论文配合物理预训练的 P2VAE 来约束 latent 分布（第 5 章）。</p>
+</div>
+
+<h3>4.4 这对实践意味着什么</h3>
+<ul>
+  <li><strong>长时程 rollout 不再必然发散</strong>：只要模型训练充分，滚几万步误差也不会飞。这是 PDE 基础模型从「短期玩具」走向「长时程预测工具」的关键一跃。</li>
+  <li><strong>k 的选择是精度-随机性的 trade-off</strong>：k 越大越接近确定性，短期越准但收缩性越弱（k=1 时 σ=0，收缩项消失，回到 Gronwall）；k 越小随机性越强、收缩性越强但短期方差大。实践中 k 取中间值（如 0.3~0.7）兼顾两者。</li>
+  <li><strong>不确定性是免费的</strong>：因为路径含噪声 z，多次采样 k&lt;1 的路径即可得到预测分布，从而量化不确定性（第 6 章展开）。</li>
+</ul>
+</section>
+
+<!-- ==================== 第 5 章 ==================== -->
+<section id="ch5">
+<h2><span class="ch-no">05</span>架构详解：P2VAE + FMT + 潜在时间金字塔</h2>
+<p class="ch-intro">数学框架确定后，论文搭建了一套完整的生成式 PDE 基础模型：先用 P2VAE 把高维物理场压进 latent，再用 FMT（Flow Marching Transformer）在 latent 空间做 Flow Marching，并通过潜在时间金字塔把注意力复杂度砍掉 15×。</p>
+
+<h3>5.1 P2VAE：物理预训练的潜空间自编码器</h3>
+<p>P2VAE（Physics-pretrained VAE）的架构沿用 Stable Diffusion 的 VAE 风格，但有两个关键定制：</p>
+<ul>
+  <li><strong>通道与分辨率</strong>：输入 <code>c3 p128</code>（3 通道、128×128 物理场），压缩到 <code>c16 p16</code>（16 通道、16×16 latent）。空间压缩 8×8 = 64 倍，通道从 3 升到 16，<strong>总体积压缩 12×</strong>。</li>
+  <li><strong>物理预训练</strong>：VAE 不只是用像素重建损失训练，还在大量无标注 PDE 轨迹上做预训练（自监督重建），让 latent 空间天然携带物理结构（守恒律、平滑性），约束后续 FMT 的分布外行为。</li>
+</ul>
+<div class="flow">
+  物理场 x <b>3 × 128 × 128</b>
+  <span class="arr">→ P2VAE encoder →</span>
+  latent y <b>16 × 16 × 16</b>
+  <span class="tag">体积压缩 12×，空间 64×，通道升 16</span>
+</div>
+<p>这与 Wan-VAE 的角色完全对应（视频领域叫 Wan-VAE，PDE 领域叫 P2VAE），都是「把高维信号压进可操作的 latent」。</p>
+
+<h3>5.2 FMT：Flow Marching Transformer</h3>
+<p>FMT 是执行 Flow Marching 速度场预测的主干，一个基于 <strong>SiT（Smooth Induced Transformer）</strong>风格的 Transformer，主要组件：</p>
+<table class="tbl">
+  <tr><th>组件</th><th>设计</th><th>作用</th></tr>
+  <tr class="hl"><td>AdaLN-Zero 调制</td><td>用 (t, 条件) 生成 scale/shift/gate，零初始化</td><td>把时间步与历史条件注入每个 Transformer 块，训练初期稳定</td></tr>
+  <tr><td>RMSNorm + SwiGLU</td><td>归一化用 RMSNorm，FFN 用 SwiGLU</td><td>训练稳定、表达能力强（与 LLaMA 同款）</td></tr>
+  <tr><td>FlashAttention v2</td><td>高效注意力实现</td><td>降显存、提速度，支撑长序列</td></tr>
+  <tr><td>GRU 条件编码 h<sub>s</sub></td><td>把历史状态序列编码为条件向量</td><td>让 FMT 利用多步历史预测下一步</td></tr>
+  <tr><td>潜在时间金字塔</td><td>多分辨率下采样 token</td><td>注意力复杂度节省 η=15×</td></tr>
+</table>
+
+<h4>5.2.1 GRU 条件：把历史喂进来</h4>
+<p>PDE 预测需要利用历史（而不只是当前 x₀）。论文用一个 GRU 把历史状态序列 <code>(x<sub>−s+1</sub>, …, x₀)</code> 编码为隐状态 <code>h<sub>s</sub></code>，作为 FMT 的条件输入（通过 AdaLN 调制）。这与视频模型里的「KV cache / 历史帧」是一回事。</p>
+<div class="formula">
+  h<sub>s</sub> = GRU(x<sub>−s+1</sub>, …, x₀)
+  <span class="note-below">h<sub>s</sub> 通过 AdaLN 的 scale/shift/gate 注入每个 FMT 块</span>
+</div>
+
+<h4>5.2.2 潜在时间金字塔（Latent Temporal Pyramid）</h4>
+<p>这是 FMT 最巧妙的工程设计。物理场的 latent 是 <code>16×16×16</code>，展开成 token 是 256 个（16×16），注意力是 O(n²)=65536。但实际上，<strong>物理场的不同频率成分需要不同的「时间分辨率」</strong>：大尺度结构变化慢、小尺度结构变化快。</p>
+<p>论文把 latent 下采样成多个分辨率，组成金字塔：</p>
+<div class="flow">
+  y₃ <b>16×16</b> = 256 tokens
+  <span class="tag">最细粒度</span><br>
+  Down(y₂, 2) <b>8×8</b> = 64 tokens
+  <span class="tag">2× 下采样</span><br>
+  Down(y₁, 4) <b>4×4</b> = 16 tokens
+  <span class="tag">4× 下采样</span><br>
+  Down(y₀, 8) <b>2×2</b> = 4 tokens
+  <span class="tag">8× 下采样，最粗粒度</span>
+</div>
+<p>注意力复杂度从单层的 256² = 65536 降到金字塔总复杂度。论文报告 <strong>η = 15× 的注意力计算节省</strong>，同时因为粗分辨率 token 覆盖更大感受野，长程依赖建模反而更好。</p>
+<div class="callout tip">
+  <span class="co-title">15× 是怎么算出来的</span>
+  <p>单层全注意力：256² ≈ 6.56e4。金字塔四层：256² + 64² + 16² + 4² = 65536 + 4096 + 256 + 16 = 69904？不对——关键是金字塔不是四层都做全注意力，而是<strong>跨分辨率的稀疏注意力</strong>：粗层 token 只与细层对应区域的少数 token 交互。论文的 η=15× 是实测 FLOPs 比例，核心思路是「用多分辨率把 O(n²) 摊薄成接近 O(n)」。这与视频模型里的时空因子化注意力、Hierarchical Attention 异曲同工。</p>
+</div>
+
+<h4>5.2.3 联合损失 L_CFM（论文 Eq.13）</h4>
+<p>训练时同时优化 Flow Matching 损失与 VAE 重建损失：</p>
+<div class="formula">
+  L<sub>CFM</sub> = L<sub>FM</sub> + λ · L<sub>VAE</sub>
+  <span class="note-below">L<sub>VAE</sub> 是 P2VAE 的重建 + KL 散度，λ 平衡两者</span>
+</div>
+<p>这样 P2VAE 与 FMT 端到端联合训练，latent 空间被同时塑形为「物理上合理」且「Flow Marching 易学好」。</p>
+
+<h3>5.3 训练超参一览</h3>
+<table class="tbl">
+  <tr><th>超参</th><th>取值</th><th>说明</th></tr>
+  <tr class="hl"><td>P2VAE 压缩</td><td>c3p128 → c16p16（12×）</td><td>空间 8×8，通道 3→16</td></tr>
+  <tr><td>FMT 主干</td><td>SiT + AdaLN-Zero</td><td>RMSNorm、SwiGLU、FlashAttn v2</td></tr>
+  <tr><td>时间金字塔</td><td>8/4/2/1 倍下采样</td><td>token 数 4/16/64/256，省 15× 注意力</td></tr>
+  <tr><td>k 采样</td><td>Uniform(0, 1)</td><td>k-free，仅用于构造 x<sub>t</sub><sup>k</sup></td></tr>
+  <tr><td>t 采样</td><td>Uniform(0, 1)</td><td>带 (1−t) 损失加权</td></tr>
+  <tr><td>历史长度</td><td>s 步（GRU 编码）</td><td>h<sub>s</sub> 作为条件</td></tr>
+  <tr><td>优化器</td><td>AdamW</td><td>标准扩散训练配置</td></tr>
+</table>
+
+<div class="figure">
+<svg width="760" height="320" viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
+  <!-- P2VAE -->
+  <rect x="40" y="40" width="140" height="60" rx="8" fill="#eeecfc" stroke="#5845e6" stroke-width="1.5"/>
+  <text x="110" y="68" text-anchor="middle" font-size="13" font-weight="700" fill="#4636c4">P2VAE</text>
+  <text x="110" y="86" text-anchor="middle" font-size="10" fill="#5a6070">3×128×128 → 16×16×16</text>
+  <!-- historical states -->
+  <rect x="40" y="130" width="140" height="50" rx="8" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+  <text x="110" y="155" text-anchor="middle" font-size="12" font-weight="700" fill="#b45309">历史 x₋ₛ₊₁…x₀</text>
+  <text x="110" y="172" text-anchor="middle" font-size="10" fill="#5a6070">→ GRU → hₛ</text>
+  <!-- FMT -->
+  <rect x="260" y="60" width="240" height="120" rx="10" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="380" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#047857">FMT (Flow Marching Transformer)</text>
+  <text x="380" y="112" text-anchor="middle" font-size="11" fill="#5a6070">输入：xₜᵏ, t | 条件：hₛ (AdaLN-Zero)</text>
+  <text x="380" y="130" text-anchor="middle" font-size="11" fill="#5a6070">SiT · RMSNorm · SwiGLU · FlashAttn v2</text>
+  <text x="380" y="150" text-anchor="middle" font-size="11" fill="#5a6070">潜在时间金字塔（8/4/2/1，省 15×）</text>
+  <text x="380" y="168" text-anchor="middle" font-size="12" font-weight="700" fill="#047857">输出：v̂ₜᵏ</text>
+  <!-- arrows -->
+  <line x1="180" y1="70" x2="258" y2="110" stroke="#5845e6" stroke-width="1.5" marker-end="url(#arr2)"/>
+  <line x1="180" y1="155" x2="258" y2="140" stroke="#d97706" stroke-width="1.5" marker-end="url(#arr2)"/>
+  <!-- loss -->
+  <rect x="560" y="95" width="160" height="50" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="1.5"/>
+  <text x="640" y="118" text-anchor="middle" font-size="12" font-weight="700" fill="#b91c1c">L_CFM = L_FM + λ·L_VAE</text>
+  <text x="640" y="135" text-anchor="middle" font-size="10" fill="#5a6070">‖v̂ − v‖² + VAE 重建</text>
+  <line x1="500" y1="120" x2="558" y2="120" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arr2)"/>
+  <!-- ODE rollout -->
+  <rect x="260" y="220" width="240" height="55" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="380" y="245" text-anchor="middle" font-size="12" font-weight="700" fill="#1d4ed8">推理：Euler ODE（N=100, dt=0.01）</text>
+  <text x="380" y="263" text-anchor="middle" font-size="10" fill="#5a6070">x₀ → x₁ → x₂ → …（误差常数有界）</text>
+  <defs>
+    <marker id="arr2" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#888"/>
+    </marker>
+  </defs>
+</svg>
+<div class="figcap"><b>图 3</b>：Flow Marching 训练/推理管线。P2VAE 压缩物理场，GRU 编码历史为 h<sub>s</sub>，FMT 预测速度场 v̂<sub>t</sub><sup>k</sup>，训练用 L_CFM，推理用 Euler ODE 滚出长轨迹。</div>
+</div>
+</section>
+
+<!-- ==================== 第 6 章 ==================== -->
+<section id="ch6">
+<h2><span class="ch-no">06</span>推理与不确定性量化</h2>
+<p class="ch-intro">训练好 FMT 后，推理就是沿速度场积分。本章讲确定性的 Euler ODE 积分，以及 Flow Marching 的两大不确定性旋钮：k₃（初始条件不确定性）与 η（偶然不确定性）。</p>
+
+<h3>6.1 确定性推理：Euler ODE</h3>
+<p>给定当前状态 x₀（及其历史 h<sub>s</sub>），选择一个 k，构造起点：</p>
+<div class="formula">
+  x<sub>0</sub><sup>k</sup> = k · x₀ + (1 − k) · z，&nbsp;&nbsp; z ~ N(0, I)
+</div>
+<p>然后用 Euler 法从 t=0 积分到 t=1，步数 N=100，dt=0.01：</p>
+<div class="formula">
+  x<sub>t+dt</sub><sup>k</sup> = x<sub>t</sub><sup>k</sup> + dt · v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t)
+  <span class="note-below">共 100 步，每步一次 FMT 前向；终点 x₁<sup>k</sup> 即下一步预测</span>
+</div>
+<p>把 x₁ 再作为新的 x₀，重复上述过程，就得到长时程 rollout。由于误差是常数有界的（第 4 章），这一过程可以稳定地滚很远。</p>
+<div class="callout note">
+  <span class="co-title">为什么用 Euler 不用高阶求解器？</span>
+  <p>Flow Matching 的训练路径是直线（OT 路径），速度场近似常数，Euler 法的截断误差已经很小。高阶求解器（RK4、Heun）每步要多次前向，性价比不高。论文用 N=100 步 Euler，在精度与速度间取得平衡。GenCast 等工作也用类似配置。</p>
+</div>
+
+<h3>6.2 不确定性来源与两个旋钮</h3>
+<p>PDE 预测的不确定性有两类，Flow Marching 分别用两个独立旋钮控制：</p>
+<table class="tbl">
+  <tr><th>不确定性类型</th><th>含义</th><th>旋钮</th><th>控制方式</th></tr>
+  <tr class="hl"><td>初始条件（IC）不确定性</td><td>当前状态 x₀ 本身有测量噪声/不完备</td><td><strong>k₃</strong></td><td>减小 k → 起点掺更多噪声 z → 预测分布更宽</td></tr>
+  <tr><td>偶然（Aleatoric）不确定性</td><td>系统本身的随机性（湍流混沌）</td><td><strong>η</strong></td><td>在 ODE 中注入 SDE 噪声项，η 控强度</td></tr>
+</table>
+<p>关键点：<strong>k₃ 与 h₃（历史长度）解耦</strong>——传统方法里历史越长越确定，但 Flow Marching 里你可以独立调 k₃ 来表达「我对当前状态有多不信任」，不受历史长度影响。这是 k-free 设计带来的额外红利。</p>
+
+<h3>6.3 k₃：初始条件不确定性</h3>
+<p>在推理起点 x₀<sup>k</sup> = k·x₀ + (1−k)·z 中，k 越小，噪声权重越大，相当于承认「x₀ 可能不准，让我从一个更宽的分布出发」。多次采样不同的 z，得到一组 x₁ 预测，其方差即 IC 不确定性。</p>
+<ul>
+  <li><strong>k=1</strong>：完全信任 x₀，无 IC 不确定性，确定性预测；</li>
+  <li><strong>k→0</strong>：完全不信任 x₀，从纯噪声出发，退化为无条件生成，不确定性最大。</li>
+</ul>
+
+<h3>6.4 η：偶然不确定性（reverse-time SDE）</h3>
+<p>对于混沌系统（如湍流），即使 IC 完全确定，长期演化也发散。Flow Marching 用 <strong>reverse-time SDE</strong> 注入随机性，把确定性 ODE 升级为：</p>
+<div class="formula">
+  d x = v<sub>θ</sub>(x<sub>t</sub>, t) d t + η · σ<sub>t</sub> · d W
+  <span class="note-below">dW 是布朗运动增量，η ≥ 0 控制噪声强度；η=0 退化为确定性 ODE</span>
+</div>
+<p>用 Euler-Maruyama 离散化：</p>
+<div class="formula">
+  x<sub>t+dt</sub> = x<sub>t</sub> + dt · v<sub>θ</sub>(x<sub>t</sub>, t) + η · σ<sub>t</sub> · √dt · ξ，&nbsp;&nbsp; ξ ~ N(0, I)
+  <span class="note-below">σ<sub>t</sub> = (1−t)(1−k) 沿用插值核的尺度项</span>
+</div>
+<p>η 越大，路径随机性越强，多次采样的预测分布越宽，反映系统的混沌性。注意噪声项带 σ<sub>t</sub>，所以<strong>靠近 t=1 时噪声自动衰减到 0</strong>（因为 σ<sub>1</sub>=0），保证终点 x₁ 仍是干净数据。</p>
+
+<div class="figure">
+<svg width="760" height="260" viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
+  <!-- x0 -->
+  <circle cx="80" cy="130" r="8" fill="#d97706"/>
+  <text x="80" y="155" text-anchor="middle" font-size="11" fill="#b45309">x₀</text>
+  <!-- x1 target -->
+  <circle cx="680" cy="130" r="8" fill="#10b981"/>
+  <text x="680" y="155" text-anchor="middle" font-size="11" fill="#047857">x₁</text>
+  <!-- k knob arrow -->
+  <text x="380" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="#5845e6">k₃ ↓（起点噪声↑）→ IC 不确定性↑</text>
+  <line x1="300" y1="35" x2="460" y2="35" stroke="#5845e6" stroke-width="2" marker-end="url(#arr3)"/>
+  <!-- eta knob arrow -->
+  <text x="380" y="220" text-anchor="middle" font-size="12" font-weight="700" fill="#d97706">η ↑（SDE 噪声↑）→ 偶然不确定性↑</text>
+  <line x1="300" y1="225" x2="460" y2="225" stroke="#d97706" stroke-width="2" marker-end="url(#arr3)"/>
+  <!-- deterministic path -->
+  <line x1="88" y1="130" x2="672" y2="130" stroke="#5845e6" stroke-width="2"/>
+  <text x="380" y="122" text-anchor="middle" font-size="11" fill="#5845e6">η=0, k=1：确定性</text>
+  <!-- spread paths -->
+  <path d="M 88 130 Q 300 70 672 130" stroke="#7c6cf0" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <path d="M 88 130 Q 300 190 672 130" stroke="#7c6cf0" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <path d="M 88 130 Q 380 40 672 130" stroke="#7c6cf0" stroke-width="1" fill="none" opacity="0.5" stroke-dasharray="4,2"/>
+  <path d="M 88 130 Q 380 220 672 130" stroke="#7c6cf0" stroke-width="1" fill="none" opacity="0.5" stroke-dasharray="4,2"/>
+  <defs>
+    <marker id="arr3" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#888"/>
+    </marker>
+  </defs>
+</svg>
+<div class="figcap"><b>图 4</b>：两个不确定性旋钮。k₃ 控制起点的噪声混合程度（IC 不确定性），η 控制路径中的 SDE 噪声强度（偶然不确定性）。两者独立可调，终点都收敛到 x₁。</div>
+</div>
+
+<h3>6.5 与其他方法的对比</h3>
+<table class="tbl">
+  <tr><th>方法</th><th>起点</th><th>误差有界</th><th>不确定性</th><th>每步开销</th></tr>
+  <tr class="hl"><td>神经算子（FNO 等）</td><td>x₀（确定）</td><td>✗ 指数增长</td><td>✗ 无</td><td>1× 前向</td></tr>
+  <tr><td>纯 Flow Matching（k=0）</td><td>噪声 z</td><td>✓ 常数有界</td><td>△ 仅偶然</td><td>~100× 前向</td></tr>
+  <tr><td><strong>Flow Marching</strong></td><td>k·x₀+(1−k)·z</td><td>✓ 常数有界</td><td>✓ k₃ + η 双旋钮</td><td>~100× 前向</td></tr>
+  <tr><td>扩散模型（DDPM）</td><td>噪声</td><td>✓ 有界</td><td>△ 仅偶然</td><td>~1000× 前向</td></tr>
+  <tr><td>GenCast</td><td>图卷积条件</td><td>△ 部分</td><td>△ 离散分箱</td><td>~数十×</td></tr>
+</table>
+</section>
+
+<!-- ==================== 第 7 章 ==================== -->
+<section id="ch7">
+<h2><span class="ch-no">07</span>代码走读：从零复现核心模块</h2>
+<p class="ch-intro">论文官方代码未发布（截至本文整理时，GitHub 上同名仓库均为 404 或占位）。本章给出三个按论文公式复现的参考实现，标注为「示意，非官方代码」。看懂这三份代码，你就掌握了 Flow Marching 的全部工程细节。</p>
+
+<div class="callout warn">
+  <span class="co-title">代码声明</span>
+  <p>以下代码为根据 arXiv:2509.18611 的公式与架构描述编写的<strong>示意实现</strong>，用于教学目的，<strong>非官方代码</strong>。超参（隐藏维度、层数等）为合理假设，复现实验需按论文附录 C 调整。警惕网上任何声称是「官方 Flow Marching 仓库」的链接——截至 2026-11，作者未发布官方实现。</p>
+</div>
+
+<h3>7.1 核心：插值核、速度场与损失</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">flow_marching_core.py</span><span class="lang">Python</span></div>
+<pre><code class="language-python">"""Flow Marching 核心：位置-尺度插值核、速度场、k-free 损失。
+
+示意实现，对应论文 arXiv:2509.18611 Eq.4-10。
+非官方代码，仅用于教学。
+"""
+import torch
+import torch.nn as nn
+
+
+def interpolate(x0: torch.Tensor, x1: torch.Tensor, k: float, t: torch.Tensor):
+    """位置-尺度插值核（论文 Eq.4-6）。
+
+    Args:
+        x0: 当前状态 (B, ...)，已知的物理场 latent
+        x1: 下一状态 (B, ...)，训练目标
+        k:  桥接参数 k ∈ [0,1]
+        t:  时间步 (B,) 或 (B,1,...)，t ∈ [0,1]
+
+    Returns:
+        xt_k: 插值后状态 x_t^k
+        vt_k: 真实速度场 v_t^k
+    """
+    # 把 t 扩展到与 x0 同维
+    while t.dim() < x0.dim():
+        t = t.unsqueeze(-1)
+
+    # 标准高斯噪声（Flow Matching 里的 z）
+    z = torch.randn_like(x0)
+
+    # 位置项 μ_t = t·x1 + k(1-t)·x0
+    mu_t = t * x1 + k * (1.0 - t) * x0
+    # 尺度项 σ_t = (1-t)(1-k)
+    sigma_t = (1.0 - t) * (1.0 - k)
+
+    # x_t^k = μ_t + σ_t · z
+    xt_k = mu_t + sigma_t * z
+
+    # 真实速度 v_t^k = d(xt_k)/dt = (x1 - k·x0) - (1-k)·z
+    vt_k = (x1 - k * x0) - (1.0 - k) * z
+
+    return xt_k, vt_k
+
+
+def flow_marching_loss(v_theta, x0, x1):
+    """k-free Flow Matching 损失（论文 Eq.10，带 (1-t) 加权）。
+
+    v_theta: 网络 v_θ(xt_k, t) -> 预测速度
+    注意：网络输入只有 (xt_k, t)，不含 k —— k-free 设计。
+    """
+    B = x0.shape[0]
+    device = x0.device
+
+    # t ~ Uniform(0,1)
+    t = torch.rand(B, device=device)
+    # k ~ Uniform(0,1)，仅用于构造 xt_k，不喂给网络
+    k = torch.rand(1, device=device).item()
+
+    xt_k, vt_k = interpolate(x0, x1, k, t)
+
+    # k-free：网络只吃 (xt_k, t)
+    v_pred = v_theta(xt_k, t)
+
+    # (1-t) 加权的 MSE 损失
+    weight = (1.0 - t)
+    while weight.dim() < v_pred.dim():
+        weight = weight.unsqueeze(-1)
+    loss = (weight * (v_pred - vt_k) ** 2).mean()
+    return loss
+
+
+# ---- 验证两个极限 ----
+if __name__ == "__main__":
+    x0 = torch.zeros(1, 3, 4, 4)
+    x1 = torch.ones(1, 3, 4, 4)
+    t = torch.tensor([0.5])
+
+    # k=1：确定性残差，σ=0，速度 = x1 - x0
+    xt, vt = interpolate(x0, x1, k=1.0, t=t)
+    print("k=1  sigma:", ((1 - 0.5) * (1 - 1.0)).item(), " vt 应全为 1:", vt.mean().item())
+
+    # k=0：标准 FM，σ=1-t
+    xt, vt = interpolate(x0, x1, k=0.0, t=t)
+    print("k=0  sigma:", ((1 - 0.5) * (1 - 0.0)).item(), " vt = x1 - z:", vt.mean().item())
+</code></pre>
+</div>
+
+<h3>7.2 FMT：带 GRU 条件的 Transformer 速度场网络</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">fmt_conditional.py</span><span class="lang">Python</span></div>
+<pre><code class="language-python">"""FMT (Flow Marching Transformer) 示意实现。
+
+含：时间嵌入、AdaLN-Zero 调制、GRU 条件、潜在时间金字塔。
+非官方代码，仅用于教学。
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class SinusoidalTimeEmbed(nn.Module):
+    """正弦时间嵌入（扩散模型标配）。"""
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, t):
+        half = self.dim // 2
+        freqs = torch.exp(-torch.log(torch.tensor(10000.0)) *
+                          torch.arange(half, device=t.device) / half)
+        args = t[:, None] * freqs[None]
+        return torch.cat([torch.sin(args), torch.cos(args)], dim=-1)
+
+
+class AdaLNZero(nn.Module):
+    """AdaLN-Zero：用 (t_embed, h_s) 生成 scale/shift/gate，零初始化。"""
+    def __init__(self, hidden_dim, cond_dim):
+        super().__init__()
+        self.norm = nn.RMSNorm(hidden_dim)
+        # 把 条件映射成 6 个参数（scale1, shift1, gate1, scale2, shift2, gate2）
+        self.linear = nn.Linear(cond_dim, 6 * hidden_dim)
+        nn.init.zeros_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+
+    def forward(self, x, cond):
+        s1, sh1, g1, s2, sh2, g2 = self.linear(cond).chunk(6, dim=-1)
+        # cond 需要扩展到 token 维
+        x = self.norm(x) * (1 + s1.unsqueeze(1)) + sh1.unsqueeze(1)
+        return x, (g1.unsqueeze(1), g2.unsqueeze(1), s2.unsqueeze(1), sh2.unsqueeze(1))
+
+
+class FMTBlock(nn.Module):
+    """一个 FMT 块：RMSNorm + FlashAttn（这里用 SDPA 代替）+ SwiGLU FFN。"""
+    def __init__(self, dim, num_heads, cond_dim):
+        super().__init__()
+        self.adaln = AdaLNZero(dim, cond_dim)
+        self.attn = nn.MultiheadAttention(dim, num_heads, batch_first=True)
+        self.norm2 = nn.RMSNorm(dim)
+        # SwiGLU FFN
+        self.w1 = nn.Linear(dim, dim * 4)
+        self.w2 = nn.Linear(dim * 4, dim)
+        self.w3 = nn.Linear(dim, dim * 4)
+
+    def forward(self, x, cond):
+        h, (g1, g2, s2, sh2) = self.adaln(x, cond)
+        attn_out, _ = self.attn(h, h, h)
+        x = x + g1 * attn_out
+        h2 = self.norm2(x) * (1 + s2) + sh2
+        ff = self.w2(F.silu(self.w1(h2)) * self.w3(h2))
+        x = x + g2 * ff
+        return x
+
+
+class LatentTemporalPyramid(nn.Module):
+    """潜在时间金字塔：把 (B, C, H, W) 拆成多分辨率 token 序列。"""
+    def __init__(self, downsample_ratios=(8, 4, 2, 1)):
+        super().__init__()
+        self.ratios = downsample_ratios
+
+    def forward(self, y):
+        """y: (B, C, H, W) -> list of (B, N_i, C)"""
+        tokens_list = []
+        for r in self.ratios:
+            if r == 1:
+                yi = y
+            else:
+                yi = F.avg_pool2d(y, kernel_size=r, stride=r)
+            B, C, h, w = yi.shape
+            tokens_list.append(yi.flatten(2).transpose(1, 2))  # (B, h*w, C)
+        return tokens_list  # token 数 4 / 16 / 64 / 256
+
+
+class FMT(nn.Module):
+    """完整 FMT：输入 xt_k 与 t，条件 h_s，输出预测速度。"""
+    def __init__(self, in_channels=16, hidden=256, num_heads=8,
+                 num_layers=6, cond_dim=128, history_len=8):
+        super().__init__()
+        self.time_embed = SinusoidalTimeEmbed(hidden)
+        # GRU 编码历史状态 -> h_s
+        self.history_gru = nn.GRU(input_size=in_channels * 16 * 16,
+                                  hidden_size=cond_dim, batch_first=True)
+        self.cond_proj = nn.Linear(hidden + cond_dim, cond_dim)
+        self.input_proj = nn.Linear(in_channels, hidden)
+        self.pyramid = LatentTemporalPyramid()
+        self.blocks = nn.ModuleList([FMTBlock(hidden, num_heads, cond_dim)
+                                     for _ in range(num_layers)])
+        self.output_proj = nn.Linear(hidden, in_channels)
+
+    def forward(self, xt_k, t, history=None):
+        """
+        xt_k: (B, C, H, W)  当前插值状态
+        t:    (B,)          时间步
+        history: (B, S, C, H, W) 历史 S 步状态，可选
+        """
+        B, C, H, W = xt_k.shape
+        t_emb = self.time_embed(t)  # (B, hidden)
+
+        # GRU 编码历史 -> h_s
+        if history is not None:
+            hist_flat = history.flatten(2)  # (B, S, C*H*W)
+            _, h_s = self.history_gru(hist_flat)
+            h_s = h_s.squeeze(0)  # (B, cond_dim)
+        else:
+            h_s = torch.zeros(B, self.history_gru.hidden_size, device=xt_k.device)
+
+        cond = self.cond_proj(torch.cat([t_emb, h_s], dim=-1))  # (B, cond_dim)
+
+        # 金字塔 token 化
+        tokens_list = self.pyramid(xt_k)
+        # 拼接所有分辨率 token
+        x = torch.cat(tokens_list, dim=1)  # (B, N_total, C)
+        x = self.input_proj(x)
+
+        for blk in self.blocks:
+            x = blk(x, cond)
+
+        x = self.output_proj(x)
+        # 只取最细分辨率（最后 256 个 token）还原成 (B, C, H, W)
+        out = x[:, -H * W:].transpose(1, 2).reshape(B, C, H, W)
+        return out
+</code></pre>
+</div>
+
+<h3>7.3 推理：Euler ODE、SDE 与双旋钮</h3>
+<div class="codeblock">
+<div class="codehead"><span class="fname">inference.py</span><span class="lang">Python</span></div>
+<pre><code class="language-python">"""Flow Marching 推理：Euler ODE（确定）/ Euler-Maruyama SDE（随机）。
+
+实现 k₃（IC 不确定性）与 η（偶然不确定性）双旋钮。
+非官方代码，仅用于教学。
+"""
+import torch
+
+
+@torch.no_grad()
+def euler_ode(v_theta, x0, k=1.0, num_steps=100, history=None):
+    """确定性 Euler ODE 积分：从 x₀^k 积分到 x₁。
+
+    Args:
+        v_theta: 训练好的 FMT
+        x0: 当前状态 (B, C, H, W)
+        k:  桥接参数，控制 IC 不确定性（k=1 确定，k→0 随机）
+        num_steps: 积分步数 N
+    Returns:
+        x1_pred: 预测的下一状态
+    """
+    device = x0.device
+    dt = 1.0 / num_steps
+
+    # 构造起点 x_0^k = k·x0 + (1-k)·z
+    z = torch.randn_like(x0)
+    xt = k * x0 + (1.0 - k) * z
+
+    for i in range(num_steps):
+        t = torch.full((x0.shape[0],), i / num_steps, device=device)
+        vt = v_theta(xt, t, history=history)
+        xt = xt + dt * vt
+
+    return xt  # t=1 时的状态即 x1 预测
+
+
+@torch.no_grad()
+def euler_maruyama_sde(v_theta, x0, k=1.0, eta=0.0, num_steps=100, history=None):
+    """带噪声的 SDE 积分（Euler-Maruyama），η 控制偶然不确定性。
+
+    SDE: dx = v_θ dt + η·σ_t·dW
+    """
+    device = x0.device
+    dt = 1.0 / num_steps
+
+    z = torch.randn_like(x0)
+    xt = k * x0 + (1.0 - k) * z
+
+    for i in range(num_steps):
+        t_val = i / num_steps
+        t = torch.full((x0.shape[0],), t_val, device=device)
+        vt = v_theta(xt, t, history=history)
+
+        # σ_t = (1-t)(1-k)
+        sigma_t = (1.0 - t_val) * (1.0 - k)
+        # 噪声项：η·σ_t·√dt·ξ
+        noise = eta * sigma_t * (dt ** 0.5) * torch.randn_like(xt)
+
+        xt = xt + dt * vt + noise
+
+    return xt
+
+
+@torch.no_grad()
+def rollout(v_theta, x0_init, num_steps_ahead=200, k=1.0, eta=0.0,
+            ode_steps=100, history=None):
+    """长时程 rollout：把每步预测作为下一步输入。"""
+    trajectory = [x0_init]
+    x_cur = x0_init
+    hist = history
+    for _ in range(num_steps_ahead):
+        if eta > 0:
+            x_next = euler_maruyama_sde(v_theta, x_cur, k=k, eta=eta,
+                                        num_steps=ode_steps, history=hist)
+        else:
+            x_next = euler_ode(v_theta, x_cur, k=k, num_steps=ode_steps,
+                               history=hist)
+        trajectory.append(x_next)
+        x_cur = x_next
+        # 可选：更新 history（滑动窗口）
+    return trajectory
+
+
+# ---- 不确定性量化示例 ----
+if __name__ == "__main__":
+    # 假设 v_theta 已训练好
+    v_theta = None  # fmt = FMT(...); 加载权重
+
+    # 1. IC 不确定性：固定 η=0，扫 k
+    for k in [1.0, 0.7, 0.5, 0.3, 0.0]:
+        preds = [euler_ode(v_theta, x0, k=k) for _ in range(20)]
+        mean_pred = torch.stack(preds).mean(0)
+        std_pred = torch.stack(preds).std(0)
+        print(f"k={k}: IC 不确定性（预测标准差）={std_pred.mean().item():.4f}")
+
+    # 2. 偶然不确定性：固定 k，扫 η
+    for eta in [0.0, 0.1, 0.3, 0.5]:
+        preds = [euler_maruyama_sde(v_theta, x0, k=0.5, eta=eta)
+                 for _ in range(20)]
+        std_pred = torch.stack(preds).std(0)
+        print(f"η={eta}: 偶然不确定性={std_pred.mean().item():.4f}")
+</code></pre>
+</div>
+
+<h3>7.4 代码与论文公式的对应</h3>
+<table class="tbl">
+  <tr><th>代码函数</th><th>对应论文</th></tr>
+  <tr class="hl"><td><code>interpolate()</code></td><td>Eq.4–6：x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z</td></tr>
+  <tr><td><code>interpolate()</code> 中 vt_k</td><td>Eq.7–9：v<sub>t</sub><sup>k</sup> = (x₁−k·x₀)−(1−k)·z</td></tr>
+  <tr><td><code>flow_marching_loss()</code></td><td>Eq.10：带 (1−t) 加权的 MSE</td></tr>
+  <tr><td><code>FMT.forward()</code></td><td>FMT + AdaLN-Zero + GRU h<sub>s</sub></td></tr>
+  <tr><td><code>LatentTemporalPyramid</code></td><td>潜在时间金字塔 8/4/2/1</td></tr>
+  <tr><td><code>euler_ode()</code></td><td>第 6.1 节 Euler ODE（N=100）</td></tr>
+  <tr><td><code>euler_maruyama_sde()</code></td><td>Eq.16：reverse-time SDE + η 旋钮</td></tr>
+  <tr><td>k / η 两个参数</td><td>k₃（IC 不确定性）与 η（偶然不确定性）</td></tr>
+</table>
+</section>
+
+<!-- ==================== 第 8 章 ==================== -->
+<section id="ch8">
+<h2><span class="ch-no">08</span>实验与结果</h2>
+<p class="ch-intro">论文在 16 个子集的 PDE 数据集上验证 Flow Marching，涵盖 Navier-Stokes、Kolmogorov 流、对流扩散等。本章列出核心结果。</p>
+
+<h3>8.1 数据集概览</h3>
+<p>训练数据覆盖 <strong>16 个 PDE 子集</strong>，每个子集包含大量轨迹（从数千到数百万条不等），总数据体积达 TB 级。数据类型包括：</p>
+<ul>
+  <li><strong>Navier-Stokes</strong>（2D 湍流、圆柱绕流）；</li>
+  <li><strong>Kolmogorov 流</strong>（周期性强迫湍流）；</li>
+  <li><strong>对流-扩散方程</strong>；</li>
+  <li><strong>其他</strong>：波动方程、泊松方程、反应扩散等。</li>
+</ul>
+
+<h3>8.2 核心结果：少样本与长时程</h3>
+<p>论文最亮眼的两个指标：</p>
+<table class="tbl">
+  <tr><th>任务</th><th>Flow Marching (FMT)</th><th>对比基线</th><th>说明</th></tr>
+  <tr class="hl"><td>Kolmogorov 少样本（少量训练轨迹）</td><td><strong>0.0836</strong></td><td>0.1342</td><td>FMT 在数据稀缺时仍能学好，误差低 38%</td></tr>
+  <tr><td>长时程 rollout（远期误差）</td><td>FMT-L: <strong>0.0914</strong></td><td>VICON: 0.3006</td><td>远期误差仅为对比方法的 1/3，验证误差有界性</td></tr>
+</table>
+<p>长时程结果是第 4 章理论的直接验证：FMT-L（大模型）的远期误差稳定在 0.09 量级，而 VICON（确定性神经算子路线）滚到远期后误差膨胀到 0.30。</p>
+
+<h3>8.3 集成实验与不确定性校准</h3>
+<p>论文还做了集成（ensemble）实验来验证不确定性的可靠性：</p>
+<ul>
+  <li>用不同 k 和 η 采样多条预测轨迹，计算经验方差；</li>
+  <li>与真实 rollout 的误差分布对比，验证预测方差与实际误差的<strong>校准度</strong>（calibration）；</li>
+  <li>结果表明 Flow Marching 的不确定性估计是<strong>可靠且可解释</strong>的——k₃ 主要捕捉初始条件噪声，η 主要捕捉混沌发散。</li>
+</ul>
+
+<h3>8.4 消融实验（关键结论）</h3>
+<table class="tbl">
+  <tr><th>消融项</th><th>结论</th></tr>
+  <tr class="hl"><td>k-free vs k 作为输入</td><td>k 作为输入收敛更慢、梯度有偏；k-free 更优</td></tr>
+  <tr><td>潜在时间金字塔</td><td>注意力复杂度降 15×，长程依赖建模反而更好</td></tr>
+  <tr><td>P2VAE 物理预训练</td><td>latent 分布更物理合理，分布外稳定性提升</td></tr>
+  <tr><td>k 的取值</td><td>k∈[0.3,0.7] 综合最优；k=1 短期准但远期漂，k=0 方差大</td></tr>
+  <tr><td>(1−t) 损失加权</td><td>加速收敛，去掉后训练不稳</td></tr>
+</table>
+</section>
+
+<!-- ==================== 第 9 章 ==================== -->
+<section id="ch9">
+<h2><span class="ch-no">09</span>与视频生成方法的对照</h2>
+<p class="ch-intro">考虑到本文读者多来自视频生成背景（Wan 系列），本章给出一张「PDE 世界 ↔ 视频世界」的概念映射表，帮助你把 Flow Marching 的思想迁移到熟悉的领域。</p>
+
+<div class="callout note">
+  <span class="co-title">核心同构性</span>
+  <p>视频生成与时序 PDE 预测在数学结构上高度同构：都是<strong>给定历史状态，预测下一状态，然后自回归滚下去</strong>。因此 Flow Marching 的核心思想（用 k 桥接确定性残差与 Flow Matching、误差有界、双旋钮不确定性）完全可以移植到视频生成。</p>
+</div>
+
+<h3>9.1 概念映射表</h3>
+<table class="tbl">
+  <tr><th>PDE / Flow Marching 世界</th><th>视频生成世界</th><th>说明</th></tr>
+  <tr class="hl"><td>x₀（当前物理场）</td><td>当前帧 / 已知首帧</td><td>已知的「当前状态」</td></tr>
+  <tr><td>x₁（下一物理场）</td><td>下一帧 / 后续帧</td><td>预测目标</td></tr>
+  <tr><td>z（高斯噪声）</td><td>高斯噪声</td><td>Flow Matching 的随机性来源</td></tr>
+  <tr><td>P2VAE</td><td>Wan-VAE / SD-VAE</td><td>把高维信号压进 latent（视频压时空，PDE 压空间）</td></tr>
+  <tr><td>FMT（Transformer 速度场）</td><td>DiT（WanModel 去噪主干）</td><td>都是预测速度/噪声的 Transformer</td></tr>
+  <tr><td>GRU 条件 h<sub>s</sub></td><td>历史帧 / KV cache / 时序条件</td><td>把历史信息编码为条件</td></tr>
+  <tr><td>k（桥接参数）</td><td>历史帧加噪强度 / Self-Forcing 的 forcing 比例</td><td>控制「从已知出发」还是「从噪声出发」</td></tr>
+  <tr><td>k=1 确定性残差</td><td>自回归帧预测（无扩散）</td><td>直接预测下一帧</td></tr>
+  <tr><td>k=0 标准 FM</td><td>标准视频扩散（从噪声生成）</td><td>完全生成式</td></tr>
+  <tr><td>潜在时间金字塔</td><td>时空因子化注意力 / Patch 合并</td><td>多分辨率降注意力复杂度</td></tr>
+  <tr><td>误差常数有界</td><td>长视频不闪烁 / 不漂移</td><td>自回归稳定性</td></tr>
+  <tr><td>exposure bias（分布漂移）</td><td>Self-Forcing / Diffusion Forcing 要解决的问题</td><td>训练-推理分布不一致</td></tr>
+  <tr><td>η（偶然不确定性）</td><td>CFG / 采样随机性</td><td>控制输出多样性</td></tr>
+</table>
+
+<h3>9.2 为什么视频领域值得借鉴 Flow Marching</h3>
+<p>视频生成的长视频问题本质上就是 PDE 的 long-term rollout 问题——逐帧自回归会累积误差（闪烁、漂移、变形）。当前视频领域的主流解法：</p>
+<ul>
+  <li><strong>Diffusion Forcing</strong>：训练时随机选「预测起点」，让模型既能从干净帧也能从带噪帧出发，缓解 exposure bias；</li>
+  <li><strong>Self-Forcing</strong>（Adobe, arXiv:2506.08009）：在训练中混入模型自己的预测作为条件，缩小训练-推理 gap；</li>
+  <li><strong>DPOT 噪声注入</strong>：在条件帧上加噪，提升鲁棒性。</li>
+</ul>
+<p>Flow Marching 的 k 参数实际上是<strong>把「条件帧加噪」这件事从工程技巧升级为有数学保证的概率流</strong>：k 不是随便设的噪声强度，而是插值核的一个连续参数，且误差有界性有严格证明。如果把 Flow Marching 移植到视频生成，理论上可以得到「长视频不漂移 + 不确定性量化」的双重收益。</p>
+
+<div class="callout tip">
+  <span class="co-title">一个可尝试的视频实验</span>
+  <p>把 Wan 的 Flow Matching 训练目标改成 Flow Marching 形式：x<sub>t</sub><sup>k</sup> = t·x₁ + (1−t)·[k·x₀ + (1−k)·z]，其中 x₀ 是首帧/已知帧。k 从 [0,1] 均匀采样，网络仍只吃 (x<sub>t</sub>, t)。推理时用 k∈[0.5, 0.9] 兼顾首帧锚定与生成多样性。这本质上是把「图生视频的首帧条件」从硬约束变成了概率流的一部分，可能改善长视频的首帧一致性与稳定性。</p>
+</div>
+</section>
+
+<!-- ==================== 第 10 章 ==================== -->
+<section id="ch10">
+<h2><span class="ch-no">10</span>局限与后续演进</h2>
+
+<h3>10.1 已知局限</h3>
+<ul>
+  <li><strong>官方代码未发布</strong>：截至 2026-11，论文作者未开源实现，GitHub 上的同名仓库多为 404 或占位。复现需自行按公式实现（本文第 7 章给出参考）。</li>
+  <li><strong>推理步数仍多</strong>：每步预测需要 ~100 次 FMT 前向，比确定性神经算子的 1 次前向慢两个量级。虽然误差有界，但 wall-clock 速度仍是工程瓶颈。</li>
+  <li><strong>k 的最优取值依赖任务</strong>：不同 PDE、不同噪声水平下，最优 k 不同，需要调参或自适应。</li>
+  <li><strong>高维空间的 SDE 校准</strong>：η 旋钮在高维 latent 空间的校准仍非平凡，不确定性估计的可靠性需要更多验证。</li>
+</ul>
+
+<h3>10.2 后续演进：被 Latent Generative Solvers 取代</h3>
+<p>论文 v2（2026-04）在首页注明：本工作已被后续论文 <strong>arXiv:2602.11229《Latent Generative Solvers》</strong> 取代。演进方向主要是：</p>
+<ul>
+  <li>把 Flow Marching 从「单步预测 + rollout」升级为「直接生成整条 latent 轨迹」，进一步减少误差累积；</li>
+  <li>引入更高效的 latent 求解器，降低推理步数；</li>
+  <li>扩展到更多物理系统与更高维度。</li>
+</ul>
+<p>但 Flow Marching 的核心思想——<strong>用连续参数桥接确定性与随机性、并获得可证明的误差有界性</strong>——仍然是后续工作的基石。</p>
+</section>
+
+<!-- ==================== 第 11 章 ==================== -->
+<section id="ch11">
+<h2><span class="ch-no">11</span>参考资料</h2>
+<table class="tbl">
+  <tr><th>资料</th><th>链接</th><th>说明</th></tr>
+  <tr class="hl"><td>Flow Marching 论文</td><td><a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611</a></td><td>本文一切公式与数据的原始出处（MIT · Zituo Chen & Sili Deng）</td></tr>
+  <tr><td>后续工作 Latent Generative Solvers</td><td><a href="https://arxiv.org/abs/2602.11229">arXiv:2602.11229</a></td><td>论文 v2 注明的取代工作</td></tr>
+  <tr><td>Flow Matching 原论文</td><td><a href="https://arxiv.org/abs/2210.02747">arXiv:2210.02747</a></td><td>想深挖第 3 章数学基础的话</td></tr>
+  <tr><td>GenCast</td><td><a href="https://arxiv.org/abs/2312.02519">arXiv:2312.02519</a></td><td>生成式天气预测，Flow Matching 在 PDE 的先驱应用</td></tr>
+  <tr><td>Diffusion Forcing</td><td><a href="https://arxiv.org/abs/2305.08410">arXiv:2305.08410</a></td><td>视频/时序领域的 forcing 思想，可与 Flow Marching 对照</td></tr>
+  <tr><td>Self-Forcing</td><td><a href="https://arxiv.org/abs/2506.08009">arXiv:2506.08009</a></td><td>Adobe 的视频 Self-Forcing（注意：不含 Flow Marching）</td></tr>
+  <tr><td>FNO</td><td><a href="https://arxiv.org/abs/2010.08895">arXiv:2010.08895</a></td><td>神经算子的代表工作</td></tr>
+</table>
+<p>阅读建议：先读 arXiv:2509.18611 第 3 节（方法）配合本文第 3~4 章建立数学直觉，再读附录 A（误差分析）与附录 C（实验细节）。如果想把思想移植到视频生成，配合 Diffusion Forcing 与 Self-Forcing 两篇对照阅读效果最佳。</p>
+</section>
+
+<footer>
+  <p>本文档由 AI 辅助整理，基于论文 <a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611《Flow Marching for a Generative PDE Foundation Model》</a>（MIT · Zituo Chen & Sili Deng）撰写。所有代码段为按论文公式复现的<strong>示意实现</strong>，非官方代码（作者截至本文整理时未发布官方实现，警惕虚假仓库链接）。事实与数据以原论文为准。</p>
+</footer>
+
+</main>
+</div>
+
+<script>
+(function(){
+  function esc(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  var PY_RE = /(#[^\n]*)|((?:[rbfu]?)(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*"))|(@[A-Za-z_][\w.]*)|(\b\d[\d_]*(?:\.\d[\d_]*)?(?:[eE][+-]?\d+)?\b)|([A-Za-z_]\w*)(?=\s*\()|(\b(?:False|None|True|and|as|assert|async|await|break|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|nonlocal|not|or|pass|raise|return|try|while|with|yield|self|print|range|len|enumerate|zip|int|float|str|bool|list|dict|tuple|set|min|max|abs|round|super|getattr|hasattr|isinstance)\b)/g;
+
+  var BASH_RE = /(#[^\n]*)|((?:"[^"\n]*"|'[^'\n]*'))|(\b(?:python|python3|git|cd|pip|pip3|export|source|conda|torchrun|huggingface-cli|modelscope|accelerate|wget|curl|nvidia-smi|nvcc|apt|sudo|make|tar|unzip|cp|mv|ls|mkdir)\b)/g;
+
+  function paint(src, re, kwIsGroup6){
+    var out = esc(src).replace(re, function(m, c, s, d, n, f, kw){
+      if (c) return '<span class="tk-c">' + c + '</span>';
+      if (s) return '<span class="tk-s">' + s + '</span>';
+      if (d) return '<span class="tk-d">' + d + '</span>';
+      if (n) return '<span class="tk-n">' + n + '</span>';
+      if (f) return '<span class="tk-f">' + f + '</span>';
+      if (kw) return '<span class="tk-k">' + kw + '</span>';
+      return m;
+    });
+    return out;
+  }
+
+  document.querySelectorAll('pre code').forEach(function(el){
+    var cls = el.className || '';
+    var src = el.textContent;
+    if (/\bpython\b/.test(cls)) {
+      el.innerHTML = paint(src, PY_RE, true);
+    } else if (/\bbash\b/.test(cls)) {
+      el.innerHTML = paint(src, BASH_RE, false);
+    }
+  });
+
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var secs = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
+  function spy(){
+    var cur = secs.length ? secs[0] : null;
+    for (var i = 0; i < secs.length; i++){
+      if (secs[i].getBoundingClientRect().top <= 140) cur = secs[i];
+    }
+    tocLinks.forEach(function(a){
+      a.classList.toggle('active', cur && a.getAttribute('href') === '#' + cur.id);
+    });
+  }
+  window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
+  spy();
+})();
+</script>
+</body>
+</html>
