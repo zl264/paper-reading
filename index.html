@@ -258,6 +258,30 @@
       </a>
     </li>
 
+    <li>
+      <a class="doc" href="Flow-Marching-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">09</span>
+        <div>
+          <h2>Flow Marching 从原理到代码</h2>
+          <p>生成式 PDE 基础模型论文精读：插值核与误差累积分析、P2VAE/FMT 架构及核心代码复现。</p>
+          <div class="tags"><span class="tag">PDE 基础模型</span><span class="tag">Flow Matching</span><span class="tag">论文精读</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="MMDiT-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">10</span>
+        <div>
+          <h2>MMDiT 多模态 DiT 详解</h2>
+          <p>SD3 的 MMDiT 架构精读：双流结构、Token 化与 Rectified Flow，含 PyTorch 逐层实现。</p>
+          <div class="tags"><span class="tag">DiT</span><span class="tag">多模态</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
   </ol>
 
   <footer class="site">
@@ -292,8 +316,13 @@
       });
       return Promise.all(fresh.map(function (f) {
         return fetch(encodeURIComponent(f.name))
-          .then(function (r) { return r.text(); })
+          .then(function (r) {
+            /* Pages 部署有延迟：新上传文件暂不可访问（404 等）时不展示，部署完成后刷新即可 */
+            if (!r.ok) return null;
+            return r.text();
+          })
           .then(function (html) {
+            if (!html) return null;
             var t = html.match(/<title>([^<]*)<\/title>/i);
             var meta = html.match(/<meta[^>]*description[^>]*>/i);
             var desc = '';
@@ -303,11 +332,13 @@
             }
             return { name: f.name, title: t ? t[1].trim() : f.name, desc: desc };
           })
-          .catch(function () { return { name: f.name, title: f.name, desc: '' }; });
+          .catch(function () { return null; });
       }));
     })
     .then(function (docs) {
-      if (!docs || !docs.length) return;
+      if (!docs) return;
+      docs = docs.filter(Boolean);
+      if (!docs.length) return;
       var base = list.children.length;
       docs.forEach(function (d, i) {
         var li = document.createElement('li');

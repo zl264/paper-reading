@@ -25,7 +25,7 @@ body{
 }
 .layout{display:flex; min-height:100vh;}
 .toc{
-  position:fixed; top:0; left:0; bottom:0; width:284px;
+  position:fixed; top:0; left:max(0px, calc((100% - 1244px)/2)); bottom:0; width:284px;
   background:#ffffff; border-right:1px solid var(--border);
   overflow-y:auto; padding:28px 18px 40px; z-index:10;
 }
@@ -38,16 +38,34 @@ body{
 .toc a:hover{color:var(--accent); background:var(--accent-soft);}
 .toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
 .content{
-  margin-left:284px; width:calc(100% - 284px);
-  max-width:960px; padding:56px 56px 80px;
+  margin-left:calc(284px + max(0px, calc((100% - 1244px)/2)));
+  width:calc(100% - 284px - max(0px, calc((100% - 1244px)/2)));
+  max-width:960px; padding:56px clamp(24px,4vw,56px) 80px;
 }
+/* ---- 窄屏抽屉目录 ---- */
+.toc-btn{
+  display:none; position:fixed; top:14px; left:14px; z-index:130;
+  border:1px solid var(--border); background:#ffffff; color:var(--accent-deep);
+  font-size:14px; font-weight:600; line-height:1; padding:11px 14px; border-radius:10px;
+  box-shadow:0 4px 14px rgba(15,17,32,.14); cursor:pointer;
+}
+.toc-mask{display:none; position:fixed; inset:0; z-index:90; background:rgba(15,17,32,.45);}
 @media (max-width:1180px){
-  .toc{display:none;}
-  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
+  .toc{
+    left:0; width:min(300px,86vw); z-index:120; border-radius:0 12px 12px 0;
+    transform:translateX(-105%); transition:transform .28s ease;
+    box-shadow:0 0 40px rgba(15,17,32,.2);
+  }
+  .toc.open{transform:none;}
+  .content{margin-left:0; width:100%; padding:74px 20px 60px;}
+  .toc-btn{display:block;}
+  .toc-mask.show{display:block;}
+  .content code{white-space:normal; overflow-wrap:anywhere;}
+  .content pre code{white-space:pre;}
 }
 .doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
 .doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
-h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
+h1{font-size:clamp(27px,4vw,38px); line-height:1.25; font-weight:800; letter-spacing:-.5px;}
 .doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
 .doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
 .doc-meta span{
@@ -55,7 +73,7 @@ h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
   border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
 }
 h2{
-  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
+  font-size:clamp(22px,3vw,29px); font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
   display:flex; align-items:baseline; gap:14px;
 }
 h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
@@ -108,6 +126,8 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 .tbl tr:hover td{background:#faf9ff;}
 .tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
 .tbl .hl td{background:var(--accent-soft);}
+.tbl-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; margin:20px 0;}
+.tbl-wrap .tbl{margin:0; min-width:100%;}
 .callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
 .callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
 .callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
@@ -119,7 +139,7 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 .callout p{margin:6px 0;}
 .formula{
   background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
-  text-align:center; padding:18px 20px; margin:22px 0;
+  text-align:center; padding:18px 20px; margin:22px 0; overflow-x:auto;
   font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
 }
 .formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
@@ -139,6 +159,8 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </style>
 </head>
 <body>
+<button class="toc-btn" id="tocBtn" type="button" aria-controls="toc">☰ 目录</button>
+<div class="toc-mask" id="tocMask"></div>
 <div class="layout">
 
 <nav class="toc" id="toc">
@@ -190,6 +212,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 <p>Flow Marching 的回答是：<strong>用一个标量 k ∈ [0,1] 在两者之间连续插值</strong>。k=1 就是确定性残差预测（起点 = x₀），k=0 就是标准 Flow Matching（起点 = 噪声），中间值同时享受两边的好处——既以 x₀ 为锚点（信息不丢），又保留噪声注入带来的收缩性与随机性。</p>
 
 <h3>1.2 核心贡献一览</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>贡献</th><th>一句话</th></tr>
   <tr class="hl"><td>位置-尺度插值核</td><td>x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z，用 k 统一确定性算子与 FM</td></tr>
@@ -198,6 +221,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>P2VAE + FMT</td><td>物理预训练 VAE + AdaLN-Zero 调制的 Transformer，12× 压缩、潜在时间金字塔省 15× 注意力</td></tr>
   <tr><td>双旋钮不确定性</td><td>k₃ 控初始条件不确定性，η 控偶然不确定性，两者解耦</td></tr>
 </table>
+</div>
 
 <h3>1.3 阅读路线</h3>
 <div class="callout note">
@@ -276,12 +300,14 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <span class="note-below">t=0 时起点是 x₀ 与 z 的混合，t=1 时终点恒为 x₁</span>
 </div>
 <p>来看两个端点的行为：</p>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>k</th><th>t=0 起点 x₀<sup>k</sup></th><th>t=1 终点</th><th>物理含义</th></tr>
   <tr class="hl"><td>1</td><td>x₀（当前状态，确定）</td><td>x₁</td><td>确定性残差预测：从已知状态直接走向下一步</td></tr>
   <tr><td>0</td><td>z（纯噪声）</td><td>x₁</td><td>标准 Flow Matching：从噪声生成下一步</td></tr>
   <tr><td>0.5</td><td>0.5·x₀ + 0.5·z</td><td>x₁</td><td>起点半掺噪声，兼顾锚定与随机性</td></tr>
 </table>
+</div>
 <p>σ<sub>t</sub> 的行为也值得玩味：k=1 时 σ<sub>t</sub> ≡ 0（全程无噪声，路径是 x₀→x₁ 的直线）；k=0 时 σ<sub>t</sub> = 1−t（噪声随 t 递减到 0，这正是 OT-FM 的标准形式）。</p>
 
 <div class="figure">
@@ -443,6 +469,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>5.2 FMT：Flow Marching Transformer</h3>
 <p>FMT 是执行 Flow Marching 速度场预测的主干，一个基于 <strong>SiT（Smooth Induced Transformer）</strong>风格的 Transformer，主要组件：</p>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>组件</th><th>设计</th><th>作用</th></tr>
   <tr class="hl"><td>AdaLN-Zero 调制</td><td>用 (t, 条件) 生成 scale/shift/gate，零初始化</td><td>把时间步与历史条件注入每个 Transformer 块，训练初期稳定</td></tr>
@@ -451,6 +478,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>GRU 条件编码 h<sub>s</sub></td><td>把历史状态序列编码为条件向量</td><td>让 FMT 利用多步历史预测下一步</td></tr>
   <tr><td>潜在时间金字塔</td><td>多分辨率下采样 token</td><td>注意力复杂度节省 η=15×</td></tr>
 </table>
+</div>
 
 <h4>5.2.1 GRU 条件：把历史喂进来</h4>
 <p>PDE 预测需要利用历史（而不只是当前 x₀）。论文用一个 GRU 把历史状态序列 <code>(x<sub>−s+1</sub>, …, x₀)</code> 编码为隐状态 <code>h<sub>s</sub></code>，作为 FMT 的条件输入（通过 AdaLN 调制）。这与视频模型里的「KV cache / 历史帧」是一回事。</p>
@@ -487,6 +515,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 <p>这样 P2VAE 与 FMT 端到端联合训练，latent 空间被同时塑形为「物理上合理」且「Flow Marching 易学好」。</p>
 
 <h3>5.3 训练超参一览</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>超参</th><th>取值</th><th>说明</th></tr>
   <tr class="hl"><td>P2VAE 压缩</td><td>c3p128 → c16p16（12×）</td><td>空间 8×8，通道 3→16</td></tr>
@@ -497,6 +526,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>历史长度</td><td>s 步（GRU 编码）</td><td>h<sub>s</sub> 作为条件</td></tr>
   <tr><td>优化器</td><td>AdamW</td><td>标准扩散训练配置</td></tr>
 </table>
+</div>
 
 <div class="figure">
 <svg width="760" height="320" viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
@@ -560,11 +590,13 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>6.2 不确定性来源与两个旋钮</h3>
 <p>PDE 预测的不确定性有两类，Flow Marching 分别用两个独立旋钮控制：</p>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>不确定性类型</th><th>含义</th><th>旋钮</th><th>控制方式</th></tr>
   <tr class="hl"><td>初始条件（IC）不确定性</td><td>当前状态 x₀ 本身有测量噪声/不完备</td><td><strong>k₃</strong></td><td>减小 k → 起点掺更多噪声 z → 预测分布更宽</td></tr>
   <tr><td>偶然（Aleatoric）不确定性</td><td>系统本身的随机性（湍流混沌）</td><td><strong>η</strong></td><td>在 ODE 中注入 SDE 噪声项，η 控强度</td></tr>
 </table>
+</div>
 <p>关键点：<strong>k₃ 与 h₃（历史长度）解耦</strong>——传统方法里历史越长越确定，但 Flow Marching 里你可以独立调 k₃ 来表达「我对当前状态有多不信任」，不受历史长度影响。这是 k-free 设计带来的额外红利。</p>
 
 <h3>6.3 k₃：初始条件不确定性</h3>
@@ -619,6 +651,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </div>
 
 <h3>6.5 与其他方法的对比</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>方法</th><th>起点</th><th>误差有界</th><th>不确定性</th><th>每步开销</th></tr>
   <tr class="hl"><td>神经算子（FNO 等）</td><td>x₀（确定）</td><td>✗ 指数增长</td><td>✗ 无</td><td>1× 前向</td></tr>
@@ -627,6 +660,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>扩散模型（DDPM）</td><td>噪声</td><td>✓ 有界</td><td>△ 仅偶然</td><td>~1000× 前向</td></tr>
   <tr><td>GenCast</td><td>图卷积条件</td><td>△ 部分</td><td>△ 离散分箱</td><td>~数十×</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 7 章 ==================== -->
@@ -971,6 +1005,7 @@ if __name__ == "__main__":
 </div>
 
 <h3>7.4 代码与论文公式的对应</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>代码函数</th><th>对应论文</th></tr>
   <tr class="hl"><td><code>interpolate()</code></td><td>Eq.4–6：x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z</td></tr>
@@ -982,6 +1017,7 @@ if __name__ == "__main__":
   <tr><td><code>euler_maruyama_sde()</code></td><td>Eq.16：reverse-time SDE + η 旋钮</td></tr>
   <tr><td>k / η 两个参数</td><td>k₃（IC 不确定性）与 η（偶然不确定性）</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 8 章 ==================== -->
@@ -1000,11 +1036,13 @@ if __name__ == "__main__":
 
 <h3>8.2 核心结果：少样本与长时程</h3>
 <p>论文最亮眼的两个指标：</p>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>任务</th><th>Flow Marching (FMT)</th><th>对比基线</th><th>说明</th></tr>
   <tr class="hl"><td>Kolmogorov 少样本（少量训练轨迹）</td><td><strong>0.0836</strong></td><td>0.1342</td><td>FMT 在数据稀缺时仍能学好，误差低 38%</td></tr>
   <tr><td>长时程 rollout（远期误差）</td><td>FMT-L: <strong>0.0914</strong></td><td>VICON: 0.3006</td><td>远期误差仅为对比方法的 1/3，验证误差有界性</td></tr>
 </table>
+</div>
 <p>长时程结果是第 4 章理论的直接验证：FMT-L（大模型）的远期误差稳定在 0.09 量级，而 VICON（确定性神经算子路线）滚到远期后误差膨胀到 0.30。</p>
 
 <h3>8.3 集成实验与不确定性校准</h3>
@@ -1016,6 +1054,7 @@ if __name__ == "__main__":
 </ul>
 
 <h3>8.4 消融实验（关键结论）</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>消融项</th><th>结论</th></tr>
   <tr class="hl"><td>k-free vs k 作为输入</td><td>k 作为输入收敛更慢、梯度有偏；k-free 更优</td></tr>
@@ -1024,6 +1063,7 @@ if __name__ == "__main__":
   <tr><td>k 的取值</td><td>k∈[0.3,0.7] 综合最优；k=1 短期准但远期漂，k=0 方差大</td></tr>
   <tr><td>(1−t) 损失加权</td><td>加速收敛，去掉后训练不稳</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 9 章 ==================== -->
@@ -1037,6 +1077,7 @@ if __name__ == "__main__":
 </div>
 
 <h3>9.1 概念映射表</h3>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>PDE / Flow Marching 世界</th><th>视频生成世界</th><th>说明</th></tr>
   <tr class="hl"><td>x₀（当前物理场）</td><td>当前帧 / 已知首帧</td><td>已知的「当前状态」</td></tr>
@@ -1053,6 +1094,7 @@ if __name__ == "__main__":
   <tr><td>exposure bias（分布漂移）</td><td>Self-Forcing / Diffusion Forcing 要解决的问题</td><td>训练-推理分布不一致</td></tr>
   <tr><td>η（偶然不确定性）</td><td>CFG / 采样随机性</td><td>控制输出多样性</td></tr>
 </table>
+</div>
 
 <h3>9.2 为什么视频领域值得借鉴 Flow Marching</h3>
 <p>视频生成的长视频问题本质上就是 PDE 的 long-term rollout 问题——逐帧自回归会累积误差（闪烁、漂移、变形）。当前视频领域的主流解法：</p>
@@ -1094,6 +1136,7 @@ if __name__ == "__main__":
 <!-- ==================== 第 11 章 ==================== -->
 <section id="ch11">
 <h2><span class="ch-no">11</span>参考资料</h2>
+<div class="tbl-wrap">
 <table class="tbl">
   <tr><th>资料</th><th>链接</th><th>说明</th></tr>
   <tr class="hl"><td>Flow Marching 论文</td><td><a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611</a></td><td>本文一切公式与数据的原始出处（MIT · Zituo Chen & Sili Deng）</td></tr>
@@ -1104,6 +1147,7 @@ if __name__ == "__main__":
   <tr><td>Self-Forcing</td><td><a href="https://arxiv.org/abs/2506.08009">arXiv:2506.08009</a></td><td>Adobe 的视频 Self-Forcing（注意：不含 Flow Marching）</td></tr>
   <tr><td>FNO</td><td><a href="https://arxiv.org/abs/2010.08895">arXiv:2010.08895</a></td><td>神经算子的代表工作</td></tr>
 </table>
+</div>
 <p>阅读建议：先读 arXiv:2509.18611 第 3 节（方法）配合本文第 3~4 章建立数学直觉，再读附录 A（误差分析）与附录 C（实验细节）。如果想把思想移植到视频生成，配合 Diffusion Forcing 与 Self-Forcing 两篇对照阅读效果最佳。</p>
 </section>
 
@@ -1158,6 +1202,29 @@ if __name__ == "__main__":
   }
   window.addEventListener('scroll', function(){ requestAnimationFrame(spy); }, {passive:true});
   spy();
+})();
+</script>
+<script>
+(function(){
+  var btn = document.getElementById('tocBtn');
+  var toc = document.getElementById('toc');
+  var mask = document.getElementById('tocMask');
+  if (!btn || !toc || !mask) return;
+  function setOpen(open){
+    toc.classList.toggle('open', open);
+    mask.classList.toggle('show', open);
+    btn.textContent = open ? '✕ 收起目录' : '☰ 目录';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.style.overflow = open ? 'hidden' : '';
+  }
+  btn.addEventListener('click', function(){ setOpen(!toc.classList.contains('open')); });
+  mask.addEventListener('click', function(){ setOpen(false); });
+  toc.addEventListener('click', function(e){
+    if (e.target && e.target.closest && e.target.closest('a')) setOpen(false);
+  });
+  window.addEventListener('resize', function(){
+    if (window.innerWidth > 1180 && toc.classList.contains('open')) setOpen(false);
+  });
 })();
 </script>
 </body>
