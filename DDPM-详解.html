@@ -153,6 +153,129 @@ pre code{background:none; color:inherit; padding:0; font-size:inherit; white-spa
 .algo code{white-space:normal;}
 footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
 </style>
+
+<style id="unified-layout-override">
+/* Layout-only overrides; source content and behavior remain unchanged. */
+.layout {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
+.layout .toc {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  box-sizing: border-box;
+  width: 284px;
+  height: auto;
+  margin: 0;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+.layout .toc .toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+.layout .toc a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+.layout .toc a.lvl2 {
+  padding-left: 24px;
+  font-size: 13px;
+}
+.layout .toc a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+.layout .toc a.active {
+  border-left-color: #5845e6;
+  border-radius: 7px;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+.content {
+  box-sizing: border-box;
+  flex: none;
+  width: calc(100% - 284px);
+  max-width: none;
+  min-width: 0;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+.content .figure,
+.content figure,
+.content .codeblock,
+.content .formula,
+.content .flow,
+.content .algo,
+.content .algorithm {
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  overflow-x: auto;
+}
+.content table,
+.content .tbl {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  margin-right: 0;
+  overflow-x: auto;
+}
+.content .codeblock pre {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+.content .formula {
+  white-space: nowrap;
+}
+.content .figure svg,
+.content figure svg {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+@media (max-width: 1180px) {
+  .layout .toc { display: none; }
+  .content {
+    width: 100%;
+    max-width: none;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+</style>
 </head>
 <body>
 <div class="layout">

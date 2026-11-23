@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>论文精读 · Paper Reading</title>
-<meta name="description" content="生成模型与视频生成方向论文精读笔记：Transformer、VAE、Diffusion、DiT、Wan2.1 / Wan2.2">
+<meta name="description" content="生成模型、视频生成、3DGS 与世界模型方向论文精读笔记，涵盖原理推导、源码解析与代码实现">
 <style>
   :root {
     --bg: #f7f7f5;
@@ -277,6 +277,66 @@
           <h2>MMDiT 多模态 DiT 详解</h2>
           <p>SD3 的 MMDiT 架构精读：双流结构、Token 化与 Rectified Flow，含 PyTorch 逐层实现。</p>
           <div class="tags"><span class="tag">DiT</span><span class="tag">多模态</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="DDPM-%E8%AF%A6%E8%A7%A3.html">
+        <span class="no">11</span>
+        <div>
+          <h2>DDPM 从原理到代码</h2>
+          <p>去噪扩散概率模型全面详解：前向扩散、反向去噪、训练目标、采样算法与代码实现。</p>
+          <div class="tags"><span class="tag">生成模型</span><span class="tag">DDPM</span><span class="tag">代码实现</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="gad_paper.html">
+        <span class="no">12</span>
+        <div>
+          <h2>GAD 原论文：几何注意力蒸馏</h2>
+          <p>Geometry Attention Distillation for Consistent Video Generation 原论文 HTML 版，保留完整论文结构、公式与图表。</p>
+          <div class="tags"><span class="tag">原论文</span><span class="tag">视频生成</span><span class="tag">GAD</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="splatanything.html">
+        <span class="no">13</span>
+        <div>
+          <h2>SplatAnything 前馈 3DGS 深度解析</h2>
+          <p>高斯间距归一化与前馈 3DGS：从尺度监督歧义、GSNorm 推导到网络架构和公开代码。</p>
+          <div class="tags"><span class="tag">3DGS</span><span class="tag">前馈重建</span><span class="tag">源码解析</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="WorldCrafter.html">
+        <span class="no">14</span>
+        <div>
+          <h2>WorldCrafter 视频世界模型深度解读</h2>
+          <p>从隐式三维记忆到长时一致视频世界模型：FOV 历史检索、RepEncoder、UCPE 与 Base/Fast 推理。</p>
+          <div class="tags"><span class="tag">世界模型</span><span class="tag">视频生成</span><span class="tag">源码解析</span></div>
+        </div>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li>
+      <a class="doc" href="SolarWM.html">
+        <span class="no">15</span>
+        <div>
+          <h2>SolarWM 长时实时世界模型</h2>
+          <p>从 Flow Matching、AnyFlow 与 Self-Gradient Forcing，到训练结构、KV cache、实时部署与 Memory。</p>
+          <div class="tags"><span class="tag">世界模型</span><span class="tag">实时生成</span><span class="tag">源码解析</span></div>
         </div>
         <span class="go">→</span>
       </a>
