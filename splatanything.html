@@ -5,82 +5,323 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SplatAnything — 高斯间距归一化与前馈 3DGS 深度解析</title>
 <style>
-:root{--text:#1a1a1a;--bg:#fafaf8;--accent:#2563eb;--accent2:#7c3aed;--muted:#6b7280;--border:#e5e7eb;--code-bg:#f3f4f6}
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,"PingFang SC","Noto Serif SC","Source Han Serif SC",serif;color:var(--text);background:var(--bg);line-height:1.9;width:calc(100% - 284px);max-width:none;margin:0 0 0 284px;padding:56px 56px 80px;font-size:17px}
-h1{font-size:2rem;margin:0 0 .3rem;line-height:1.3;letter-spacing:-.5px}
-h2{font-size:1.35rem;margin:3rem 0 .9rem;color:var(--accent);padding-bottom:.4rem;border-bottom:1px solid var(--border)}
-h3{font-size:1.08rem;margin:1.8rem 0 .5rem;color:#222}
-h4{font-size:.98rem;margin:1.2rem 0 .4rem;color:#444}
-.meta{color:var(--muted);font-size:.9rem;margin-bottom:2.2rem;line-height:1.85}
-.meta a{color:var(--accent);text-decoration:none}
-.meta a:hover{text-decoration:underline}
-blockquote{border-left:3px solid var(--accent);padding:.7rem 1.2rem;margin:1.5rem 0;background:#f0f4ff;border-radius:0 8px 8px 0;color:#26324d;font-size:.96rem}
-pre{width:fit-content;max-width:100%;min-width:0;background:var(--code-bg);padding:1rem 1.2rem;border-radius:8px;overflow-x:auto;font-size:.82rem;line-height:1.6;margin:1.4rem 0;border:1px solid var(--border)}
-code{font-family:"SF Mono","Fira Code","Cascadia Code",monospace;font-size:.9em}
-p code,li code,td code{background:#eef2f7;padding:.12em .38em;border-radius:4px;font-size:.86em;color:#b4285c}
-p{margin:1.05rem 0}
-ul,ol{margin:1rem 0 1rem 1.6rem}
-li{margin:.4rem 0}
-strong{color:#111}
-.table-wrap{width:fit-content;max-width:100%;min-width:0;margin:1.5rem 0;overflow-x:auto}
-table{width:auto;min-width:0;border-collapse:collapse;margin:0;font-size:.9rem}
-td,th{border:1px solid var(--border);padding:.55rem .7rem;text-align:left}
-th{background:#f6f8fb;font-weight:600;font-size:.88rem}
-td.num{text-align:right;font-variant-numeric:tabular-nums}
-.summary-box{background:linear-gradient(135deg,#f0f4ff,#faf5ff);padding:1.4rem 1.6rem;border-radius:12px;margin:1.6rem 0;border:1px solid #e3e8f7}
-.summary-box h3{margin:0 0 .6rem;color:var(--accent)}
-.golden{font-size:1.18rem;font-weight:600;color:var(--accent);text-align:center;padding:1.8rem 1rem;border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);margin:2.6rem 0;line-height:1.6}
-.tag{display:inline-block;font-size:.72rem;padding:.12em .5em;border-radius:4px;font-family:-apple-system,sans-serif;font-weight:600;vertical-align:middle;margin-right:.35em;white-space:nowrap}
-.tag.paper{background:#dbeafe;color:#1d4ed8}
-.tag.code{background:#dcfce7;color:#15803d}
-.tag.interp{background:#fef3c7;color:#a16207}
-.toc{position:fixed;z-index:10;top:0;left:0;bottom:0;width:284px;margin:0;padding:28px 18px 40px;overflow-y:auto;overflow-x:hidden;background:#fff;border:0;border-right:1px solid #e3e4ec;border-radius:0;font-size:13.5px}
-.toc>strong{display:block;padding:0 10px 14px;color:#4636c4;font-size:15px;font-weight:700;letter-spacing:.5px}
-.toc ol{margin:0;padding:0;list-style:none}
-.toc li{margin:0}
-.toc a{display:block;margin:1px 0;padding:5px 10px;border-left:3px solid transparent;border-radius:7px;color:#5a6070;font-size:13.5px;line-height:1.45;text-decoration:none;transition:all .15s ease}
-.toc a:hover{background:#eeecfc;color:#5845e6;text-decoration:none}
-.toc a.active{border-left-color:#5845e6;background:#eeecfc;color:#4636c4;font-weight:600}
-figure{margin:1.6rem 0;text-align:center}
-figcaption{font-size:.83rem;color:var(--muted);margin-top:.5rem}
-.pre-wrap{position:relative}
-.src{font-size:.78rem;color:var(--muted);margin:-.7rem 0 1.3rem;font-family:-apple-system,sans-serif}
-.src a{color:var(--accent);text-decoration:none}
-.note{border-left:3px solid #f59e0b;background:#fffbeb;padding:.7rem 1.1rem;margin:1.4rem 0;border-radius:0 8px 8px 0;font-size:.93rem}
-hr{border:none;border-top:1px solid var(--border);margin:2.5rem 0}
-.mermaid{width:fit-content;max-width:100%;min-width:0;background:#fff;border:1px solid var(--border);border-radius:10px;padding:1.2rem;margin:1.5rem 0;text-align:center;overflow-x:auto}
-.katex-display{width:fit-content;max-width:100%;min-width:0;overflow-x:auto;text-align:left}
-.katex-display>.katex{max-width:none}
-@media(max-width:1180px){.toc{display:none}body{width:100%;max-width:none;margin-left:0}}
-@media(max-width:600px){body{font-size:16px;padding:1.2rem 1rem}h1{font-size:1.5rem}table{font-size:.8rem}td,th{padding:.4rem .45rem}}
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+}
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+.doc-title { margin: 0 0 30px; }
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+}
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+.doc-subtitle a, .src a { color: var(--accent); text-decoration: none; }
+.doc-subtitle a:hover, .src a:hover { text-decoration: underline; }
+.doc-page h2 {
+  margin: 36px 0 12px;
+  padding: 0;
+  border: 0;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  scroll-margin-top: 28px;
+}
+.doc-page h3 {
+  margin: 32px 0 10px;
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1.45;
+}
+.doc-page h4 {
+  margin: 23px 0 8px;
+  color: var(--ink);
+  font-size: 16px;
+}
+.doc-page p { margin: 10px 0 16px; color: #4b5059; }
+.doc-page ul, .doc-page ol { margin: 10px 0 16px; padding-left: 24px; }
+.doc-page li { margin: 8px 0; }
+.doc-page strong { color: var(--ink); }
+.doc-callout, .summary-box {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+.doc-callout p, .summary-box p { margin: 6px 0 0; color: #46534f; }
+.summary-box h3 { margin: 0 0 8px; color: var(--ink); }
+.doc-note, .note, blockquote {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border: 0;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+  font-size: 16px;
+}
+.golden {
+  margin: 28px 0 34px;
+  padding: 20px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+}
+.tag {
+  display: inline-block;
+  margin-right: .35em;
+  padding: .12em .5em;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.tag.paper { background: #eaf1fe; color: #2558b8; }
+.tag.code { background: #e9f5ef; color: #19724c; }
+.tag.interp { background: #f7f1e5; color: #8a5a16; }
+.src { margin: -12px 0 24px; color: var(--muted); font-size: 13px; }
+.table-scroll, .table-wrap {
+  width: fit-content;
+  max-width: 100%;
+  margin: 18px 0 24px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+.doc-data-table, .table-wrap table {
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.doc-data-table th, .doc-data-table td,
+.table-wrap th, .table-wrap td {
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.doc-data-table th, .table-wrap th { background: var(--soft); color: #566173; font-weight: 620; }
+.table-wrap tr:last-child td { border-bottom: 0; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+figure, .doc-figure { width: fit-content; max-width: 100%; margin: 28px 0; }
+.figure-caption, figcaption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+.figure-caption strong, figcaption strong { display: block; color: #343941; font-weight: 620; }
+.figure-caption span, figcaption span { display: block; margin-top: 2px; }
+hr { margin: 36px 0; border: 0; border-top: 1px solid var(--line); }
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  margin: 0;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+.toc-title {
+  display: block;
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+.toc-rail ol { margin: 0; padding: 0; list-style: none; }
+.toc-rail li { margin: 0; }
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+.toc-rail a:hover { background: #eeecfc; color: #5845e6; text-decoration: none; }
+.toc-rail a.active { border-left-color: #5845e6; background: #eeecfc; color: #4636c4; font-weight: 600; }
+@media (max-width: 1180px) {
+  .toc-rail { display: none; }
+  .doc-page { width: 100%; margin-left: 0; padding: 40px 22px 60px; }
+}
+</style>
+<style>
+.doc-page { --code-bg: #151922; }
+.code-block, .doc-page pre:not(.mermaid) {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 18px 0 24px;
+  overflow: hidden;
+  border: 1px solid #242b38;
+  border-radius: 14px;
+  background: var(--code-bg);
+}
+.doc-page pre:not(.mermaid) { padding: 48px 20px 20px; overflow: auto; }
+.doc-page .code-block > pre {
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 48px 20px 20px;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+  color: #e5e7eb;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.doc-page pre { color: #e5e7eb; font-size: 13px; line-height: 1.65; }
+code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.doc-page :not(pre) code {
+  padding: .12em .38em;
+  border-radius: 4px;
+  background: var(--soft-2);
+  color: #9f3456;
+  font-size: .88em;
+}
+.doc-page pre code { padding: 0; background: transparent; color: inherit; font-size: inherit; }
+.copy-code {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  padding: 4px 9px;
+  border: 1px solid #3a4353;
+  border-radius: 7px;
+  background: #222936;
+  color: #cbd5e1;
+  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+}
+.copy-code:hover { background: #2d3646; color: #fff; }
+.math-scroll, .doc-page .katex-display {
+  width: fit-content;
+  max-width: 100%;
+  margin: 15px 0 20px;
+  padding: 13px 16px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-left: 3px solid #dce5f3;
+  border-radius: 0 10px 10px 0;
+  background: #f8fafc;
+  text-align: left;
+}
+.math {
+  width: max-content;
+  min-width: 0;
+  padding: 13px 16px;
+  color: #27364a;
+  font-family: "Cambria Math", "STIX Two Math", Cambria, serif;
+  font-size: 17px;
+  line-height: 1.75;
+  white-space: nowrap;
+}
+.doc-page .katex-display > .katex {
+  width: max-content;
+  min-width: 0;
+  max-width: none;
+  color: #27364a;
+  font-size: 17px;
+  line-height: 1.75;
+}
+.doc-page .katex-display .katex { font-size: 17px; }
+.algorithm, .mermaid {
+  width: fit-content;
+  max-width: 100%;
+  margin: 18px 0 24px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fbfcfd;
+}
+.mermaid svg { display: block; max-width: none; }
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
   onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-<script>mermaid.initialize({startOnLoad:true,theme:'default',securityLevel:'loose',flowchart:{htmlLabels:true,curve:'basis'}});</script>
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  securityLevel: 'loose',
+  theme: 'base',
+  themeVariables: {
+    fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Helvetica Neue, Arial, sans-serif',
+    primaryColor: '#eef4ff',
+    primaryBorderColor: '#b9cdfd',
+    primaryTextColor: '#2f302d',
+    lineColor: '#9aa1ad',
+    textColor: '#2f302d',
+    mainBkg: '#ffffff',
+    clusterBkg: '#f7f8fa',
+    clusterBorder: '#e6e8ec'
+  },
+  flowchart: { htmlLabels: true, useMaxWidth: false, curve: 'basis', padding: 14, nodeSpacing: 42, rankSpacing: 58 }
+});
+</script>
 </head>
 <body>
-
-<h1>SplatAnything：任意场景前馈 3DGS 的高斯间距归一化</h1>
-<div class="meta">
-<strong>原论文</strong>：SplatAnything: Gaussian Spacing Normalization for Feed-forward 3DGS across Arbitrary Scenes<br>
-<strong>作者</strong>：Hao Yu, Zhenwei Wang, Yongzhen Hu, Yuning Gong, Junta Wu, Xiaowei Zhou, Hujun Bao, Tengfei Wang, Chunchao Guo, Sida Peng（浙江大学 ZJU3DV、腾讯等）<br>
-<strong>arXiv</strong>：<a href="https://arxiv.org/abs/2611.08264" target="_blank">2611.08264v2</a>（v1: 2026-11-05，v2: 2026-11-08）　
-<strong>项目主页</strong>：<a href="https://zju3dv.github.io/SplatAnything/" target="_blank">zju3dv.github.io/SplatAnything</a><br>
-<strong>代码</strong>：<a href="https://github.com/zju3dv/InfiniSplat" target="_blank">github.com/zju3dv/InfiniSplat</a>（<code>InfiniSplat_v3</code> 目录为推理版发布）<br>
-<strong>证据标注</strong>：<span class="tag paper">论文事实</span><span class="tag code">公开代码事实</span><span class="tag interp">基于代码的解释</span>
-</div>
-
-<div class="summary-box">
-<h3>一句话总结</h3>
-<p>SplatAnything 指出，在跨场景、跨相机配置的前馈 3D 高斯泼溅（3DGS）训练中，现有的<strong>径向距离归一化（RDNorm）固定了一个与高斯间距无关的全局统计量</strong>，导致同样的局部观测在不同场景下被赋予不同的高斯尺度监督目标；论文提出<strong>高斯间距归一化（GSNorm）</strong>，直接把逐像素反投影间距的中位数规范化为 1，从而在训练前就建立一致的尺度参考，使一个前馈网络能在物体、室内、街景、航拍等任意尺度场景上稳定预测可渲染的高斯场。</p>
-</div>
-
-<nav class="toc">
-<strong>目录</strong>
+<nav class="toc-rail" aria-label="文档目录">
+<strong class="toc-title">目录</strong>
 <ol>
 <li><a href="#bg">研究背景与动机</a></li>
 <li><a href="#prelim">预备知识：前馈 3DGS 与像素反投影</a></li>
@@ -101,6 +342,23 @@ hr{border:none;border-top:1px solid var(--border);margin:2.5rem 0}
 <li><a href="#ref">参考链接</a></li>
 </ol>
 </nav>
+<main class="doc-page">
+<header class="doc-title" id="top">
+<h1>SplatAnything：任意场景前馈 3DGS 的高斯间距归一化</h1>
+<div class="meta doc-subtitle">
+<strong>原论文</strong>：SplatAnything: Gaussian Spacing Normalization for Feed-forward 3DGS across Arbitrary Scenes<br>
+<strong>作者</strong>：Hao Yu, Zhenwei Wang, Yongzhen Hu, Yuning Gong, Junta Wu, Xiaowei Zhou, Hujun Bao, Tengfei Wang, Chunchao Guo, Sida Peng（浙江大学 ZJU3DV、腾讯等）<br>
+<strong>arXiv</strong>：<a href="https://arxiv.org/abs/2611.08264" target="_blank">2611.08264v2</a>（v1: 2026-11-05，v2: 2026-11-08）　
+<strong>项目主页</strong>：<a href="https://zju3dv.github.io/SplatAnything/" target="_blank">zju3dv.github.io/SplatAnything</a><br>
+<strong>代码</strong>：<a href="https://github.com/zju3dv/InfiniSplat" target="_blank">github.com/zju3dv/InfiniSplat</a>（<code>InfiniSplat_v3</code> 目录为推理版发布）<br>
+<strong>证据标注</strong>：<span class="tag paper">论文事实</span><span class="tag code">公开代码事实</span><span class="tag interp">基于代码的解释</span>
+</div>
+</header>
+
+<div class="summary-box doc-callout">
+<h3>一句话总结</h3>
+<p>SplatAnything 指出，在跨场景、跨相机配置的前馈 3D 高斯泼溅（3DGS）训练中，现有的<strong>径向距离归一化（RDNorm）固定了一个与高斯间距无关的全局统计量</strong>，导致同样的局部观测在不同场景下被赋予不同的高斯尺度监督目标；论文提出<strong>高斯间距归一化（GSNorm）</strong>，直接把逐像素反投影间距的中位数规范化为 1，从而在训练前就建立一致的尺度参考，使一个前馈网络能在物体、室内、街景、航拍等任意尺度场景上稳定预测可渲染的高斯场。</p>
+</div>
 
 <h2 id="bg">1. 研究背景与动机</h2>
 
@@ -651,10 +909,11 @@ $$\mathcal{L}=\lambda_{\mathrm{MSE}}\mathcal{L}_{\mathrm{MSE}}+\lambda_{\mathrm{
 
 <hr>
 <p style="font-size:.82rem;color:#9ca3af;text-align:center">本文基于 arXiv:2611.08264v2 与 InfiniSplat_v3 公开推理代码整理。所有源码摘录均来自公开仓库，训练相关描述均归因于论文原文。</p>
+</main>
 
 <script>
 (function(){
-  const links=Array.from(document.querySelectorAll('.toc a[href^="#"]'));
+  const links=Array.from(document.querySelectorAll('.toc-rail a[href^="#"]'));
   const sections=links.map(function(link){return document.getElementById(link.getAttribute('href').slice(1))}).filter(Boolean);
   if(!sections.length)return;
   function updateActive(){
@@ -673,6 +932,49 @@ $$\mathcal{L}=\lambda_{\mathrm{MSE}}\mathcal{L}_{\mathrm{MSE}}+\lambda_{\mathrm{
   window.addEventListener('resize',updateActive);
   updateActive();
 })();
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('.table-wrap').forEach(function(wrap){
+    wrap.classList.add('table-scroll');
+    const table=wrap.querySelector('table');
+    if(table)table.classList.add('doc-data-table');
+  });
+  document.querySelectorAll('.note').forEach(function(note){note.classList.add('doc-note')});
+  document.querySelectorAll('.doc-page pre:not(.mermaid)').forEach(function(pre){
+    const wrapper=document.createElement('div');
+    wrapper.className='code-block';
+    pre.parentNode.insertBefore(wrapper,pre);
+    wrapper.appendChild(pre);
+    const code=pre.querySelector('code');
+    if(!code)return;
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='copy-code';
+    button.textContent='复制';
+    button.setAttribute('aria-label','复制代码');
+    wrapper.appendChild(button);
+    button.addEventListener('click',async function(){
+      const text=code.textContent;
+      let copied=false;
+      if(navigator.clipboard&&window.isSecureContext){
+        try{await navigator.clipboard.writeText(text);copied=true}catch(error){copied=false}
+      }
+      if(!copied){
+        const textarea=document.createElement('textarea');
+        textarea.value=text;
+        textarea.style.position='fixed';
+        textarea.style.opacity='0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try{copied=document.execCommand('copy')}catch(error){copied=false}
+        textarea.remove();
+      }
+      button.textContent=copied?'已复制':'复制失败';
+      window.setTimeout(function(){button.textContent='复制'},1600);
+    });
+  });
+});
 </script>
 
 </body>

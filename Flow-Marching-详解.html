@@ -4,267 +4,755 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Flow Marching 从原理到代码：全面详解</title>
-<style>
-:root{
-  --bg:#f7f7fa; --fg:#24292f; --muted:#5a6070;
-  --accent:#5845e6; --accent-2:#7c6cf0; --accent-soft:#eeecfc; --accent-deep:#4636c4;
-  --border:#e3e4ec; --card:#ffffff;
-  --code-bg:#0d1117; --code-head:#161b22; --code-fg:#e6edf3;
-  --tk-c:#8b949e; --tk-k:#ff7b72; --tk-s:#a5d6ff; --tk-n:#79c0ff; --tk-d:#d2a8ff; --tk-f:#d2a8ff; --tk-b:#ffa657;
-  --note-bg:#eff6ff; --note-bd:#3b82f6;
-  --warn-bg:#fffbeb; --warn-bd:#d97706;
-  --tip-bg:#ecfdf5; --tip-bd:#10b981;
-  --danger-bg:#fef2f2; --danger-bd:#ef4444;
-}
-*{box-sizing:border-box; margin:0; padding:0;}
-html{scroll-behavior:smooth; scroll-padding-top:24px;}
-body{
-  background:var(--bg); color:var(--fg);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  font-size:16px; line-height:1.75; -webkit-font-smoothing:antialiased;
-}
-.layout{display:flex; min-height:100vh;}
-.toc{
-  position:fixed; top:0; left:0; bottom:0; width:284px;
-  background:#ffffff; border-right:1px solid var(--border);
-  overflow-y:auto; padding:28px 18px 40px; z-index:10;
-}
-.toc-title{font-size:15px; font-weight:700; color:var(--accent-deep); padding:0 10px 14px; letter-spacing:.5px;}
-.toc a{
-  display:block; padding:5px 10px; margin:1px 0; border-radius:7px;
-  color:var(--muted); text-decoration:none; font-size:13.5px; line-height:1.45;
-  border-left:3px solid transparent; transition:all .15s ease;
-}
-.toc a:hover{color:var(--accent); background:var(--accent-soft);}
-.toc a.active{color:var(--accent-deep); background:var(--accent-soft); border-left-color:var(--accent); font-weight:600;}
-.content{
-  margin-left:284px; width:calc(100% - 284px);
-  max-width:960px; padding:56px 56px 80px;
-}
-@media (max-width:1180px){
-  .toc{display:none;}
-  .content{margin-left:0; width:100%; padding:40px 22px 60px;}
-}
-.doc-header{border-bottom:1px solid var(--border); padding-bottom:34px; margin-bottom:44px;}
-.doc-kicker{font-size:13px; letter-spacing:2.5px; color:var(--accent); font-weight:700; text-transform:uppercase; margin-bottom:10px;}
-h1{font-size:38px; line-height:1.25; font-weight:800; letter-spacing:-.5px;}
-.doc-sub{margin-top:14px; color:var(--muted); font-size:16px; max-width:640px;}
-.doc-meta{display:flex; flex-wrap:wrap; gap:10px; margin-top:22px;}
-.doc-meta span{
-  font-size:12.5px; color:var(--accent-deep); background:var(--accent-soft);
-  border:1px solid #ded9f7; border-radius:999px; padding:3px 13px; font-weight:600;
-}
-h2{
-  font-size:29px; font-weight:800; margin:64px 0 8px; letter-spacing:-.3px;
-  display:flex; align-items:baseline; gap:14px;
-}
-h2 .ch-no{font-size:15px; color:var(--accent); font-family:ui-monospace,Consolas,monospace; font-weight:700;}
-h2::after{content:""; display:block;}
-.ch-intro{color:var(--muted); font-size:15.5px; margin:8px 0 24px; border-left:3px solid var(--accent-2); padding-left:14px;}
-h3{
-  font-size:20px; font-weight:700; margin:40px 0 14px; padding-left:12px;
-  border-left:4px solid var(--accent); line-height:1.4;
-}
-h4{font-size:16.5px; font-weight:700; margin:28px 0 10px; color:#383e4c;}
-p{margin:14px 0;}
-strong{font-weight:700; color:#1a1f2b;}
-em{font-style:normal; background:linear-gradient(transparent 62%, #e8e2ff 62%); font-weight:600;}
-ul,ol{padding-left:26px; margin:12px 0;}
-li{margin:7px 0;}
-hr{border:none; border-top:1px solid var(--border); margin:36px 0;}
-a{color:var(--accent); text-decoration:none;}
-a:hover{text-decoration:underline;}
-code{
-  font-family:ui-monospace,SFMono-Regular,Consolas,"Cascadia Code",Menlo,monospace;
-  font-size:.86em; background:var(--accent-soft); color:var(--accent-deep);
-  padding:2px 6px; border-radius:5px; white-space:nowrap;
-}
-.codeblock{margin:20px 0; border-radius:11px; overflow:hidden; border:1px solid #262b36; box-shadow:0 6px 24px rgba(15,17,32,.10);}
-.codehead{
-  display:flex; justify-content:space-between; align-items:center;
-  background:var(--code-head); padding:8px 16px; border-bottom:1px solid #232833;
-}
-.codehead .fname{color:#9aa4b2; font-family:ui-monospace,Consolas,monospace; font-size:12.5px;}
-.codehead .lang{color:#6e7681; font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;}
-pre{
-  background:var(--code-bg); color:var(--code-fg); overflow-x:auto;
-  padding:16px 18px; font-size:13.5px; line-height:1.65; tab-size:4;
-}
-pre code{background:none; color:inherit; padding:0; font-size:inherit; white-space:pre; border-radius:0;}
-.tk-c{color:var(--tk-c); font-style:italic;}
-.tk-k{color:var(--tk-k);}
-.tk-s{color:var(--tk-s);}
-.tk-n{color:var(--tk-n);}
-.tk-d{color:var(--tk-d);}
-.tk-f{color:var(--tk-f);}
-.tk-b{color:var(--tk-b);}
-.tbl{width:100%; border-collapse:collapse; margin:20px 0; font-size:14.5px; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(20,22,40,.06);}
-.tbl th{
-  background:#f0eefb; color:#3b3480; text-align:left; padding:10px 14px;
-  font-weight:700; border-bottom:2px solid #ddd6f5; font-size:13.5px; white-space:nowrap;
-}
-.tbl td{padding:10px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
-.tbl tr:last-child td{border-bottom:none;}
-.tbl tr:hover td{background:#faf9ff;}
-.tbl .num{font-family:ui-monospace,Consolas,monospace; font-size:13px;}
-.tbl .hl td{background:var(--accent-soft);}
-.callout{border-radius:10px; padding:16px 18px 16px 20px; margin:22px 0; font-size:14.5px; line-height:1.7; border:1px solid; border-left-width:4px;}
-.callout .co-title{font-weight:800; margin-bottom:5px; font-size:14px; display:block;}
-.callout.note{background:var(--note-bg); border-color:var(--note-bd); color:#1e3a5f;}
-.callout.note .co-title{color:#1d4ed8;}
-.callout.warn{background:var(--warn-bg); border-color:var(--warn-bd); color:#713f12;}
-.callout.warn .co-title{color:#b45309;}
-.callout.tip{background:var(--tip-bg); border-color:var(--tip-bd); color:#064e3b;}
-.callout.tip .co-title{color:#047857;}
-.callout p{margin:6px 0;}
-.formula{
-  background:#fbfbff; border:1px solid #e0dcf5; border-radius:10px;
-  text-align:center; padding:18px 20px; margin:22px 0;
-  font-family:"Cambria Math",Georgia,"Times New Roman",serif; font-size:19px; color:#2b2350;
-}
-.formula .note-below{display:block; margin-top:8px; font-family:inherit; font-size:13px; color:var(--muted);}
-.flow{
-  background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px;
-  margin:20px 0; font-family:ui-monospace,Consolas,monospace; font-size:13px; line-height:2.1;
-  overflow-x:auto; white-space:nowrap;
-}
-.flow b{color:var(--accent-deep); font-weight:700;}
-.flow .arr{color:#b08c00; font-weight:700; margin:0 6px;}
-.flow .tag{color:var(--muted); font-size:11.5px; margin-left:8px;}
-.figure{margin:26px 0; text-align:center;}
-.figure svg{max-width:100%; height:auto; display:block; margin:0 auto; background:#fff; border:1px solid var(--border); border-radius:12px;}
-.figcap{margin-top:10px; font-size:13.5px; color:var(--muted); line-height:1.6;}
-.figcap b{color:var(--fg);}
-footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; color:var(--muted); font-size:13.5px;}
-</style>
 
-<style id="unified-layout-override">
-/* Layout-only overrides; source content and behavior remain unchanged. */
-.layout {
-  display: block;
+
+
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
   box-sizing: border-box;
-  width: 100%;
-  max-width: none;
-  min-height: 100vh;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
   margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
   padding: 0;
 }
-.layout .toc {
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
   z-index: 10;
-  box-sizing: border-box;
   width: 284px;
-  height: auto;
-  margin: 0;
   padding: 28px 18px 40px;
   overflow-y: auto;
-  border: 0;
   border-right: 1px solid #e3e4ec;
   background: #ffffff;
 }
-.layout .toc .toc-title {
+
+.toc-title {
   padding: 0 10px 14px;
   color: #4636c4;
   font-size: 15px;
   font-weight: 700;
   letter-spacing: .5px;
 }
-.layout .toc a {
+
+.toc-rail a {
   display: block;
   margin: 1px 0;
   padding: 5px 10px;
-  border: 0;
   border-left: 3px solid transparent;
   border-radius: 7px;
-  background: transparent;
   color: #5a6070;
   font-size: 13.5px;
   line-height: 1.45;
   text-decoration: none;
   transition: all .15s ease;
 }
-.layout .toc a.lvl2 {
-  padding-left: 24px;
-  font-size: 13px;
-}
-.layout .toc a:hover {
+
+.toc-rail a:hover {
   background: #eeecfc;
   color: #5845e6;
   text-decoration: none;
 }
-.layout .toc a.active {
+
+.toc-rail a.active {
   border-left-color: #5845e6;
-  border-radius: 7px;
   background: #eeecfc;
   color: #4636c4;
   font-weight: 600;
 }
-.content {
-  box-sizing: border-box;
-  flex: none;
-  width: calc(100% - 284px);
-  max-width: none;
-  min-width: 0;
-  margin: 0 0 0 284px;
-  padding: 56px 56px 80px;
-}
-.content .figure,
-.content figure,
-.content .codeblock,
-.content .formula,
-.content .flow,
-.content .algo,
-.content .algorithm {
-  width: fit-content;
-  max-width: 100%;
-  min-width: 0;
-  margin-left: 0;
-  margin-right: 0;
-  overflow-x: auto;
-}
-.content table,
-.content .tbl {
-  display: block;
-  width: fit-content;
-  max-width: 100%;
-  min-width: 0;
-  margin-left: 0;
-  margin-right: 0;
-  overflow-x: auto;
-}
-.content .codeblock pre {
-  width: auto;
-  max-width: 100%;
-  min-width: 0;
-  overflow-x: auto;
-}
-.content .formula {
-  white-space: nowrap;
-}
-.content .figure svg,
-.content figure svg {
-  width: auto;
-  max-width: 100%;
-  height: auto;
-}
+
 @media (max-width: 1180px) {
-  .layout .toc { display: none; }
-  .content {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
     width: 100%;
-    max-width: none;
     margin-left: 0;
     padding: 40px 22px 60px;
   }
 }
-</style>
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  </style>
+<style>
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+    .doc-kicker { margin-bottom: 10px; color: #5845e6; font-size: 13px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .doc-meta span { padding: 3px 13px; border: 1px solid #ded9f7; border-radius: 999px; background: #eeecfc; color: #4636c4; font-size: 12.5px; font-weight: 600; }
+    .doc-block h2 .ch-no { color: #5845e6; font-family: ui-monospace, Consolas, monospace; font-size: 14px; font-weight: 700; }
+    .doc-block em { background: linear-gradient(transparent 62%, #e8e2ff 62%); font-style: normal; font-weight: 600; }
+    .doc-callout > strong, .doc-note > strong { display: block; margin-bottom: 5px; font-size: 14px; }
+    .doc-note p + p { margin-top: 6px; }
+    .doc-data-table tr:last-child td { border-bottom: 0; }
+    .doc-data-table tr:hover td { background: #faf9ff; }
+    .doc-data-table tr.hl td { background: #f2f0fc; }
+    .math small { display: block; margin-top: 6px; }
+    .algorithm { overflow-x: auto; font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 2.1; white-space: nowrap; }
+    .algorithm b { color: #4636c4; font-weight: 700; }
+    .algorithm .arr { margin: 0 6px; color: #9a7414; font-weight: 700; }
+    .algorithm .tag { margin-left: 8px; color: var(--muted); font-size: 11.5px; }
+    .doc-diagram { width: fit-content; max-width: 100%; }
+    .mermaid-frame > svg { display: block; width: auto; max-width: 100%; height: auto; }
+    .figure-caption b { color: #343941; font-weight: 620; }
+    .code-label .fname { font-family: Consolas, monospace; }
+    .code-label .lang { margin-left: 9px; color: #6e7681; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    .code-block pre code { white-space: pre; }
+    .tk-c { color: #8b949e; font-style: italic; }
+    .tk-k { color: #ff7b72; }
+    .tk-s { color: #a5d6ff; }
+    .tk-n { color: #79c0ff; }
+    .tk-d, .tk-f { color: #d2a8ff; }
+    .tk-b { color: #ffa657; }
+    footer { margin-top: 70px; padding-top: 26px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; }
+  </style>
 </head>
 <body>
-<div class="layout">
-
-<nav class="toc" id="toc">
+<nav class="toc-rail" id="toc" aria-label="文档目录">
   <div class="toc-title">Flow Marching 详解</div>
   <a href="#ch1">1. Flow Marching 是什么</a>
   <a href="#ch2">2. 背景预备：PDE 基础模型与误差累积</a>
@@ -279,12 +767,12 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <a href="#ch11">11. 参考资料</a>
 </nav>
 
-<main class="content">
+<main class="doc-page">
 
-<header class="doc-header">
+<header class="doc-title" id="top">
   <div class="doc-kicker">Generative PDE Foundation Model Deep Dive</div>
   <h1>Flow Marching 从原理到代码：全面详解</h1>
-  <p class="doc-sub">一份把「确定性神经算子」与「概率性 Flow Matching」用一条参数 k 缝起来的深度解析——从插值核的三种等价形式、误差累积的 Gronwall vs 收缩上界，到 P2VAE/FMT/潜在时间金字塔的逐层结构，再到可运行的参考实现与不确定性双旋钮。</p>
+  <p class="doc-subtitle">一份把「确定性神经算子」与「概率性 Flow Matching」用一条参数 k 缝起来的深度解析——从插值核的三种等价形式、误差累积的 Gronwall vs 收缩上界，到 P2VAE/FMT/潜在时间金字塔的逐层结构，再到可运行的参考实现与不确定性双旋钮。</p>
   <div class="doc-meta">
     <span>arXiv:2509.18611（MIT · 机械工程系）</span>
     <span>v1 2025-09 / v2 2026-04</span>
@@ -294,12 +782,12 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </header>
 
 <!-- ==================== 第 1 章 ==================== -->
-<section id="ch1">
+<section class="doc-block" id="ch1">
 <h2><span class="ch-no">01</span>Flow Marching 是什么</h2>
-<p class="ch-intro">一句话：Flow Marching 是 MIT 机械工程系 Zituo Chen 与 Sili Deng 提出的「生成式 PDE 基础模型」训练框架，它用一个连续参数 <em>k</em> 把「确定性神经算子（直接预测下一步）」和「Flow Matching（从噪声生成）」两条路统一成同一条插值路径，从而在长时程 rollout 中获得可证明的误差有界性与不确定性量化能力。</p>
+<p class="lead">一句话：Flow Marching 是 MIT 机械工程系 Zituo Chen 与 Sili Deng 提出的「生成式 PDE 基础模型」训练框架，它用一个连续参数 <em>k</em> 把「确定性神经算子（直接预测下一步）」和「Flow Matching（从噪声生成）」两条路统一成同一条插值路径，从而在长时程 rollout 中获得可证明的误差有界性与不确定性量化能力。</p>
 
-<div class="callout warn">
-  <span class="co-title">关于出处的重要澄清</span>
+<div class="doc-callout">
+  <strong>关于出处的重要澄清</strong>
   <p>Flow Marching <strong>不是</strong>视频生成领域的技术。你可能在 Self-Forcing、CausVid、MotionStream 等视频论文里听到过「forcing」「marching」这类词，但它们用的是不同方法（Diffusion Forcing、自回归去噪等），<strong>均不含 Flow Marching 这一术语</strong>。本技术唯一的正式出处是 PDE 基础模型论文 <a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611</a>。考虑到你此前的阅读背景是视频生成（Wan 系列），本文第 9 章会专门给出「PDE 世界 ↔ 视频世界」的概念映射表，帮助你迁移理解。</p>
 </div>
 
@@ -313,7 +801,8 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 <p>Flow Marching 的回答是：<strong>用一个标量 k ∈ [0,1] 在两者之间连续插值</strong>。k=1 就是确定性残差预测（起点 = x₀），k=0 就是标准 Flow Matching（起点 = 噪声），中间值同时享受两边的好处——既以 x₀ 为锚点（信息不丢），又保留噪声注入带来的收缩性与随机性。</p>
 
 <h3>1.2 核心贡献一览</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>贡献</th><th>一句话</th></tr>
   <tr class="hl"><td>位置-尺度插值核</td><td>x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z，用 k 统一确定性算子与 FM</td></tr>
   <tr><td>k-free 目标</td><td>网络只吃 (x<sub>t</sub><sup>k</sup>, t) 不吃 k，避免梯度漂移与收敛变慢</td></tr>
@@ -321,18 +810,19 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>P2VAE + FMT</td><td>物理预训练 VAE + AdaLN-Zero 调制的 Transformer，12× 压缩、潜在时间金字塔省 15× 注意力</td></tr>
   <tr><td>双旋钮不确定性</td><td>k₃ 控初始条件不确定性，η 控偶然不确定性，两者解耦</td></tr>
 </table>
+</div>
 
 <h3>1.3 阅读路线</h3>
-<div class="callout note">
-  <span class="co-title">建议路径</span>
+<div class="doc-note">
+  <strong>建议路径</strong>
   <p>有扩散/Flow Matching 基础：从第 3 章直接读插值核，第 4 章看误差证明，第 7 章看代码。<br>完全零基础：按 1→2→3→4 顺序建立直觉，再看 5（架构）、6（推理）、7（代码）。<br>视频背景读者：第 9 章的映射表会让你迅速把 k、h<sub>s</sub>、P2VAE 对应到熟悉的概念上。</p>
 </div>
 </section>
 
 <!-- ==================== 第 2 章 ==================== -->
-<section id="ch2">
+<section class="doc-block" id="ch2">
 <h2><span class="ch-no">02</span>背景预备：PDE 基础模型与误差累积</h2>
-<p class="ch-intro">本章补两块拼图：PDE 基础模型在做什么、为什么长时程 rollout 是它的命门；以及 Flow Matching 的基本构造（注意本文的符号约定与视频领域常见约定不同）。</p>
+<p class="lead">本章补两块拼图：PDE 基础模型在做什么、为什么长时程 rollout 是它的命门；以及 Flow Matching 的基本构造（注意本文的符号约定与视频领域常见约定不同）。</p>
 
 <h3>2.1 PDE 基础模型：从「解一个方程」到「解一族方程」</h3>
 <p>传统数值方法（有限元、有限差分）是「一方程一求解」：换个边界条件、换个系数，就得重新跑一遍求解器，动辄几小时到几天。神经算子（Neural Operator）的野心是：<strong>用一个神经网络学掉整族 PDE 的解算子</strong>——给定任意初始条件/边界条件/参数，直接输出解场，前向一次几毫秒。</p>
@@ -346,10 +836,10 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>2.2 误差累积：神经算子的阿喀琉斯之踵</h3>
 <p>设神经算子 <code>f<sub>θ</sub></code> 的单步误差上界为 ε，且 f 是 L-Lipschitz 的。N 步 rollout 后，累积误差满足 Gronwall 型不等式：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   ‖e<sub>N</sub>‖ ≤ ε · (1 + L + L² + … + L<sup>N−1</sup>) &nbsp;≈&nbsp; ε · e<sup>LN</sup> &nbsp;（当 L &gt; 0）
-  <span class="note-below">误差随步数 N 指数增长；L 哪怕只有 0.05，滚 200 步也放大 e<sup>10</sup> ≈ 22000 倍</span>
-</div>
+  <small>误差随步数 N 指数增长；L 哪怕只有 0.05，滚 200 步也放大 e<sup>10</sup> ≈ 22000 倍</small>
+</div></div>
 <p>这就是为什么神经算子在短期（几步到几十步）看起来很准，<strong>一到成百上千步就数值崩溃、能量漂飞、湍流结构糊掉</strong>。要缓解，常见办法是：</p>
 <ul>
   <li><strong>多步训练</strong>（rollout training / forcing）：训练时就展开多步，把累积误差纳入损失；但步数深了梯度爆炸/消失，且分布漂移（exposure bias）。</li>
@@ -358,56 +848,59 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </ul>
 
 <h3>2.3 Flow Matching 速通（本文符号约定）</h3>
-<div class="callout warn">
-  <span class="co-title">符号差异警告</span>
+<div class="doc-callout">
+  <strong>符号差异警告</strong>
   <p>在视频/图像的 Flow Matching 文献里，通常约定 <strong>x₀ = 噪声，x₁ = 数据</strong>。本文（Flow Marching 论文）的约定<strong>不同</strong>：</p>
   <p><code>x₀</code> = 当前状态（已知的物理场）<br><code>x₁</code> = 下一时刻状态（要预测的目标）<br><code>z</code> = 标准高斯噪声</p>
   <p>路径从「x₀ 与 z 的混合」走向「x₁」。读公式时务必按此约定理解。</p>
 </div>
 <p>Flow Matching 的核心：构造一条从噪声（或噪声+数据混合）到数据的插值路径 <code>x<sub>t</sub></code>，训练网络预测沿路径的<strong>速度场</strong> <code>v<sub>θ</sub>(x<sub>t</sub>, t)</code>。最简单的线性插值（也叫 Optimal Transport 路径）是：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>t</sub> = (1 − t) · z + t · x₁，&nbsp;&nbsp; t ∈ [0, 1]
-  <span class="note-below">t=0 是纯噪声 z，t=1 是目标数据 x₁</span>
-</div>
+  <small>t=0 是纯噪声 z，t=1 是目标数据 x₁</small>
+</div></div>
 <p>对应速度就是常向量 <code>v* = x₁ − z</code>。训练损失：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   L<sub>FM</sub> = E<sub>x₁, z, t</sub> [ ‖ v<sub>θ</sub>(x<sub>t</sub>, t) − (x₁ − z) ‖² ]
-</div>
+</div></div>
 <p>推理时从 t=0 的噪声出发，用欧拉法（或高阶 ODE 求解器）沿速度场积分到 t=1，得到 x₁ 的采样。关键好处：<strong>速度场的 ODE 流带有天然的收缩/耗散结构</strong>，使得误差不会像确定性残差那样无界增长——这正是第 4 章要证明的。</p>
 <p>Flow Marching 的问题意识是：<em>能不能让 Flow Matching 的起点不是「纯噪声」，而是「已知的当前状态 x₀」，从而把确定性算子的信息利用与 FM 的误差有界性结合起来？</em>答案就是下一章的参数 k。</p>
 </section>
 
 <!-- ==================== 第 3 章 ==================== -->
-<section id="ch3">
+<section class="doc-block" id="ch3">
 <h2><span class="ch-no">03</span>核心原理：桥接参数 k 与位置-尺度插值</h2>
-<p class="ch-intro">本章是全文的数学核心。我们逐步推导 Flow Marching 的插值核、速度场、训练目标，以及那个看起来反直觉却极关键的「k-free」设计。</p>
+<p class="lead">本章是全文的数学核心。我们逐步推导 Flow Marching 的插值核、速度场、训练目标，以及那个看起来反直觉却极关键的「k-free」设计。</p>
 
 <h3>3.1 位置-尺度插值核（论文 Eq.4–6）</h3>
 <p>Flow Marching 定义带参数 k ∈ [0,1] 的插值路径：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub> · z
-  <span class="note-below">位置项 μ<sub>t</sub> 决定「路径往哪走」，尺度项 σ<sub>t</sub> 决定「噪声掺多少」</span>
-</div>
+  <small>位置项 μ<sub>t</sub> 决定「路径往哪走」，尺度项 σ<sub>t</sub> 决定「噪声掺多少」</small>
+</div></div>
 <p>其中：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   μ<sub>t</sub> = t · x₁ + k(1 − t) · x₀，&nbsp;&nbsp; σ<sub>t</sub> = (1 − t)(1 − k)
-  <span class="note-below">位置项是 x₁ 与 x₀ 的线性凸组合（权重随 t 变化），尺度项随 t 线性衰减到 0</span>
-</div>
+  <small>位置项是 x₁ 与 x₀ 的线性凸组合（权重随 t 变化），尺度项随 t 线性衰减到 0</small>
+</div></div>
 <p>等价地，可以把它写成「起点混合 + 线性走向」的形式，更直观：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>t</sub><sup>k</sup> = (1 − t) · [ k · x₀ + (1 − k) · z ] + t · x₁
-  <span class="note-below">t=0 时起点是 x₀ 与 z 的混合，t=1 时终点恒为 x₁</span>
-</div>
+  <small>t=0 时起点是 x₀ 与 z 的混合，t=1 时终点恒为 x₁</small>
+</div></div>
 <p>来看两个端点的行为：</p>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>k</th><th>t=0 起点 x₀<sup>k</sup></th><th>t=1 终点</th><th>物理含义</th></tr>
   <tr class="hl"><td>1</td><td>x₀（当前状态，确定）</td><td>x₁</td><td>确定性残差预测：从已知状态直接走向下一步</td></tr>
   <tr><td>0</td><td>z（纯噪声）</td><td>x₁</td><td>标准 Flow Matching：从噪声生成下一步</td></tr>
   <tr><td>0.5</td><td>0.5·x₀ + 0.5·z</td><td>x₁</td><td>起点半掺噪声，兼顾锚定与随机性</td></tr>
 </table>
+</div>
 <p>σ<sub>t</sub> 的行为也值得玩味：k=1 时 σ<sub>t</sub> ≡ 0（全程无噪声，路径是 x₀→x₁ 的直线）；k=0 时 σ<sub>t</sub> = 1−t（噪声随 t 递减到 0，这正是 OT-FM 的标准形式）。</p>
 
-<div class="figure">
+<div class="doc-diagram no-toc">
+<div class="diagram-frame mermaid-frame">
 <svg width="760" height="300" viewBox="0 0 760 300" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -439,15 +932,16 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <text x="60" y="265" font-size="11" fill="#5a6070">0</text>
   <text x="700" y="265" font-size="11" fill="#5a6070">1</text>
 </svg>
-<div class="figcap"><b>图 1</b>：桥接参数 k 控制插值路径形态。k=1 退化为 x₀→x₁ 的确定性直线，k=0 退化为标准 Flow Matching 的噪声→数据路径，中间值连续过渡。三条路径的终点都是 x₁。</div>
+</div>
+<div class="figure-caption"><b>图 1</b>：桥接参数 k 控制插值路径形态。k=1 退化为 x₀→x₁ 的确定性直线，k=0 退化为标准 Flow Matching 的噪声→数据路径，中间值连续过渡。三条路径的终点都是 x₁。</div>
 </div>
 
 <h3>3.2 速度场推导（论文 Eq.7–9）</h3>
 <p>对 x<sub>t</sub><sup>k</sup> 关于 t 求导，得到路径上的真实速度：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   v<sub>t</sub><sup>k</sup> = d x<sub>t</sub><sup>k</sup> / d t = (x₁ − k · x₀) − (1 − k) · z
-  <span class="note-below">由 μ<sub>t</sub>' = x₁ − k·x₀ 与 σ<sub>t</sub>' = −(1−k) 相加得到</span>
-</div>
+  <small>由 μ<sub>t</sub>' = x₁ − k·x₀ 与 σ<sub>t</sub>' = −(1−k) 相加得到</small>
+</div></div>
 <p>网络 <code>v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t)</code> 的训练目标就是逼近这个 v<sub>t</sub><sup>k</sup>。验证两个极限：</p>
 <ul>
   <li><strong>k=1</strong>：v<sub>t</sub> = x₁ − x₀（常数，即残差）——网络只需预测状态增量，与神经算子完全一致；</li>
@@ -457,21 +951,21 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>3.3 训练目标与 (1−t) 预处理（论文 Eq.10）</h3>
 <p>条件 Flow Matching 损失为：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   L<sub>FM</sub> = E<sub>x₀, x₁, z, t, k</sub> [ ‖ v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t) − v<sub>t</sub><sup>k</sup> ‖² ]
-</div>
+</div></div>
 <p>论文在实现时对损失施加了 <strong>(1−t) 加权</strong>（或等价地对网络输出做 (1−t) 预处理），这与 Flow Matching 社区的常见做法一致：靠近 t=1 时目标已接近干净数据，权重降低；靠近 t=0 时噪声大，权重提高，加速收敛。</p>
-<div class="callout tip">
-  <span class="co-title">为什么要 (1−t) 加权？</span>
+<div class="doc-note">
+  <strong>为什么要 (1−t) 加权？</strong>
   <p>直觉上，t→1 时 σ<sub>t</sub>→0，x<sub>t</sub> 几乎等于 x₁，预测 v 很容易（接近常数），梯度信号弱且易过拟合；t→0 时 σ<sub>t</sub> 最大，预测难度最高。用 (1−t) 重加权让优化器把更多容量花在难的区间。在视频生成的 Wan 模型里你也会看到类似的 <code>flow_shift</code> 调度，思想同源。</p>
 </div>
 
 <h3>3.4 k-free：为什么不把 k 喂给网络</h3>
 <p>一个自然的想法是：把 k 作为条件输入网络（像时间 t 那样），让它显式知道当前走的是哪条路径。但论文实验发现：<strong>把 k 作为输入会（1）减慢收敛，（2）在漂移（drift）时产生有偏梯度</strong>。因此采用 <em>k-free</em> 设计：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t) &nbsp;&nbsp;（输入只有 x<sub>t</sub><sup>k</sup> 和 t，<strong>不含 k</strong>）
-  <span class="note-below">训练时 k 从 [0,1] 均匀采样，仅用于构造 x<sub>t</sub><sup>k</sup>；网络通过 x<sub>t</sub><sup>k</sup> 的分布隐式感知 k</span>
-</div>
+  <small>训练时 k 从 [0,1] 均匀采样，仅用于构造 x<sub>t</sub><sup>k</sup>；网络通过 x<sub>t</sub><sup>k</sup> 的分布隐式感知 k</small>
+</div></div>
 <p>这背后的逻辑是：<strong>k 已经编码在 x<sub>t</sub><sup>k</sup> 的统计分布里了</strong>。给定 x<sub>t</sub><sup>k</sup> 和 t，网络能从「这一点离 x₀ 有多近、噪声有多大」反推 k 的后验。把 k 显式塞入反而引入了一个不必要的条件维度，干扰了速度场学习。</p>
 <p>这也是推理时的关键便利：<strong>用户可以自由选择 k 来控制行为</strong>，而网络本身不需要改。选 k=1 得到确定性预测，选 k=0 得到纯生成式采样，选中间值在两者间权衡。</p>
 
@@ -480,40 +974,41 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </section>
 
 <!-- ==================== 第 4 章 ==================== -->
-<section id="ch4">
+<section class="doc-block" id="ch4">
 <h2><span class="ch-no">04</span>误差累积的数学：为什么 FM 不爆炸</h2>
-<p class="ch-intro">Flow Marching 最硬核的理论贡献在附录 A：它证明了基于 Flow Matching 的 rollout 误差是<strong>常数有界</strong>的，而确定性算子的误差是<strong>指数增长</strong>的。本章把证明思路讲清楚。</p>
+<p class="lead">Flow Marching 最硬核的理论贡献在附录 A：它证明了基于 Flow Matching 的 rollout 误差是<strong>常数有界</strong>的，而确定性算子的误差是<strong>指数增长</strong>的。本章把证明思路讲清楚。</p>
 
 <h3>4.1 确定性算子的 Gronwall 爆炸</h3>
 <p>回顾 2.2：设神经算子 f<sub>θ</sub> 是 L-Lipschitz，单步误差上界 ε。N 步后：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   ‖x<sub>N</sub> − x̂<sub>N</sub>‖ ≤ ε · Σ<sub>i=0</sub><sup>N−1</sup> L<sup>i</sup> ≤ ε · e<sup>LN</sup>
-  <span class="note-below">几何级数和；当 L ≥ 1 时随 N 指数/多项式发散</span>
-</div>
+  <small>几何级数和；当 L ≥ 1 时随 N 指数/多项式发散</small>
+</div></div>
 <p>即使 L &lt; 1，几何级数收敛到 ε/(1−L)，看似有界，但实际中神经算子的有效 Lipschitz 常数在分布外区域会急剧增大（数据漂移），导致 L 难以保持 &lt; 1，误差还是会涨。</p>
 
 <h3>4.2 Flow Matching 的收缩结构</h3>
 <p>Flow Marching 的关键观察是：<strong>FM 的速度场天然带有一个指向 x₀ 的收缩项</strong>。把速度场改写一下（以 k≠0 为例）：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   v<sub>t</sub><sup>k</sup> = (x₁ − x₀) + (1−k)·(x₀ − z)·[1/(1−t)] · ... 
-  <span class="note-below">形式上可分离出一个与 −(x<sub>t</sub> − x₀)/(1−t) 成正比的耗散项</span>
-</div>
+  <small>形式上可分离出一个与 −(x<sub>t</sub> − x₀)/(1−t) 成正比的耗散项</small>
+</div></div>
 <p>更严谨地，论文将误差动力学写成：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   d e / d t = A(t) · e + δ(t)
-  <span class="note-below">e = x<sub>t</sub> − x̂<sub>t</sub> 为误差，A(t) 含收缩项 −1/(1−t)，δ(t) 为单步建模误差</span>
-</div>
+  <small>e = x<sub>t</sub> − x̂<sub>t</sub> 为误差，A(t) 含收缩项 −1/(1−t)，δ(t) 为单步建模误差</small>
+</div></div>
 <p>这个 −1/(1−t) 项就是<strong>收缩/耗散的来源</strong>：它把误差往 0 拉，且 t 越接近 1 拉力越强（因为 1/(1−t) 发散）。这是 Flow Matching 概率流的固有性质——速度场把概率质量往数据分布 x₁「吸」，对偏离路径的误差起阻尼作用。</p>
 
 <h3>4.3 常数上界</h3>
 <p>对上述带收缩项的线性 ODE 用 Gronwall 引理的「收缩版」（即比较原理），论文得到：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   ‖e<sub>N</sub>‖ ≤ [ ρ / ((1 − L)(e − 1)) ] · D<sub>max</sub>
-  <span class="note-below">ρ 是与路径有关的常数，L &lt; 1 是收缩率，D<sub>max</sub> 是单步最大建模误差</span>
-</div>
+  <small>ρ 是与路径有关的常数，L &lt; 1 是收缩率，D<sub>max</sub> 是单步最大建模误差</small>
+</div></div>
 <p>注意：<strong>这个上界与 N（rollout 步数）无关</strong>。只要单步误差 D<sub>max</sub> 有界、收缩率 L &lt; 1 成立，无论滚多少步，累积误差都被一个常数夹住。这与确定性算子的 e<sup>LN</sup> 形成鲜明对比。</p>
 
-<div class="figure">
+<div class="doc-diagram no-toc">
+<div class="diagram-frame mermaid-frame">
 <svg width="760" height="280" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg">
   <line x1="60" y1="230" x2="720" y2="230" stroke="#ccc" stroke-width="1.5"/>
   <line x1="60" y1="30" x2="60" y2="230" stroke="#ccc" stroke-width="1.5"/>
@@ -529,11 +1024,12 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <text x="430" y="165" font-size="11" fill="#10b981">上界 ρ/((1−L)(e−1))·D<sub>max</sub></text>
   <text x="60" y="245" font-size="11" fill="#5a6070">0</text>
 </svg>
-<div class="figcap"><b>图 2</b>：误差随 rollout 步数的增长对比。确定性神经算子（红）呈指数增长，远期必然崩溃；Flow Marching（紫）因速度场的收缩项，误差被一个与 N 无关的常数（绿虚线）钳住。</div>
+</div>
+<div class="figure-caption"><b>图 2</b>：误差随 rollout 步数的增长对比。确定性神经算子（红）呈指数增长，远期必然崩溃；Flow Marching（紫）因速度场的收缩项，误差被一个与 N 无关的常数（绿虚线）钳住。</div>
 </div>
 
-<div class="callout note">
-  <span class="co-title">证明的前提条件</span>
+<div class="doc-note">
+  <strong>证明的前提条件</strong>
   <p>常数上界成立需要：① 速度场 v<sub>θ</sub> 在数据分布附近是 L-Lipschitz 且 L &lt; 1（收缩）；② 单步建模误差 D<sub>max</sub> 有界。前者由 Flow Matching 的训练目标保证（网络学到的是指向数据的收敛流），后者是标准假设。在分布外区域 L 可能失效，这也是为什么论文配合物理预训练的 P2VAE 来约束 latent 分布（第 5 章）。</p>
 </div>
 
@@ -546,9 +1042,9 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 </section>
 
 <!-- ==================== 第 5 章 ==================== -->
-<section id="ch5">
+<section class="doc-block" id="ch5">
 <h2><span class="ch-no">05</span>架构详解：P2VAE + FMT + 潜在时间金字塔</h2>
-<p class="ch-intro">数学框架确定后，论文搭建了一套完整的生成式 PDE 基础模型：先用 P2VAE 把高维物理场压进 latent，再用 FMT（Flow Marching Transformer）在 latent 空间做 Flow Marching，并通过潜在时间金字塔把注意力复杂度砍掉 15×。</p>
+<p class="lead">数学框架确定后，论文搭建了一套完整的生成式 PDE 基础模型：先用 P2VAE 把高维物理场压进 latent，再用 FMT（Flow Marching Transformer）在 latent 空间做 Flow Marching，并通过潜在时间金字塔把注意力复杂度砍掉 15×。</p>
 
 <h3>5.1 P2VAE：物理预训练的潜空间自编码器</h3>
 <p>P2VAE（Physics-pretrained VAE）的架构沿用 Stable Diffusion 的 VAE 风格，但有两个关键定制：</p>
@@ -556,7 +1052,7 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <li><strong>通道与分辨率</strong>：输入 <code>c3 p128</code>（3 通道、128×128 物理场），压缩到 <code>c16 p16</code>（16 通道、16×16 latent）。空间压缩 8×8 = 64 倍，通道从 3 升到 16，<strong>总体积压缩 12×</strong>。</li>
   <li><strong>物理预训练</strong>：VAE 不只是用像素重建损失训练，还在大量无标注 PDE 轨迹上做预训练（自监督重建），让 latent 空间天然携带物理结构（守恒律、平滑性），约束后续 FMT 的分布外行为。</li>
 </ul>
-<div class="flow">
+<div class="algorithm">
   物理场 x <b>3 × 128 × 128</b>
   <span class="arr">→ P2VAE encoder →</span>
   latent y <b>16 × 16 × 16</b>
@@ -566,7 +1062,8 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>5.2 FMT：Flow Marching Transformer</h3>
 <p>FMT 是执行 Flow Marching 速度场预测的主干，一个基于 <strong>SiT（Smooth Induced Transformer）</strong>风格的 Transformer，主要组件：</p>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>组件</th><th>设计</th><th>作用</th></tr>
   <tr class="hl"><td>AdaLN-Zero 调制</td><td>用 (t, 条件) 生成 scale/shift/gate，零初始化</td><td>把时间步与历史条件注入每个 Transformer 块，训练初期稳定</td></tr>
   <tr><td>RMSNorm + SwiGLU</td><td>归一化用 RMSNorm，FFN 用 SwiGLU</td><td>训练稳定、表达能力强（与 LLaMA 同款）</td></tr>
@@ -574,18 +1071,19 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>GRU 条件编码 h<sub>s</sub></td><td>把历史状态序列编码为条件向量</td><td>让 FMT 利用多步历史预测下一步</td></tr>
   <tr><td>潜在时间金字塔</td><td>多分辨率下采样 token</td><td>注意力复杂度节省 η=15×</td></tr>
 </table>
+</div>
 
 <h4>5.2.1 GRU 条件：把历史喂进来</h4>
 <p>PDE 预测需要利用历史（而不只是当前 x₀）。论文用一个 GRU 把历史状态序列 <code>(x<sub>−s+1</sub>, …, x₀)</code> 编码为隐状态 <code>h<sub>s</sub></code>，作为 FMT 的条件输入（通过 AdaLN 调制）。这与视频模型里的「KV cache / 历史帧」是一回事。</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   h<sub>s</sub> = GRU(x<sub>−s+1</sub>, …, x₀)
-  <span class="note-below">h<sub>s</sub> 通过 AdaLN 的 scale/shift/gate 注入每个 FMT 块</span>
-</div>
+  <small>h<sub>s</sub> 通过 AdaLN 的 scale/shift/gate 注入每个 FMT 块</small>
+</div></div>
 
 <h4>5.2.2 潜在时间金字塔（Latent Temporal Pyramid）</h4>
 <p>这是 FMT 最巧妙的工程设计。物理场的 latent 是 <code>16×16×16</code>，展开成 token 是 256 个（16×16），注意力是 O(n²)=65536。但实际上，<strong>物理场的不同频率成分需要不同的「时间分辨率」</strong>：大尺度结构变化慢、小尺度结构变化快。</p>
 <p>论文把 latent 下采样成多个分辨率，组成金字塔：</p>
-<div class="flow">
+<div class="algorithm">
   y₃ <b>16×16</b> = 256 tokens
   <span class="tag">最细粒度</span><br>
   Down(y₂, 2) <b>8×8</b> = 64 tokens
@@ -596,21 +1094,22 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <span class="tag">8× 下采样，最粗粒度</span>
 </div>
 <p>注意力复杂度从单层的 256² = 65536 降到金字塔总复杂度。论文报告 <strong>η = 15× 的注意力计算节省</strong>，同时因为粗分辨率 token 覆盖更大感受野，长程依赖建模反而更好。</p>
-<div class="callout tip">
-  <span class="co-title">15× 是怎么算出来的</span>
+<div class="doc-note">
+  <strong>15× 是怎么算出来的</strong>
   <p>单层全注意力：256² ≈ 6.56e4。金字塔四层：256² + 64² + 16² + 4² = 65536 + 4096 + 256 + 16 = 69904？不对——关键是金字塔不是四层都做全注意力，而是<strong>跨分辨率的稀疏注意力</strong>：粗层 token 只与细层对应区域的少数 token 交互。论文的 η=15× 是实测 FLOPs 比例，核心思路是「用多分辨率把 O(n²) 摊薄成接近 O(n)」。这与视频模型里的时空因子化注意力、Hierarchical Attention 异曲同工。</p>
 </div>
 
 <h4>5.2.3 联合损失 L_CFM（论文 Eq.13）</h4>
 <p>训练时同时优化 Flow Matching 损失与 VAE 重建损失：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   L<sub>CFM</sub> = L<sub>FM</sub> + λ · L<sub>VAE</sub>
-  <span class="note-below">L<sub>VAE</sub> 是 P2VAE 的重建 + KL 散度，λ 平衡两者</span>
-</div>
+  <small>L<sub>VAE</sub> 是 P2VAE 的重建 + KL 散度，λ 平衡两者</small>
+</div></div>
 <p>这样 P2VAE 与 FMT 端到端联合训练，latent 空间被同时塑形为「物理上合理」且「Flow Marching 易学好」。</p>
 
 <h3>5.3 训练超参一览</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>超参</th><th>取值</th><th>说明</th></tr>
   <tr class="hl"><td>P2VAE 压缩</td><td>c3p128 → c16p16（12×）</td><td>空间 8×8，通道 3→16</td></tr>
   <tr><td>FMT 主干</td><td>SiT + AdaLN-Zero</td><td>RMSNorm、SwiGLU、FlashAttn v2</td></tr>
@@ -620,8 +1119,10 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>历史长度</td><td>s 步（GRU 编码）</td><td>h<sub>s</sub> 作为条件</td></tr>
   <tr><td>优化器</td><td>AdamW</td><td>标准扩散训练配置</td></tr>
 </table>
+</div>
 
-<div class="figure">
+<div class="doc-diagram no-toc">
+<div class="diagram-frame mermaid-frame">
 <svg width="760" height="320" viewBox="0 0 760 320" xmlns="http://www.w3.org/2000/svg">
   <!-- P2VAE -->
   <rect x="40" y="40" width="140" height="60" rx="8" fill="#eeecfc" stroke="#5845e6" stroke-width="1.5"/>
@@ -656,38 +1157,41 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
     </marker>
   </defs>
 </svg>
-<div class="figcap"><b>图 3</b>：Flow Marching 训练/推理管线。P2VAE 压缩物理场，GRU 编码历史为 h<sub>s</sub>，FMT 预测速度场 v̂<sub>t</sub><sup>k</sup>，训练用 L_CFM，推理用 Euler ODE 滚出长轨迹。</div>
+</div>
+<div class="figure-caption"><b>图 3</b>：Flow Marching 训练/推理管线。P2VAE 压缩物理场，GRU 编码历史为 h<sub>s</sub>，FMT 预测速度场 v̂<sub>t</sub><sup>k</sup>，训练用 L_CFM，推理用 Euler ODE 滚出长轨迹。</div>
 </div>
 </section>
 
 <!-- ==================== 第 6 章 ==================== -->
-<section id="ch6">
+<section class="doc-block" id="ch6">
 <h2><span class="ch-no">06</span>推理与不确定性量化</h2>
-<p class="ch-intro">训练好 FMT 后，推理就是沿速度场积分。本章讲确定性的 Euler ODE 积分，以及 Flow Marching 的两大不确定性旋钮：k₃（初始条件不确定性）与 η（偶然不确定性）。</p>
+<p class="lead">训练好 FMT 后，推理就是沿速度场积分。本章讲确定性的 Euler ODE 积分，以及 Flow Marching 的两大不确定性旋钮：k₃（初始条件不确定性）与 η（偶然不确定性）。</p>
 
 <h3>6.1 确定性推理：Euler ODE</h3>
 <p>给定当前状态 x₀（及其历史 h<sub>s</sub>），选择一个 k，构造起点：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>0</sub><sup>k</sup> = k · x₀ + (1 − k) · z，&nbsp;&nbsp; z ~ N(0, I)
-</div>
+</div></div>
 <p>然后用 Euler 法从 t=0 积分到 t=1，步数 N=100，dt=0.01：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>t+dt</sub><sup>k</sup> = x<sub>t</sub><sup>k</sup> + dt · v<sub>θ</sub>(x<sub>t</sub><sup>k</sup>, t)
-  <span class="note-below">共 100 步，每步一次 FMT 前向；终点 x₁<sup>k</sup> 即下一步预测</span>
-</div>
+  <small>共 100 步，每步一次 FMT 前向；终点 x₁<sup>k</sup> 即下一步预测</small>
+</div></div>
 <p>把 x₁ 再作为新的 x₀，重复上述过程，就得到长时程 rollout。由于误差是常数有界的（第 4 章），这一过程可以稳定地滚很远。</p>
-<div class="callout note">
-  <span class="co-title">为什么用 Euler 不用高阶求解器？</span>
+<div class="doc-note">
+  <strong>为什么用 Euler 不用高阶求解器？</strong>
   <p>Flow Matching 的训练路径是直线（OT 路径），速度场近似常数，Euler 法的截断误差已经很小。高阶求解器（RK4、Heun）每步要多次前向，性价比不高。论文用 N=100 步 Euler，在精度与速度间取得平衡。GenCast 等工作也用类似配置。</p>
 </div>
 
 <h3>6.2 不确定性来源与两个旋钮</h3>
 <p>PDE 预测的不确定性有两类，Flow Marching 分别用两个独立旋钮控制：</p>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>不确定性类型</th><th>含义</th><th>旋钮</th><th>控制方式</th></tr>
   <tr class="hl"><td>初始条件（IC）不确定性</td><td>当前状态 x₀ 本身有测量噪声/不完备</td><td><strong>k₃</strong></td><td>减小 k → 起点掺更多噪声 z → 预测分布更宽</td></tr>
   <tr><td>偶然（Aleatoric）不确定性</td><td>系统本身的随机性（湍流混沌）</td><td><strong>η</strong></td><td>在 ODE 中注入 SDE 噪声项，η 控强度</td></tr>
 </table>
+</div>
 <p>关键点：<strong>k₃ 与 h₃（历史长度）解耦</strong>——传统方法里历史越长越确定，但 Flow Marching 里你可以独立调 k₃ 来表达「我对当前状态有多不信任」，不受历史长度影响。这是 k-free 设计带来的额外红利。</p>
 
 <h3>6.3 k₃：初始条件不确定性</h3>
@@ -699,18 +1203,19 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
 
 <h3>6.4 η：偶然不确定性（reverse-time SDE）</h3>
 <p>对于混沌系统（如湍流），即使 IC 完全确定，长期演化也发散。Flow Marching 用 <strong>reverse-time SDE</strong> 注入随机性，把确定性 ODE 升级为：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   d x = v<sub>θ</sub>(x<sub>t</sub>, t) d t + η · σ<sub>t</sub> · d W
-  <span class="note-below">dW 是布朗运动增量，η ≥ 0 控制噪声强度；η=0 退化为确定性 ODE</span>
-</div>
+  <small>dW 是布朗运动增量，η ≥ 0 控制噪声强度；η=0 退化为确定性 ODE</small>
+</div></div>
 <p>用 Euler-Maruyama 离散化：</p>
-<div class="formula">
+<div class="math-scroll"><div class="math">
   x<sub>t+dt</sub> = x<sub>t</sub> + dt · v<sub>θ</sub>(x<sub>t</sub>, t) + η · σ<sub>t</sub> · √dt · ξ，&nbsp;&nbsp; ξ ~ N(0, I)
-  <span class="note-below">σ<sub>t</sub> = (1−t)(1−k) 沿用插值核的尺度项</span>
-</div>
+  <small>σ<sub>t</sub> = (1−t)(1−k) 沿用插值核的尺度项</small>
+</div></div>
 <p>η 越大，路径随机性越强，多次采样的预测分布越宽，反映系统的混沌性。注意噪声项带 σ<sub>t</sub>，所以<strong>靠近 t=1 时噪声自动衰减到 0</strong>（因为 σ<sub>1</sub>=0），保证终点 x₁ 仍是干净数据。</p>
 
-<div class="figure">
+<div class="doc-diagram no-toc">
+<div class="diagram-frame mermaid-frame">
 <svg width="760" height="260" viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
   <!-- x0 -->
   <circle cx="80" cy="130" r="8" fill="#d97706"/>
@@ -738,11 +1243,13 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
     </marker>
   </defs>
 </svg>
-<div class="figcap"><b>图 4</b>：两个不确定性旋钮。k₃ 控制起点的噪声混合程度（IC 不确定性），η 控制路径中的 SDE 噪声强度（偶然不确定性）。两者独立可调，终点都收敛到 x₁。</div>
+</div>
+<div class="figure-caption"><b>图 4</b>：两个不确定性旋钮。k₃ 控制起点的噪声混合程度（IC 不确定性），η 控制路径中的 SDE 噪声强度（偶然不确定性）。两者独立可调，终点都收敛到 x₁。</div>
 </div>
 
 <h3>6.5 与其他方法的对比</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>方法</th><th>起点</th><th>误差有界</th><th>不确定性</th><th>每步开销</th></tr>
   <tr class="hl"><td>神经算子（FNO 等）</td><td>x₀（确定）</td><td>✗ 指数增长</td><td>✗ 无</td><td>1× 前向</td></tr>
   <tr><td>纯 Flow Matching（k=0）</td><td>噪声 z</td><td>✓ 常数有界</td><td>△ 仅偶然</td><td>~100× 前向</td></tr>
@@ -750,21 +1257,22 @@ footer{border-top:1px solid var(--border); margin-top:70px; padding-top:26px; co
   <tr><td>扩散模型（DDPM）</td><td>噪声</td><td>✓ 有界</td><td>△ 仅偶然</td><td>~1000× 前向</td></tr>
   <tr><td>GenCast</td><td>图卷积条件</td><td>△ 部分</td><td>△ 离散分箱</td><td>~数十×</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 7 章 ==================== -->
-<section id="ch7">
+<section class="doc-block" id="ch7">
 <h2><span class="ch-no">07</span>代码走读：从零复现核心模块</h2>
-<p class="ch-intro">论文官方代码未发布（截至本文整理时，GitHub 上同名仓库均为 404 或占位）。本章给出三个按论文公式复现的参考实现，标注为「示意，非官方代码」。看懂这三份代码，你就掌握了 Flow Marching 的全部工程细节。</p>
+<p class="lead">论文官方代码未发布（截至本文整理时，GitHub 上同名仓库均为 404 或占位）。本章给出三个按论文公式复现的参考实现，标注为「示意，非官方代码」。看懂这三份代码，你就掌握了 Flow Marching 的全部工程细节。</p>
 
-<div class="callout warn">
-  <span class="co-title">代码声明</span>
+<div class="doc-callout">
+  <strong>代码声明</strong>
   <p>以下代码为根据 arXiv:2509.18611 的公式与架构描述编写的<strong>示意实现</strong>，用于教学目的，<strong>非官方代码</strong>。超参（隐藏维度、层数等）为合理假设，复现实验需按论文附录 C 调整。警惕网上任何声称是「官方 Flow Marching 仓库」的链接——截至 2026-11，作者未发布官方实现。</p>
 </div>
 
 <h3>7.1 核心：插值核、速度场与损失</h3>
-<div class="codeblock">
-<div class="codehead"><span class="fname">flow_marching_core.py</span><span class="lang">Python</span></div>
+<div class="code-block">
+<span class="code-label"><span class="fname">flow_marching_core.py</span><span class="lang">Python</span></span>
 <pre><code class="language-python">"""Flow Marching 核心：位置-尺度插值核、速度场、k-free 损失。
 
 示意实现，对应论文 arXiv:2509.18611 Eq.4-10。
@@ -852,8 +1360,8 @@ if __name__ == "__main__":
 </div>
 
 <h3>7.2 FMT：带 GRU 条件的 Transformer 速度场网络</h3>
-<div class="codeblock">
-<div class="codehead"><span class="fname">fmt_conditional.py</span><span class="lang">Python</span></div>
+<div class="code-block">
+<span class="code-label"><span class="fname">fmt_conditional.py</span><span class="lang">Python</span></span>
 <pre><code class="language-python">"""FMT (Flow Marching Transformer) 示意实现。
 
 含：时间嵌入、AdaLN-Zero 调制、GRU 条件、潜在时间金字塔。
@@ -988,8 +1496,8 @@ class FMT(nn.Module):
 </div>
 
 <h3>7.3 推理：Euler ODE、SDE 与双旋钮</h3>
-<div class="codeblock">
-<div class="codehead"><span class="fname">inference.py</span><span class="lang">Python</span></div>
+<div class="code-block">
+<span class="code-label"><span class="fname">inference.py</span><span class="lang">Python</span></span>
 <pre><code class="language-python">"""Flow Marching 推理：Euler ODE（确定）/ Euler-Maruyama SDE（随机）。
 
 实现 k₃（IC 不确定性）与 η（偶然不确定性）双旋钮。
@@ -1094,7 +1602,8 @@ if __name__ == "__main__":
 </div>
 
 <h3>7.4 代码与论文公式的对应</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>代码函数</th><th>对应论文</th></tr>
   <tr class="hl"><td><code>interpolate()</code></td><td>Eq.4–6：x<sub>t</sub><sup>k</sup> = μ<sub>t</sub> + σ<sub>t</sub>·z</td></tr>
   <tr><td><code>interpolate()</code> 中 vt_k</td><td>Eq.7–9：v<sub>t</sub><sup>k</sup> = (x₁−k·x₀)−(1−k)·z</td></tr>
@@ -1105,12 +1614,13 @@ if __name__ == "__main__":
   <tr><td><code>euler_maruyama_sde()</code></td><td>Eq.16：reverse-time SDE + η 旋钮</td></tr>
   <tr><td>k / η 两个参数</td><td>k₃（IC 不确定性）与 η（偶然不确定性）</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 8 章 ==================== -->
-<section id="ch8">
+<section class="doc-block" id="ch8">
 <h2><span class="ch-no">08</span>实验与结果</h2>
-<p class="ch-intro">论文在 16 个子集的 PDE 数据集上验证 Flow Marching，涵盖 Navier-Stokes、Kolmogorov 流、对流扩散等。本章列出核心结果。</p>
+<p class="lead">论文在 16 个子集的 PDE 数据集上验证 Flow Marching，涵盖 Navier-Stokes、Kolmogorov 流、对流扩散等。本章列出核心结果。</p>
 
 <h3>8.1 数据集概览</h3>
 <p>训练数据覆盖 <strong>16 个 PDE 子集</strong>，每个子集包含大量轨迹（从数千到数百万条不等），总数据体积达 TB 级。数据类型包括：</p>
@@ -1123,11 +1633,13 @@ if __name__ == "__main__":
 
 <h3>8.2 核心结果：少样本与长时程</h3>
 <p>论文最亮眼的两个指标：</p>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>任务</th><th>Flow Marching (FMT)</th><th>对比基线</th><th>说明</th></tr>
   <tr class="hl"><td>Kolmogorov 少样本（少量训练轨迹）</td><td><strong>0.0836</strong></td><td>0.1342</td><td>FMT 在数据稀缺时仍能学好，误差低 38%</td></tr>
   <tr><td>长时程 rollout（远期误差）</td><td>FMT-L: <strong>0.0914</strong></td><td>VICON: 0.3006</td><td>远期误差仅为对比方法的 1/3，验证误差有界性</td></tr>
 </table>
+</div>
 <p>长时程结果是第 4 章理论的直接验证：FMT-L（大模型）的远期误差稳定在 0.09 量级，而 VICON（确定性神经算子路线）滚到远期后误差膨胀到 0.30。</p>
 
 <h3>8.3 集成实验与不确定性校准</h3>
@@ -1139,7 +1651,8 @@ if __name__ == "__main__":
 </ul>
 
 <h3>8.4 消融实验（关键结论）</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>消融项</th><th>结论</th></tr>
   <tr class="hl"><td>k-free vs k 作为输入</td><td>k 作为输入收敛更慢、梯度有偏；k-free 更优</td></tr>
   <tr><td>潜在时间金字塔</td><td>注意力复杂度降 15×，长程依赖建模反而更好</td></tr>
@@ -1147,20 +1660,22 @@ if __name__ == "__main__":
   <tr><td>k 的取值</td><td>k∈[0.3,0.7] 综合最优；k=1 短期准但远期漂，k=0 方差大</td></tr>
   <tr><td>(1−t) 损失加权</td><td>加速收敛，去掉后训练不稳</td></tr>
 </table>
+</div>
 </section>
 
 <!-- ==================== 第 9 章 ==================== -->
-<section id="ch9">
+<section class="doc-block" id="ch9">
 <h2><span class="ch-no">09</span>与视频生成方法的对照</h2>
-<p class="ch-intro">考虑到本文读者多来自视频生成背景（Wan 系列），本章给出一张「PDE 世界 ↔ 视频世界」的概念映射表，帮助你把 Flow Marching 的思想迁移到熟悉的领域。</p>
+<p class="lead">考虑到本文读者多来自视频生成背景（Wan 系列），本章给出一张「PDE 世界 ↔ 视频世界」的概念映射表，帮助你把 Flow Marching 的思想迁移到熟悉的领域。</p>
 
-<div class="callout note">
-  <span class="co-title">核心同构性</span>
+<div class="doc-note">
+  <strong>核心同构性</strong>
   <p>视频生成与时序 PDE 预测在数学结构上高度同构：都是<strong>给定历史状态，预测下一状态，然后自回归滚下去</strong>。因此 Flow Marching 的核心思想（用 k 桥接确定性残差与 Flow Matching、误差有界、双旋钮不确定性）完全可以移植到视频生成。</p>
 </div>
 
 <h3>9.1 概念映射表</h3>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>PDE / Flow Marching 世界</th><th>视频生成世界</th><th>说明</th></tr>
   <tr class="hl"><td>x₀（当前物理场）</td><td>当前帧 / 已知首帧</td><td>已知的「当前状态」</td></tr>
   <tr><td>x₁（下一物理场）</td><td>下一帧 / 后续帧</td><td>预测目标</td></tr>
@@ -1176,6 +1691,7 @@ if __name__ == "__main__":
   <tr><td>exposure bias（分布漂移）</td><td>Self-Forcing / Diffusion Forcing 要解决的问题</td><td>训练-推理分布不一致</td></tr>
   <tr><td>η（偶然不确定性）</td><td>CFG / 采样随机性</td><td>控制输出多样性</td></tr>
 </table>
+</div>
 
 <h3>9.2 为什么视频领域值得借鉴 Flow Marching</h3>
 <p>视频生成的长视频问题本质上就是 PDE 的 long-term rollout 问题——逐帧自回归会累积误差（闪烁、漂移、变形）。当前视频领域的主流解法：</p>
@@ -1186,14 +1702,14 @@ if __name__ == "__main__":
 </ul>
 <p>Flow Marching 的 k 参数实际上是<strong>把「条件帧加噪」这件事从工程技巧升级为有数学保证的概率流</strong>：k 不是随便设的噪声强度，而是插值核的一个连续参数，且误差有界性有严格证明。如果把 Flow Marching 移植到视频生成，理论上可以得到「长视频不漂移 + 不确定性量化」的双重收益。</p>
 
-<div class="callout tip">
-  <span class="co-title">一个可尝试的视频实验</span>
+<div class="doc-note">
+  <strong>一个可尝试的视频实验</strong>
   <p>把 Wan 的 Flow Matching 训练目标改成 Flow Marching 形式：x<sub>t</sub><sup>k</sup> = t·x₁ + (1−t)·[k·x₀ + (1−k)·z]，其中 x₀ 是首帧/已知帧。k 从 [0,1] 均匀采样，网络仍只吃 (x<sub>t</sub>, t)。推理时用 k∈[0.5, 0.9] 兼顾首帧锚定与生成多样性。这本质上是把「图生视频的首帧条件」从硬约束变成了概率流的一部分，可能改善长视频的首帧一致性与稳定性。</p>
 </div>
 </section>
 
 <!-- ==================== 第 10 章 ==================== -->
-<section id="ch10">
+<section class="doc-block" id="ch10">
 <h2><span class="ch-no">10</span>局限与后续演进</h2>
 
 <h3>10.1 已知局限</h3>
@@ -1215,9 +1731,10 @@ if __name__ == "__main__":
 </section>
 
 <!-- ==================== 第 11 章 ==================== -->
-<section id="ch11">
+<section class="doc-block" id="ch11">
 <h2><span class="ch-no">11</span>参考资料</h2>
-<table class="tbl">
+<div class="table-frame table-scroll">
+<table class="doc-data-table">
   <tr><th>资料</th><th>链接</th><th>说明</th></tr>
   <tr class="hl"><td>Flow Marching 论文</td><td><a href="https://arxiv.org/abs/2509.18611">arXiv:2509.18611</a></td><td>本文一切公式与数据的原始出处（MIT · Zituo Chen & Sili Deng）</td></tr>
   <tr><td>后续工作 Latent Generative Solvers</td><td><a href="https://arxiv.org/abs/2602.11229">arXiv:2602.11229</a></td><td>论文 v2 注明的取代工作</td></tr>
@@ -1227,6 +1744,7 @@ if __name__ == "__main__":
   <tr><td>Self-Forcing</td><td><a href="https://arxiv.org/abs/2506.08009">arXiv:2506.08009</a></td><td>Adobe 的视频 Self-Forcing（注意：不含 Flow Marching）</td></tr>
   <tr><td>FNO</td><td><a href="https://arxiv.org/abs/2010.08895">arXiv:2010.08895</a></td><td>神经算子的代表工作</td></tr>
 </table>
+</div>
 <p>阅读建议：先读 arXiv:2509.18611 第 3 节（方法）配合本文第 3~4 章建立数学直觉，再读附录 A（误差分析）与附录 C（实验细节）。如果想把思想移植到视频生成，配合 Diffusion Forcing 与 Self-Forcing 两篇对照阅读效果最佳。</p>
 </section>
 
@@ -1235,7 +1753,6 @@ if __name__ == "__main__":
 </footer>
 
 </main>
-</div>
 
 <script>
 (function(){
@@ -1268,7 +1785,7 @@ if __name__ == "__main__":
     }
   });
 
-  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc a'));
+  var tocLinks = Array.prototype.slice.call(document.querySelectorAll('.toc-rail a'));
   var secs = Array.prototype.slice.call(document.querySelectorAll('main section[id]'));
   function spy(){
     var cur = secs.length ? secs[0] : null;
@@ -1283,5 +1800,53 @@ if __name__ == "__main__":
   spy();
 })();
 </script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const copyWithFallback = (text) => {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        const copied = document.execCommand("copy");
+        area.remove();
+        if (!copied) throw new Error("copy command failed");
+      };
+
+      document.querySelectorAll(".code-block").forEach((block) => {
+        const code = block.querySelector("pre code");
+        if (!code) return;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "copy-code";
+        button.textContent = "复制";
+        button.setAttribute("aria-label", "复制代码");
+        block.appendChild(button);
+        let resetTimer;
+        button.addEventListener("click", async () => {
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              try {
+                await navigator.clipboard.writeText(code.innerText);
+              } catch (error) {
+                copyWithFallback(code.innerText);
+              }
+            } else {
+              copyWithFallback(code.innerText);
+            }
+            button.textContent = "已复制";
+          } catch (error) {
+            button.textContent = "复制失败";
+          }
+          window.clearTimeout(resetTimer);
+          resetTimer = window.setTimeout(() => {
+            button.textContent = "复制";
+          }, 1600);
+        });
+      });
+    });
+  </script>
 </body>
 </html>
