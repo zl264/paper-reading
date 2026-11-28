@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VQGAN：感知压缩与对抗式码本学习｜论文深度精读</title><style>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="VQGAN：感知压缩与 Transformer 先验：原理、详细结构、训练推理与代码精读。"><title>VQGAN：感知压缩与 Transformer 先验｜深度精读</title><style>
 :root {
   --page: #ffffff;
   --ink: #2f302d;
@@ -712,19 +712,229 @@ a:hover {
       .code-block { break-inside: avoid; }
       .math-scroll { overflow: visible; }
     }
-   .doc-page{max-width:1520px}.doc-block h3{margin:28px 0 10px;font-size:19px}.reading-note{color:var(--muted);font-size:14px}.lead{font-size:17px}.paper-nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:13px}.math-scroll{width:fit-content;max-width:100%;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;margin:14px 0}.math{padding:13px 16px;width:max-content;font-family:"Cambria Math",Cambria,serif;font-size:17px;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0;background:#151922;border-radius:14px;overflow:hidden}.code-block pre{padding:47px 20px 20px;overflow:auto;max-width:100%;color:#e5e7eb;font-size:13px;line-height:1.65}.code-label{position:absolute;top:12px;left:18px;color:#9aa4b2;font-size:12px}.copy-code{position:absolute;right:9px;top:8px;background:#202633;color:#cbd5e1;border:1px solid #3a4352;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}.table-frame{width:100%;overflow:auto;border:1px solid var(--line);border-radius:14px}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px}.doc-data-table th,.doc-data-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.doc-data-table th{background:var(--soft)}.doc-warning{padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;margin:20px 0}.diagram-frame{padding:18px;overflow:auto;border:1px solid var(--line);border-radius:14px}.figure-svg{width:100%;min-width:650px;height:auto}.svg-title{font-size:16px;font-weight:600;fill:#2f302d}.svg-small{font-size:12px;fill:#5c6470}.figure-caption{color:var(--muted);font-size:14px}.file-ref{font-size:13px;color:#526d8c;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0}.checklist li{padding-left:23px;position:relative;margin:8px 0}.checklist li:before{content:'✓';position:absolute;left:0;color:#0f766e}@media print{.toc-rail,.copy-code{display:none}.doc-page{margin:0;width:100%;max-width:none}}</style></head><body><nav class="toc-rail"></nav><main class="doc-page"><header class="doc-title" id="top"><h1>VQGAN：感知压缩与对抗式码本学习</h1><p class="doc-subtitle">VQGAN 将 VQ-VAE、感知损失与对抗训练结合，为 Transformer 提供高质量离散视觉 token。</p><p class="reading-note">本页依据 <a href="https://arxiv.org/abs/2012.09841">arXiv:2012.09841</a> 原文与公开实现资料整理。代码块为解释论文机制的教学实现/伪代码，未标为作者官方源码；未执行模型训练或生成。</p><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a></div></header><section class="doc-block" id="problem"><h2>1. 论文要解决的问题</h2><p>VQGAN 将 VQ-VAE、感知损失与对抗训练结合，为 Transformer 提供高质量离散视觉 token。</p><p>VQGAN 的感知损失和判别器改善压缩后纹理，Transformer 则利用离散序列学习全局结构。判别器训练需要与生成器分开；不能只把 GAN loss 加到 VQ-VAE 而忽略平衡。</p><p>阅读这篇工作时，应先分清它改变的是表示、训练目标、网络结构还是推理算法；同一个名称常被用于不同实现，不能把后续模型的新增能力自动归入原论文。</p></section><section class="doc-block" id="principle"><h2>2. 核心原理与数学表达</h2><p>VQGAN 的关键不是简单加大 VQ-VAE 码本，而是把感知与对抗监督加入压缩阶段，使离散 token 保留语义与纹理。后续 Transformer 在压缩后的离散空间学先验，而非直接处理所有像素。</p><div class="math-scroll"><div class="math">L = L_VQ + L_perceptual + λ·L_GAN<span class="equation-number">(1)</span></div></div><p>公式中的每个量都应对应输入、网络状态或监督信号。实现时要额外核对时间索引、batch 维、损失 reduction 与条件 dropout，否则即使公式看起来一致，训练语义也可能不同。</p></section><section class="doc-block" id="structure"><h2>3. 网络结构与数据流</h2><p>VQGAN 的感知损失和判别器改善压缩后纹理，Transformer 则利用离散序列学习全局结构。判别器训练需要与生成器分开；不能只把 GAN loss 加到 VQ-VAE 而忽略平衡。</p><div class="diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 260" role="img" aria-label="VQGAN：感知压缩与对抗式码本学习 的输入、模型与输出数据流"><rect x="25" y="75" width="235" height="85" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="142" y="111" text-anchor="middle" class="svg-title">输入 / 条件</text><text x="142" y="137" text-anchor="middle" class="svg-small">数据、状态或控制信号</text><path d="M260 117 H370" stroke="#788493" fill="none"/><rect x="375" y="75" width="260" height="85" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="505" y="111" text-anchor="middle" class="svg-title">核心模型 / 条件融合</text><text x="505" y="137" text-anchor="middle" class="svg-small">VQGAN 的关键变换</text><path d="M635 117 H745" stroke="#788493" fill="none"/><rect x="750" y="75" width="225" height="85" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="862" y="111" text-anchor="middle" class="svg-title">训练目标 / 生成输出</text><text x="862" y="137" text-anchor="middle" class="svg-small">按论文定义验证</text></svg></div><p class="figure-caption">图 1：本工作的计算骨架。具体通道、patch、码本和采样循环需结合论文及代码实现。</p></section><section class="doc-block" id="code"><h2>4. 具体代码：核心模块与损失</h2><p>以下代码把论文的核心计算写成可读的 PyTorch 结构，重点是输入、输出、监督路径与梯度位置。它不是完整训练框架，也不冒充作者仓库实现。</p><div class="code-block"><span class="code-label">教学实现 / 伪代码 · 非官方源码</span><pre><code># 教学实现 · 非官方源码：感知/对抗目标的结构
-recon = decoder(quantize(encoder(image)))
-perceptual = F.mse_loss(vgg_features(image),vgg_features(recon))
-adv = -discriminator(recon).mean()
-vq_loss = codebook_loss + commitment_loss
-generator_loss = recon_loss + perceptual_weight*perceptual + adv_weight*adv
-# 判别器另有 hinge loss；λ 常由梯度尺度自适应决定。</code></pre></div></section><section class="doc-block" id="training"><h2>5. 训练流程与推理步骤</h2><ol><li>准备与原任务一致的数据、条件和预处理，固定坐标/时间/帧序约定。</li><li>按论文选择训练阶段、损失、条件 dropout 与可训练参数。</li><li>用小 batch 验证前向 shape、loss 有限性和梯度是否进入新增模块。</li><li>推理从正确先验/初始状态开始，按对应采样器更新，不把训练捷径直接搬到推理。</li><li>分别评估质量、控制或效率指标，记录采样步数、上下文长度、batch 和硬件。</li></ol></section><div class="code-block"><span class="code-label">训练/推理诊断 · 教学检查代码（非官方源码）</span><pre><code># 每个实现都应先通过这类基础诊断，再讨论模型效果。
-with torch.autograd.set_detect_anomaly(True):
-    output = model(sample_input,condition)
-    loss = objective(output,target)
-    assert torch.isfinite(loss)
-    loss.backward()
-for name,param in model.named_parameters():
-    if param.requires_grad:
-        assert param.grad is not None, f&quot;no gradient: {name}&quot;
-# 采样时确认：time direction、guidance、mask、dtype、设备与 reduction。</code></pre></div></section><section class="doc-block" id="limitations"><h2>6. 局限与易混淆点</h2><p>本页的教学代码不能替代完整官方训练配置，尤其是数据治理、分布式训练、权重、EMA、数值稳定性和评估协议。论文声明的效果来自其特定数据与实验条件，不应当作本地实测。</p><p>如果原文没有公开完整实现，应该将“论文机制”与“可复现源码”分开描述；若有后续版本，也要核对原始论文与当前代码仓库是否仍相同。</p></section><section class="doc-block" id="reproduce"><h2>7. 实现与复现清单</h2><ul class="checklist"><li>写清输入输出、张量维度、概率分布/目标和时间索引。</li><li>对核心数学操作写独立单元测试，不依赖生成结果“看起来正常”。</li><li>检查冻结/训练参数列表、条件 dropout 与空条件语义。</li><li>分离质量、控制精度和推理成本指标。</li><li>保留原文、代码版本、数据预处理和训练超参数。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与核对范围</h2><ul><li><a href="https://arxiv.org/abs/2012.09841">论文原文与版本记录</a></li><li><a href="https://arxiv.org/html/2012.09841">论文 HTML 全文</a>：公式、结构与实验细节。</li></ul><p>本页为基于论文的阅读笔记，教学代码不隶属于论文作者。当前页面未声称核验完整官方训练源码，后续可继续扩展为逐文件源码导读。</p></section><section class="doc-block"><h2>返回分类</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">生成模型与基础架构</a></div></section></main><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.querySelector('.toc-rail'),ts=[...document.querySelectorAll('section[id]')].filter(x=>x.querySelector('h2'));if(nav){const title=document.createElement('div');title.className='toc-title';title.textContent='代表论文深度精读';const links=ts.map(t=>{let a=document.createElement('a');a.href='#'+t.id;a.textContent=t.querySelector('h2').textContent;a.dataset.target=t.id;return a});nav.replaceChildren(title,...links);const obs=new IntersectionObserver(es=>{let v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)links.forEach(a=>a.classList.toggle('active',a.dataset.target===v.target.id))},{rootMargin:'-12% 0px -68% 0px'});ts.forEach(t=>obs.observe(t))}document.querySelectorAll('.code-block').forEach(b=>{let c=b.querySelector('code'),btn=document.createElement('button');btn.textContent='复制';btn.className='copy-code';b.appendChild(btn);btn.onclick=async()=>{try{await navigator.clipboard.writeText(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='请手动复制'}setTimeout(()=>btn.textContent='复制',1600);}});});</script></body></html>
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="vqgan 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>VQGAN：先学会“视觉词汇”，再让 Transformer 组织画面</h1>
+  <p class="doc-subtitle">从 VQ-VAE 到感知压缩、对抗训练、自适应损失权重、Transformer 先验与滑动窗口高分辨率生成；逐文件读懂官方 taming-transformers。</p>
+  <p class="reading-note">本文逐节阅读 Esser、Rombach、Ommer 的 <a href="https://arxiv.org/abs/2012.09841">Taming Transformers for High-Resolution Image Synthesis</a>，并静态核对官方 <a href="https://github.com/CompVis/taming-transformers">CompVis/taming-transformers</a> 的模型、量化器与损失实现。原论文与当前仓库的具体配置需分开理解；本文没有运行训练或生成。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/generative-foundations.html">所属分类：生成模型与基础架构</a></div>
+</header>
+
+<section class="doc-block" id="intuition">
+  <h2>1. 先看全局：CNN 负责局部词汇，Transformer 负责全局组织</h2>
+  <p>直接在像素上使用 Transformer，序列长度会随图像面积增加，注意力计算又随序列长度平方增长。VQGAN 的思路是先训练一个压缩模型，把图片变成较短的离散视觉符号序列，再让自回归 Transformer 学习这些符号怎样组成合理画面。</p>
+  <p>论文的核心不是“用了 VQ + Transformer”这句话，而是<strong>第一阶段必须学到上下文丰富、感知质量高的码本</strong>：否则第二阶段只能在信息损失严重的符号上补结构。为此，VQGAN 在 VQ-VAE 的量化与重建之外加入感知损失和 patch-based 对抗训练。</p>
+  <div class="doc-note"><p><strong>与 VQ-VAE 的关系：</strong>VQ-VAE 已经包含离散码本与先验生成。VQGAN 的新增重点是更强调感知与对抗监督的压缩器、Transformer 的全局组合，以及高分辨率/条件生成策略。不能把第一阶段只写成普通 MSE 自编码器。</p></div>
+</section>
+
+<section class="doc-block" id="pipeline">
+  <h2>2. 两阶段结构：从像素到码本，再到索引序列</h2>
+  <p>第一阶段由卷积 encoder E、码本 Z、decoder G 组成。图片 x 先被编码成 h×w 个 n_z 维向量，再对每个空间位置找最近码本项；解码器从这些量化向量重建图像。</p>
+  <div class="math-scroll"><div class="math">ẑ=E(x) ∈ R<sup>h×w×n_z</sup>，&nbsp;&nbsp; z<sub>q</sub>=q(ẑ)，&nbsp;&nbsp; x̂=G(z<sub>q</sub>)<span class="equation-number">(1)</span></div></div>
+  <p>第二阶段不再直接处理 embedding，而把每个码本项换成整数索引。图像变成 h·w 个离散 token，自回归 Transformer 学习下一索引的条件分布，再由第一阶段 decoder 还原为图片。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>输入</th><th>输出</th><th>训练信号</th></tr></thead><tbody>
+    <tr><td>VQGAN 压缩器</td><td>RGB 图像</td><td>量化 embedding、重建图像与索引</td><td>重建/感知 + 对抗 + 码本/承诺</td></tr>
+    <tr><td>索引化</td><td>量化后空间编码</td><td>h·w 个整数 token</td><td>无参数，只记录码本位置</td></tr>
+    <tr><td>Transformer</td><td>历史索引与可选条件</td><td>下一 token 的 K 类 logits</td><td>自回归交叉熵</td></tr>
+    <tr><td>生成</td><td>采样得到的索引序列</td><td>码本 embedding → 图片</td><td>第一阶段 decoder 固定使用</td></tr>
+  </tbody></table></div>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 450" role="img" aria-label="VQGAN 的感知压缩器与 Transformer 两阶段生成结构">
+  <text x="24" y="24" class="svg-title">第一阶段：带感知与对抗监督的离散压缩器</text>
+  <rect x="20" y="48" width="140" height="75" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="90" y="78" text-anchor="middle" class="svg-title">输入图像 x</text><text x="90" y="102" text-anchor="middle" class="svg-small">RGB 像素</text>
+  <path d="M160 86 H205" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="210" y="48" width="175" height="75" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="297" y="75" text-anchor="middle" class="svg-title">Encoder + 1×1</text><text x="297" y="100" text-anchor="middle" class="svg-small">低分辨率注意力</text>
+  <path d="M385 86 H430" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="435" y="48" width="175" height="75" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="522" y="75" text-anchor="middle" class="svg-title">码本与索引</text><text x="522" y="100" text-anchor="middle" class="svg-small">最近邻 + 梯度直通</text>
+  <path d="M610 86 H655" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="660" y="48" width="180" height="75" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="750" y="75" text-anchor="middle" class="svg-title">1×1 + Decoder</text><text x="750" y="100" text-anchor="middle" class="svg-small">重建图像 x̂</text>
+  <rect x="882" y="48" width="176" height="75" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="970" y="75" text-anchor="middle" class="svg-title">LPIPS + PatchGAN</text><text x="970" y="100" text-anchor="middle" class="svg-small">自适应 λ 平衡</text>
+  <path d="M840 86 H882" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <text x="24" y="192" class="svg-title">第二阶段：离散索引上的自回归组合</text>
+  <rect x="28" y="219" width="224" height="78" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="140" y="249" text-anchor="middle" class="svg-title">图片 → 离散索引</text><text x="140" y="274" text-anchor="middle" class="svg-small">h×w 个码本位置</text>
+  <path d="M252 258 H309" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="314" y="219" width="255" height="78" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="441" y="249" text-anchor="middle" class="svg-title">Causal Transformer</text><text x="441" y="274" text-anchor="middle" class="svg-small">p(s_i|s_&lt;i,c)</text>
+  <path d="M569 258 H626" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="631" y="219" width="205" height="78" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="733" y="249" text-anchor="middle" class="svg-title">采样 + 查码本</text><text x="733" y="274" text-anchor="middle" class="svg-small">固定 Decoder 出图</text>
+  <rect x="885" y="219" width="170" height="78" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="970" y="249" text-anchor="middle" class="svg-title">高分辨率</text><text x="970" y="274" text-anchor="middle" class="svg-small">滑动窗口 / 条件</text>
+  <path d="M836 258 H885" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="240" y="352" width="600" height="58" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="540" y="377" text-anchor="middle" class="svg-title">第一阶段保留感知细节；第二阶段学习全局组合</text><text x="540" y="399" text-anchor="middle" class="svg-small">两者训练目标和代码模块不同，不能合并成一个 GAN 损失</text>
+</svg></div>
+</section>
+
+<section class="doc-block" id="vq-loss">
+  <h2>3. VQ 与重建：量化如何进入训练</h2>
+  <p>每个空间位置选择距离最近的码本向量：</p>
+  <div class="math-scroll"><div class="math">z<sub>q,ij</sub>=z<sub>k</sub>，&nbsp;&nbsp; k=argmin<sub>z∈Z</sub>||ẑ<sub>ij</sub>−z||<span class="equation-number">(2)</span></div></div>
+  <p>量化不可微，仍使用 VQ-VAE 的 straight-through：前向用量化的 z_q，反向把 decoder 侧梯度复制给 encoder。论文的 VQ 损失包含重建、码本和承诺项：</p>
+  <div class="math-scroll"><div class="math">L<sub>VQ</sub>=||x−x̂||²+||sg[E(x)]−z_q||²+||sg[z_q]−E(x)||²<span class="equation-number">(3)</span></div></div>
+  <p>重建项让编码和解码保留图像信息；码本项移动码本靠近编码；承诺项让 encoder 靠近码本。三项不是同一个对象上的重复 MSE，stop-gradient 的方向决定各自训练谁。</p>
+  <p>官方 <a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/vqvae/quantize.py">taming/modules/vqvae/quantize.py</a> 中 <code>VectorQuantizer2</code> 将 [B,C,H,W] 变为 [B,H,W,C]，用 <code>||z||²+||e||²−2ze</code> 求距离，argmin 后查询 embedding，再用 <code>z + (z_q-z).detach()</code> 保留梯度。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · VectorQuantizer2.forward</span><pre><code>z = rearrange(z, 'b c h w -> b h w c').contiguous()
+z_flattened = z.view(-1, self.e_dim)
+d = torch.sum(z_flattened ** 2, dim=1, keepdim=True) + \
+    torch.sum(self.embedding.weight**2, dim=1) - 2 * \
+    torch.einsum('bd,dn->bn', z_flattened,
+                 rearrange(self.embedding.weight, 'n d -> d n'))
+indices = torch.argmin(d, dim=1)
+z_q = self.embedding(indices).view(z.shape)
+# 梯度直通；损失的 legacy/non-legacy 分支需按版本核对。
+z_q = z + (z_q - z).detach()</code></pre></div>
+  <div class="doc-warning"><strong>版本细节：</strong>固定源码注释指出旧版 beta 项有历史兼容行为，新版可修正。阅读损失公式时要区分论文写法、旧版 legacy 实现和修正版，而不是把任意一个分支当成所有版本的事实。</div>
+</section>
+
+<section class="doc-block" id="perceptual-gan">
+  <h2>4. 为什么还需要感知损失和 PatchGAN</h2>
+  <p>只用像素 MSE 往往倾向平均化细节，导致模糊。VQGAN 将重建监督换为/加强为感知损失，并训练 patch-based discriminator 分辨真实与重建图片。其目标是让码本在高压缩率下仍保留纹理、边缘和局部真实感。</p>
+  <div class="math-scroll"><div class="math">L<sub>GAN</sub>=log D(x)+log(1−D(x̂))<span class="equation-number">(4)</span></div></div>
+  <p>这不是让 Transformer 做 GAN 训练，而是<strong>在第一阶段训练 encoder/decoder/码本时</strong>使用感知与对抗信号。第二阶段的 Transformer 仍然学习离散索引交叉熵。</p>
+  <p>官方 <a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/losses/vqperceptual.py">VQLPIPSWithDiscriminator</a> 将 L1 与 LPIPS 合成重建项，使用 hinge discriminator loss，并分别处理 generator 和 discriminator 两个 optimizer。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 感知重建与对抗目标</span><pre><code>rec_loss = torch.abs(inputs.contiguous()-reconstructions.contiguous())
+if self.perceptual_weight > 0:
+    p_loss = self.perceptual_loss(inputs.contiguous(),reconstructions.contiguous())
+    rec_loss = rec_loss + self.perceptual_weight*p_loss
+nll_loss = torch.mean(rec_loss)
+
+# generator 分支
+logits_fake = self.discriminator(reconstructions.contiguous())
+g_loss = -torch.mean(logits_fake)
+loss = nll_loss + d_weight*disc_factor*g_loss \
+     + self.codebook_weight*codebook_loss.mean()</code></pre></div>
+</section>
+
+<section class="doc-block" id="adaptive-weight">
+  <h2>5. 自适应 λ：防止对抗项淹没重建</h2>
+  <p>感知/对抗项与重建项量级可能差别很大。论文使用 decoder 最后一层 G_L 的梯度范数比构造 λ：</p>
+  <div class="math-scroll"><div class="math">λ = ||∇<sub>G_L</sub>L<sub>rec</sub>|| / (||∇<sub>G_L</sub>L<sub>GAN</sub>||+δ)<span class="equation-number">(5)</span></div></div>
+  <p>它根据当前训练中两类目标对 decoder 最后层的相对强度调整权重，而不是固定一个人工常数。δ 用于数值稳定。</p>
+  <p>官方实现分别计算两项对最后一层的梯度、取范数比并 clamp 后 detach，防止这个“权重计算”本身成为额外训练目标：</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · calculate_adaptive_weight</span><pre><code>nll_grads = torch.autograd.grad(nll_loss,last_layer,retain_graph=True)[0]
+g_grads = torch.autograd.grad(g_loss,last_layer,retain_graph=True)[0]
+d_weight = torch.norm(nll_grads)/(torch.norm(g_grads)+1e-4)
+d_weight = torch.clamp(d_weight,0.0,1e4).detach()
+d_weight = d_weight*self.discriminator_weight</code></pre></div>
+  <p>此外，<code>disc_start</code> 可让对抗项在若干 step 后才启用。论文公式是设计原则，实际训练还要记录启用时刻、clamp 和 optimizer 调度。</p>
+</section>
+
+<section class="doc-block" id="network-source">
+  <h2>6. 官方模型结构：VQModel 里每个组件的位置</h2>
+  <p>官方 <a href="https://github.com/CompVis/taming-transformers/blob/master/taming/models/vqgan.py">taming/models/vqgan.py</a> 的 <code>VQModel</code> 将 Encoder、Decoder、VectorQuantizer2 和损失组合起来。Encoder 输出先经 <code>quant_conv</code> 对齐 embedding 维度，量化后再经 <code>post_quant_conv</code> 回到 decoder 的 z_channels。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · VQModel 编码与解码</span><pre><code>def encode(self,x):
+    h = self.encoder(x)
+    h = self.quant_conv(h)
+    quant,emb_loss,info = self.quantize(h)
+    return quant,emb_loss,info
+
+def decode(self,quant):
+    quant = self.post_quant_conv(quant)
+    return self.decoder(quant)
+
+def forward(self,input):
+    quant,diff,_ = self.encode(input)
+    return self.decode(quant),diff</code></pre></div>
+  <p>最低分辨率处还使用单个 attention 聚合全局上下文。这里的 attention 属于第一阶段压缩器，与第二阶段自回归 Transformer 不是同一个模块。</p>
+  <p>官方配置中 optimizer 分别管理 encoder、decoder、quantize、两个卷积以及 discriminator。训练时 <code>optimizer_idx=0</code> 计算 autoencoder/generator 损失，<code>optimizer_idx=1</code> 计算 discriminator 损失；两者不能简单放进一次 backward 就假设语义相同。</p>
+</section>
+
+<section class="doc-block" id="transformer">
+  <h2>7. 第二阶段 Transformer：下一索引预测</h2>
+  <p>将离散索引按某种顺序排列为 s，Transformer 学习：</p>
+  <div class="math-scroll"><div class="math">p(s)=∏<sub>i</sub>p(s<sub>i</sub>|s<sub>&lt;i</sub>)，&nbsp;&nbsp; L=−E log p(s)<span class="equation-number">(6)</span></div></div>
+  <p>训练时通过 causal mask 防止当前位置看见未来索引；损失只在目标索引位置计算。推理时从已生成前缀出发，逐位置采样，再映射回码本并解码。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码：离散 Transformer 训练/采样骨架</span><pre><code># 训练：第一阶段已固定，输入是真实图片编码出的索引。
+indices = vqgan.encode_to_indices(images)
+logits = transformer(indices[:,:-1],causal=True)
+loss = F.cross_entropy(logits.transpose(1,2),indices[:,1:])
+
+# 推理：从起始 token 逐位置采样，最后再查码本/解码。
+sequence = start_token
+for _ in range(H_latent*W_latent):
+    logits = transformer(sequence,causal=True)
+    next_index = sample(logits[:,-1]/temperature)
+    sequence = torch.cat([sequence,next_index],dim=1)
+image = vqgan.decode_indices(sequence)
+# 省略位置编码、条件、KV cache、索引 remap 与批量高效实现。</code></pre></div>
+  <p>若有类别、布局或另一张条件图片 c，任务变为 p(s|c)=∏p(s_i|s_&lt;i,c)。论文可将另一模态先编码为索引前缀 r，再让 Transformer 在这些条件下生成目标索引。</p>
+</section>
+
+<section class="doc-block" id="high-resolution">
+  <h2>8. 高分辨率与滑动窗口：不是无限加长注意力</h2>
+  <p>即使 VQGAN 已压缩空间分辨率，注意力仍受 token 长度限制。论文常用码本大小约 1024，Transformer 训练序列常为 16×16；原文说明在约 12GB GPU 上对应 GPT2-medium 级配置，具体应结合表格和硬件理解。</p>
+  <p>更高分辨率时可在局部 patch 上生成，并用滑动窗口注意力/上下文处理；这依赖数据集空间统计或条件信息。如果整张图片需要严格全局布局，单纯滑窗可能产生拼接不一致，论文建议可附加坐标条件。</p>
+  <div class="code-block"><span class="code-label">教学伪代码 · 非官方源码：局部窗口生成</span><pre><code># 每个窗口读取已生成的邻域，而非孤立生成一块。
+for window in sliding_windows(latent_grid,window_size,stride):
+    context = read_existing_neighborhood(latent_grid,window)
+    sampled = autoregressive_sample(transformer,context,window.mask)
+    latent_grid[window.target_region] = sampled
+# 实际需处理边界、重叠一致性与位置/语义条件。'''</code></pre></div>
+</section>
+
+<section class="doc-block" id="training-pipeline">
+  <h2>9. 完整训练与推理流程</h2>
+  <ol>
+    <li>训练 VQGAN：图像→encoder→quant_conv→码本→post_quant_conv→decoder；重建/感知、码本/承诺、对抗目标按两个 optimizer 交替更新。</li>
+    <li>固定第一阶段，将训练集图像转为索引序列；按任务准备类别、语义布局或其他条件。</li>
+    <li>训练自回归 Transformer，对下一索引做交叉熵；确认 causal mask 与条件 loss 范围。</li>
+    <li>推理时从提示/前缀采样索引，查询码本、post_quant_conv、decoder 得到图像；高分辨率时按窗口组织。</li>
+    <li>分别评估重建、码本利用、Transformer 采样质量与推理成本，不把某一个指标当作全部能力。</li>
+  </ol>
+  <p>论文实验包含多种条件任务和与 PixelSNAIL 的对比；这些结果有特定训练时间、步数、参数量和数据设置。本文只读原文与源码，未运行其训练或生成，不声称复现论文指标。</p>
+</section>
+
+<section class="doc-block" id="limitations">
+  <h2>10. 局限、失败模式与易混淆点</h2>
+  <ul>
+    <li><strong>第一阶段是信息瓶颈：</strong>压缩器没保留的纹理、文字或身份细节，Transformer 无法保证恢复。</li>
+    <li><strong>码本可能闲置：</strong>应监测 perplexity、使用频率和量化误差。</li>
+    <li><strong>对抗训练可能不稳定：</strong>需监控 LPIPS、重建、对抗项、λ 与 disc_start。</li>
+    <li><strong>Transformer 串行采样有成本：</strong>token 数、窗口、KV cache 和采样温度都影响实际体验。</li>
+    <li><strong>条件不是自动精确控制：</strong>类别/语义/参考条件需要对应训练数据与正确接口。</li>
+  </ul>
+  <p>不要把 VQGAN 与 VQ-VAE 的原始论文公式、当前仓库的 legacy 参数行为或后续 LDM 的连续 latent 混为一个方法。</p>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>11. 复现与单元测试清单</h2>
+  <ul class="checklist">
+    <li>固定论文版本、官方源码提交、模型 YAML、码本和 checkpoint。</li>
+    <li>检查 encoder→quant_conv→quantize→post_quant_conv→decoder 的通道和空间形状。</li>
+    <li>验证量化前向等于码本值，straight-through 梯度能进入 encoder。</li>
+    <li>分别记录 L1/LPIPS、码本/承诺、GAN、λ 与两个 optimizer 的更新。</li>
+    <li>Transformer 的 causal mask、索引范围、loss 位置和采样温度需单独测试。</li>
+    <li>条件生成时检查条件前缀不混入不该计算的 loss。</li>
+    <li>高分辨率窗口测试边界、重叠、坐标条件和全局一致性。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="worked-example">
+  <h2>附录 A：用一张图把两个阶段连起来</h2>
+  <p>设想一张 256×256 的训练图片，经过 m=4 次空间下采样后，第一阶段 latent 网格为 16×16。每个位置先得到一个 n_z 维向量，再从 K 个码本项中选最近项。这样图片不再由 256×256×3 个像素值直接输入 Transformer，而变成 256 个离散索引。若 K=1024，Transformer 的每个位置是在 1024 个视觉词条中预测下一个。</p>
+  <p>训练第一阶段时，重建图会同时接受像素/感知监督与判别器反馈，码本/承诺项调整量化表示。此时并不训练 Transformer。等压缩器训练完成，才把这些索引作为第二阶段的离散数据。生成时，Transformer 逐位置采样 256 个索引，再查询码本并通过 decoder 输出 256×256 图片。若输出尺寸更大，则可能要在多个窗口中重复这一过程。</p>
+  <p>这个例子也解释两个常见错误：<strong>量化向量与索引不是同一种数据</strong>，前者用于 decoder，后者用于自回归先验；<strong>第一阶段重建图片与第二阶段生成新图片不是同一任务</strong>，前者输入真实图，后者从索引先验采样。</p>
+</section>
+
+<section class="doc-block" id="learning-misconceptions">
+  <h2>附录 B：小白最容易混淆的四件事</h2>
+  <ol>
+    <li><strong>感知损失不是另一个码本损失。</strong>LPIPS 比较深度特征，更关心感知相似；码本项/承诺项管理 encoder 与离散 embedding 的距离。</li>
+    <li><strong>PatchGAN 不在第二阶段判别生成图。</strong>它在第一阶段指导压缩器，让离散重建保留纹理；第二阶段 Transformer 仍以交叉熵学习索引分布。</li>
+    <li><strong>码本大并不总是更好。</strong>更大的 K 提高表示容量，却增加检索和下一索引分类难度；还需考虑码本闲置与数据覆盖。</li>
+    <li><strong>低分辨率注意力与 Transformer 注意力作用不同。</strong>前者帮助 encoder/decoder 聚合图像上下文，后者负责离散 token 的历史条件建模。</li>
+  </ol>
+  <p>阅读官方代码时，可以按这个顺序追踪：<code>VQModel.forward</code> → <code>encode/decode</code> → <code>VectorQuantizer2.forward</code> → <code>VQLPIPSWithDiscriminator.forward</code> → 两个 optimizer；随后再读 Transformer 的数据构造和训练脚本。这样不会把第一阶段的 GAN 损失误接到第二阶段。</p>
+</section>
+
+<section class="doc-block doc-sources" id="sources">
+  <h2>12. 原文与官方实现</h2>
+  <ul class="source-links">
+    <li><a href="https://arxiv.org/abs/2012.09841">Taming Transformers for High-Resolution Image Synthesis</a>，重点为 §3.1–3.2 的压缩器、感知/对抗目标、Transformer 与高分辨率策略。</li>
+    <li><a href="https://github.com/CompVis/taming-transformers">CompVis/taming-transformers 官方实现</a>。</li>
+    <li>源码定位：<a href="https://github.com/CompVis/taming-transformers/blob/master/taming/models/vqgan.py">VQModel</a>、<a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/vqvae/quantize.py">VectorQuantizer2</a>、<a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/losses/vqperceptual.py">VQLPIPSWithDiscriminator</a>。</li>
+  </ul>
+  <p>本文已阅读论文和官方仓库的相关实现，未执行训练或推理。教学代码与官方源码明确区分。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>
