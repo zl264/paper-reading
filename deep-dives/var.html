@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VAR：下一尺度预测的视觉自回归｜论文深度精读</title><style>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="VAR：Next-Scale 视觉自回归生成：原理、详细结构、训练推理与代码精读。"><title>VAR：Next-Scale 视觉自回归生成｜深度精读</title><style>
 :root {
   --page: #ffffff;
   --ink: #2f302d;
@@ -712,20 +712,216 @@ a:hover {
       .code-block { break-inside: avoid; }
       .math-scroll { overflow: visible; }
     }
-   .doc-page{max-width:1520px}.doc-block h3{margin:28px 0 10px;font-size:19px}.reading-note{color:var(--muted);font-size:14px}.lead{font-size:17px}.paper-nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:13px}.math-scroll{width:fit-content;max-width:100%;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;margin:14px 0}.math{padding:13px 16px;width:max-content;font-family:"Cambria Math",Cambria,serif;font-size:17px;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0;background:#151922;border-radius:14px;overflow:hidden}.code-block pre{padding:47px 20px 20px;overflow:auto;max-width:100%;color:#e5e7eb;font-size:13px;line-height:1.65}.code-label{position:absolute;top:12px;left:18px;color:#9aa4b2;font-size:12px}.copy-code{position:absolute;right:9px;top:8px;background:#202633;color:#cbd5e1;border:1px solid #3a4352;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}.table-frame{width:100%;overflow:auto;border:1px solid var(--line);border-radius:14px}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px}.doc-data-table th,.doc-data-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.doc-data-table th{background:var(--soft)}.doc-warning{padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;margin:20px 0}.diagram-frame{padding:18px;overflow:auto;border:1px solid var(--line);border-radius:14px}.figure-svg{width:100%;min-width:650px;height:auto}.svg-title{font-size:16px;font-weight:600;fill:#2f302d}.svg-small{font-size:12px;fill:#5c6470}.figure-caption{color:var(--muted);font-size:14px}.file-ref{font-size:13px;color:#526d8c;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0}.checklist li{padding-left:23px;position:relative;margin:8px 0}.checklist li:before{content:'✓';position:absolute;left:0;color:#0f766e}@media print{.toc-rail,.copy-code{display:none}.doc-page{margin:0;width:100%;max-width:none}}</style></head><body><nav class="toc-rail"></nav><main class="doc-page"><header class="doc-title" id="top"><h1>VAR：下一尺度预测的视觉自回归</h1><p class="doc-subtitle">VAR 将逐像素/逐 token 自回归改成由粗到细的下一分辨率预测。</p><p class="reading-note">本页依据 <a href="https://arxiv.org/abs/2404.02905">arXiv:2404.02905</a> 原文与公开实现资料整理。代码块为解释论文机制的教学实现/伪代码，未标为作者官方源码；未执行模型训练或生成。</p><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a></div></header><section class="doc-block" id="problem"><h2>1. 论文要解决的问题</h2><p>VAR 将逐像素/逐 token 自回归改成由粗到细的下一分辨率预测。</p><p>VAR 的 next-scale prediction 将“序列顺序”改为空间尺度顺序，能利用全局粗结构，但每一步依赖前面尺度的采样结果。它与 MAR 的连续扩散头不是同一种机制。</p><p>阅读这篇工作时，应先分清它改变的是表示、训练目标、网络结构还是推理算法；同一个名称常被用于不同实现，不能把后续模型的新增能力自动归入原论文。</p></section><section class="doc-block" id="principle"><h2>2. 核心原理与数学表达</h2><p>VAR 用由粗到细的尺度序列替代固定光栅 token 顺序。每一尺度基于之前的所有低分辨率图预测当前分辨率，训练仍是交叉熵，但序列长度和推理路径都改变。</p><div class="math-scroll"><div class="math">p(r₁,…,r_K)=∏_k p(r_k | r_₁,…,r_{k−1})<span class="equation-number">(1)</span></div></div><p>公式中的每个量都应对应输入、网络状态或监督信号。实现时要额外核对时间索引、batch 维、损失 reduction 与条件 dropout，否则即使公式看起来一致，训练语义也可能不同。</p></section><section class="doc-block" id="structure"><h2>3. 网络结构与数据流</h2><p>VAR 的 next-scale prediction 将“序列顺序”改为空间尺度顺序，能利用全局粗结构，但每一步依赖前面尺度的采样结果。它与 MAR 的连续扩散头不是同一种机制。</p><div class="diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 260" role="img" aria-label="VAR：下一尺度预测的视觉自回归 的输入、模型与输出数据流"><rect x="25" y="75" width="235" height="85" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="142" y="111" text-anchor="middle" class="svg-title">输入 / 条件</text><text x="142" y="137" text-anchor="middle" class="svg-small">数据、状态或控制信号</text><path d="M260 117 H370" stroke="#788493" fill="none"/><rect x="375" y="75" width="260" height="85" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="505" y="111" text-anchor="middle" class="svg-title">核心模型 / 条件融合</text><text x="505" y="137" text-anchor="middle" class="svg-small">VAR 的关键变换</text><path d="M635 117 H745" stroke="#788493" fill="none"/><rect x="750" y="75" width="225" height="85" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="862" y="111" text-anchor="middle" class="svg-title">训练目标 / 生成输出</text><text x="862" y="137" text-anchor="middle" class="svg-small">按论文定义验证</text></svg></div><p class="figure-caption">图 1：本工作的计算骨架。具体通道、patch、码本和采样循环需结合论文及代码实现。</p></section><section class="doc-block" id="code"><h2>4. 具体代码：核心模块与损失</h2><p>以下代码把论文的核心计算写成可读的 PyTorch 结构，重点是输入、输出、监督路径与梯度位置。它不是完整训练框架，也不冒充作者仓库实现。</p><div class="code-block"><span class="code-label">教学实现 / 伪代码 · 非官方源码</span><pre><code># 教学伪代码 · 非官方源码：next-scale AR
-prefix = []
-for scale in scales:
-    target_tokens = tokenizer_quantize(image,scale)
-    logits = transformer(prefix,scale_embedding=scale)
-    loss += cross_entropy(logits,target_tokens)
-    prefix.append(target_tokens)  # 训练时 teacher forcing
-# 推理逐尺度采样，再上采样为下一尺度条件。</code></pre></div></section><section class="doc-block" id="training"><h2>5. 训练流程与推理步骤</h2><ol><li>准备与原任务一致的数据、条件和预处理，固定坐标/时间/帧序约定。</li><li>按论文选择训练阶段、损失、条件 dropout 与可训练参数。</li><li>用小 batch 验证前向 shape、loss 有限性和梯度是否进入新增模块。</li><li>推理从正确先验/初始状态开始，按对应采样器更新，不把训练捷径直接搬到推理。</li><li>分别评估质量、控制或效率指标，记录采样步数、上下文长度、batch 和硬件。</li></ol></section><div class="code-block"><span class="code-label">训练/推理诊断 · 教学检查代码（非官方源码）</span><pre><code># 每个实现都应先通过这类基础诊断，再讨论模型效果。
-with torch.autograd.set_detect_anomaly(True):
-    output = model(sample_input,condition)
-    loss = objective(output,target)
-    assert torch.isfinite(loss)
-    loss.backward()
-for name,param in model.named_parameters():
-    if param.requires_grad:
-        assert param.grad is not None, f&quot;no gradient: {name}&quot;
-# 采样时确认：time direction、guidance、mask、dtype、设备与 reduction。</code></pre></div></section><section class="doc-block" id="limitations"><h2>6. 局限与易混淆点</h2><p>本页的教学代码不能替代完整官方训练配置，尤其是数据治理、分布式训练、权重、EMA、数值稳定性和评估协议。论文声明的效果来自其特定数据与实验条件，不应当作本地实测。</p><p>如果原文没有公开完整实现，应该将“论文机制”与“可复现源码”分开描述；若有后续版本，也要核对原始论文与当前代码仓库是否仍相同。</p></section><section class="doc-block" id="reproduce"><h2>7. 实现与复现清单</h2><ul class="checklist"><li>写清输入输出、张量维度、概率分布/目标和时间索引。</li><li>对核心数学操作写独立单元测试，不依赖生成结果“看起来正常”。</li><li>检查冻结/训练参数列表、条件 dropout 与空条件语义。</li><li>分离质量、控制精度和推理成本指标。</li><li>保留原文、代码版本、数据预处理和训练超参数。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与核对范围</h2><ul><li><a href="https://arxiv.org/abs/2404.02905">论文原文与版本记录</a></li><li><a href="https://arxiv.org/html/2404.02905">论文 HTML 全文</a>：公式、结构与实验细节。</li></ul><p>本页为基于论文的阅读笔记，教学代码不隶属于论文作者。当前页面未声称核验完整官方训练源码，后续可继续扩展为逐文件源码导读。</p></section><section class="doc-block"><h2>返回分类</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">生成模型与基础架构</a></div></section></main><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.querySelector('.toc-rail'),ts=[...document.querySelectorAll('section[id]')].filter(x=>x.querySelector('h2'));if(nav){const title=document.createElement('div');title.className='toc-title';title.textContent='代表论文深度精读';const links=ts.map(t=>{let a=document.createElement('a');a.href='#'+t.id;a.textContent=t.querySelector('h2').textContent;a.dataset.target=t.id;return a});nav.replaceChildren(title,...links);const obs=new IntersectionObserver(es=>{let v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)links.forEach(a=>a.classList.toggle('active',a.dataset.target===v.target.id))},{rootMargin:'-12% 0px -68% 0px'});ts.forEach(t=>obs.observe(t))}document.querySelectorAll('.code-block').forEach(b=>{let c=b.querySelector('code'),btn=document.createElement('button');btn.textContent='复制';btn.className='copy-code';b.appendChild(btn);btn.onclick=async()=>{try{await navigator.clipboard.writeText(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='请手动复制'}setTimeout(()=>btn.textContent='复制',1600);}});});</script></body></html>
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="var 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>VAR：不再逐像素猜，而是一次预测“更清楚的一层”</h1>
+  <p class="doc-subtitle">Visual Autoregressive Modeling：从 next-token 的问题，到多尺度残差量化、块级因果注意力、AdaLN 和逐尺度生成；逐文件读懂官方实现。</p>
+  <p class="reading-note">本文逐节阅读 Tian 等人的 <a href="https://arxiv.org/abs/2404.02905">Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction</a>，并静态核对官方 <a href="https://github.com/FoundationVision/VAR">FoundationVision/VAR</a> 的 VQVAE、量化器、VAR Transformer 与推理实现。本文未运行模型训练或生成，论文指标不写作本地实测。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/generative-foundations.html">所属分类：生成模型与基础架构</a></div>
+</header>
+
+<section class="doc-block" id="intuition">
+  <h2>1. 小白直觉：先画轮廓，再逐层补细节</h2>
+  <p>普通图像自回归模型像“从左到右、从上到下逐个填像素”。VAR 更像画画：先给出一个很粗糙的缩略图，再预测更高分辨率的版本，重复若干次，直到得到最终细节。</p>
+  <p>因此它的自回归单位不是单个 token，而是<strong>某个尺度下的一整张 token map</strong>。同一个尺度的所有位置可以并行预测，条件则来自之前更粗的尺度。这就是 next-scale prediction，而不是把“next-token”简单换个名字。</p>
+  <div class="doc-note"><p><strong>一句话区分：</strong>VQGAN 常按 raster 顺序逐 token 生成；VAR 按由粗到细的尺度生成，每次并行预测当前尺度的整张 token map。二者都依赖离散表示，但概率分解与推理顺序不同。</p></div>
+</section>
+
+<section class="doc-block" id="why-next-token">
+  <h2>2. 为什么普通 next-token 图像生成不合适</h2>
+  <p>图像经过 VQ tokenizer 后是二维网格，再展平成一维序列才能做传统自回归。论文指出这样会产生几个问题：</p>
+  <ul>
+    <li><strong>双向相关被破坏：</strong>图像特征本来就互相依赖，硬性要求只看一维前缀并不自然。</li>
+    <li><strong>空间局部性变差：</strong>二维相邻位置在一维序列中可能相距很远。</li>
+    <li><strong>零样本编辑受限：</strong>例如给下半图预测上半图，不再符合固定顺序的条件分布。</li>
+    <li><strong>逐步生成昂贵：</strong>n×n latent 需要 n² 个自回归步骤，注意力成本也随序列快速增长。</li>
+  </ul>
+  <p>VAR 把问题改为：第 k 步预测第 k 个尺度的整张 token map r_k，只允许它读取更早的粗尺度。这既保留二维空间结构，也减少串行步骤数。</p>
+</section>
+
+<section class="doc-block" id="formulation">
+  <h2>3. Next-scale 概率公式：自回归发生在尺度上</h2>
+  <p>令 R=(r₁,…,r_K) 是 K 个逐渐变细的离散 token maps，第 k 个尺度大小为 h_k×w_k：</p>
+  <div class="math-scroll"><div class="math">p(r₁,…,r_K)=∏<sub>k=1</sub><sup>K</sup> p(r<sub>k</sub> | r₁,…,r<sub>k−1</sub>)<span class="equation-number">(1)</span></div></div>
+  <p>每个 r_k 内包含 h_k·w_k 个 token，每个 token 属于共享词表 [V]。训练时第 k 个尺度的所有 token 并行预测，注意力 mask 只让它读取当前及更早尺度；推理时逐尺度采样，KV cache 可复用历史。</p>
+  <p>这里“并行”指同一尺度内，不是把所有尺度同时独立生成。尺度之间仍有条件依赖，这也是它区别于一次性全图生成的地方。</p>
+</section>
+
+<section class="doc-block" id="tokenizer">
+  <h2>4. 多尺度 tokenizer：不是把同一图重复量化十次</h2>
+  <p>VAR 使用 VQGAN 风格编码器/解码器，但将量化改为<strong>多尺度残差量化</strong>。算法的关键是：每个尺度先插值到该尺度，选码后把码本表示上采样回最大 latent 网格，再从剩余特征中减去这部分。</p>
+  <div class="math-scroll"><div class="math">r_k=Q(interpolate(f,h_k,w_k))，&nbsp;&nbsp; f ← f−φ_k(interpolate(lookup(Z,r_k)))<span class="equation-number">(2)</span></div></div>
+  <p>这样后面的尺度学习前面尚未表示的细节，而不是重复表示同一份内容。所有尺度共享码本 Z；额外的 φ_k 卷积帮助把上采样码本表示融合回 latent。</p>
+  <p>官方默认尺度为 <code>(1,2,3,4,5,6,8,10,13,16)</code>，共 10 个尺度，码本 V=4096。解码时把各尺度贡献相加，再由 decoder 重建图片。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · models/quant.py 的残差量化</span><pre><code>f_rest = f_no_grad.clone()
+f_hat = torch.zeros_like(f_rest)
+for si,pn in enumerate(self.v_patch_nums):
+    rest_NC = F.interpolate(f_rest,size=(pn,pn),mode='area') \
+        .permute(0,2,3,1).reshape(-1,C)
+    d = torch.sum(rest_NC.square(),dim=1,keepdim=True) \
+      + torch.sum(self.embedding.weight.data.square(),dim=1) \
+      - 2 * rest_NC @ self.embedding.weight.data.T
+    idx_N = torch.argmin(d,dim=1)
+    h = self.embedding(idx_N.view(B,pn,pn)).permute(0,3,1,2)
+    h = F.interpolate(h,size=(H,W),mode='bicubic')
+    h = self.quant_resi[si/(len(self.v_patch_nums)-1)](h)
+    f_hat = f_hat + h
+    f_rest -= h</code></pre></div>
+  <p>官方实现还包含可选 z-normalization、码本使用统计和共享/部分共享的 quant_resi 卷积。它们是具体实现配置，不能只根据论文公式忽略。</p>
+</section>
+
+<section class="doc-block" id="transformer">
+  <h2>5. VAR Transformer：类别条件、位置/层级信息与 AdaLN</h2>
+  <p>官方 <code>models/var.py</code> 将码本 embedding 经 <code>word_embed</code> 映射到 Transformer 宽度，并加入绝对位置 embedding 与 level embedding。类别标签既作为起始 token，也作为 AdaLN 条件。</p>
+  <p>Transformer block 是带自适应归一化的 self-attention + MLP，Q/K 可选归一化稳定训练。最后通过 <code>head_nm</code> 和线性 head 输出每个位置的 V=4096 类 logits。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>组件</th><th>作用</th><th>输入/输出</th></tr></thead><tbody>
+    <tr><td>word_embed</td><td>把 tokenizer embedding 投影到主干宽度</td><td>Cvae → C</td></tr>
+    <tr><td>class_emb</td><td>类别起始 token 与 AdaLN 条件</td><td>label → C</td></tr>
+    <tr><td>pos_1LC / lvl_embed</td><td>区分空间位置和尺度层级</td><td>与 token 序列相加</td></tr>
+    <tr><td>AdaLNSelfAttn blocks</td><td>在允许的历史尺度内交互</td><td>[B,L,C] → [B,L,C]</td></tr>
+    <tr><td>head</td><td>预测码本类别</td><td>[B,L,C] → [B,L,V]</td></tr>
+  </tbody></table></div>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 430" role="img" aria-label="VAR 的多尺度残差量化与逐尺度自回归生成">
+  <text x="24" y="24" class="svg-title">第一阶段：多尺度残差量化 tokenizer</text>
+  <rect x="20" y="48" width="160" height="75" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="100" y="77" text-anchor="middle" class="svg-title">输入图片</text><text x="100" y="102" text-anchor="middle" class="svg-small">卷积 Encoder</text>
+  <path d="M180 86 H235" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="240" y="48" width="250" height="75" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="365" y="75" text-anchor="middle" class="svg-title">逐尺度量化 + 残差相减</text><text x="365" y="100" text-anchor="middle" class="svg-small">1×1, 2×2, …, 16×16</text>
+  <path d="M490 86 H545" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="550" y="48" width="200" height="75" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="650" y="75" text-anchor="middle" class="svg-title">共享码本 V=4096</text><text x="650" y="100" text-anchor="middle" class="svg-small">索引与 embedding</text>
+  <path d="M750 86 H805" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="810" y="48" width="240" height="75" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="930" y="75" text-anchor="middle" class="svg-title">各尺度贡献相加</text><text x="930" y="102" text-anchor="middle" class="svg-small">Decoder 重建图像</text>
+  <text x="24" y="193" class="svg-title">第二阶段：next-scale 自回归 Transformer</text>
+  <rect x="22" y="219" width="205" height="78" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="124" y="249" text-anchor="middle" class="svg-title">类别 / 起始 token</text><text x="124" y="274" text-anchor="middle" class="svg-small">条件 + AdaLN</text>
+  <path d="M227 258 H282" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="287" y="219" width="270" height="78" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="422" y="246" text-anchor="middle" class="svg-title">块级因果 Transformer</text><text x="422" y="270" text-anchor="middle" class="svg-small">读取当前及更早尺度</text>
+  <path d="M557 258 H612" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="617" y="219" width="215" height="78" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="724" y="246" text-anchor="middle" class="svg-title">整尺度并行预测</text><text x="724" y="270" text-anchor="middle" class="svg-small">采样 + CFG + KV cache</text>
+  <path d="M832 258 H887" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="892" y="219" width="165" height="78" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="974" y="249" text-anchor="middle" class="svg-title">下一尺度</text><text x="974" y="274" text-anchor="middle" class="svg-small">直到最终解码</text>
+  <rect x="225" y="349" width="630" height="58" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="540" y="375" text-anchor="middle" class="svg-title">自回归单位是整张尺度图，不是单个像素 token</text><text x="540" y="397" text-anchor="middle" class="svg-small">尺度之间串行；同尺度内部并行；残差量化保留逐层细节</text>
+</svg></div>
+</section>
+
+<section class="doc-block" id="mask">
+  <h2>6. 块级因果 mask：为什么同尺度可以并行</h2>
+  <p>官方为每个 token 记录所属尺度 lvl，再构造注意力偏置：</p>
+  <div class="math-scroll"><div class="math">mask<sub>ij</sub>=0 若 level<sub>i</sub>≥level<sub>j</sub>，否则 −∞<span class="equation-number">(3)</span></div></div>
+  <p>因此当前尺度的 query 可以读取同尺度与更早尺度的 key/value，但不能读取更细尺度的未来。与普通逐 token causal mask 相比，它把因果边界放在整个尺度块上。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 构造块级注意力 mask</span><pre><code>d = torch.cat([
+    torch.full((pn*pn,),i) for i,pn in enumerate(self.patch_nums)
+]).view(1,self.L,1)
+dT = d.transpose(1,2)
+attn_bias_for_masking = torch.where(d >= dT,0.,-torch.inf)
+attn_bias_for_masking = attn_bias_for_masking.reshape(1,1,self.L,self.L)
+self.register_buffer('attn_bias_for_masking',attn_bias_for_masking.contiguous())</code></pre></div>
+  <p>训练时这层 mask 让整段 token 能并行计算；推理时 KV cache 已保存过去尺度，不必重复读取/遮蔽未来，因为未来尚未生成。</p>
+</section>
+
+<section class="doc-block" id="training">
+  <h2>7. 训练：先 tokenizer，再 Transformer</h2>
+  <p>第一阶段 tokenizer 使用图像重建、特征/量化、感知与对抗等复合损失，学习多尺度离散表示。第二阶段固定 tokenizer，把图片编码为多尺度索引，再以 teacher forcing 训练 next-scale 交叉熵。</p>
+  <p>官方 <code>VAR.forward</code> 对类别标签做条件 dropout，用额外的 null class 表示无条件类别；这对后续 CFG 很重要。训练 target 是各尺度真实离散索引，输入则是由先前尺度构造的 token 表示。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 条件 dropout 与 Transformer 前向</span><pre><code>label_B = torch.where(
+    torch.rand(B,device=label_B.device) < self.cond_drop_rate,
+    self.num_classes,label_B)
+sos = cond_BD = self.class_emb(label_B)
+x_BLC = torch.cat((sos,self.word_embed(x_BLCv_wo_first_l.float())),dim=1)
+x_BLC += self.lvl_embed(self.lvl_1L[:,:ed].expand(B,-1)) + self.pos_1LC[:,:ed]
+attn_bias = self.attn_bias_for_masking[:,:,:ed,:ed]
+for block in self.blocks:
+    x_BLC = block(x=x_BLC,cond_BD=cond_BD_or_gss,attn_bias=attn_bias)
+return self.get_logits(x_BLC.float(),cond_BD)</code></pre></div>
+  <p>论文的训练设置包括 AdamW、按模型规模调整 batch/epoch、类别条件和 QK normalization；不同深度对应不同宽度与 head 数。不能把一个 VAR-d16 的配置当成所有 VAR 模型配置。</p>
+</section>
+
+<section class="doc-block" id="inference">
+  <h2>8. 推理：逐尺度采样、CFG、KV cache 与解码</h2>
+  <p>官方 <code>autoregressive_infer_cfg</code> 的流程是：</p>
+  <ol>
+    <li>从类别标签构造起始 token 与 cond；标签为空时可采样类别，负标签对应 null class。</li>
+    <li>对每个尺度运行 Transformer，得到该尺度所有位置的码本 logits。</li>
+    <li>按 CFG 合并条件/无条件 logits，使用 top-k/top-p 采样当前尺度索引。</li>
+    <li>查询码本，把当前尺度贡献累加到 f_hat，再生成下一尺度输入。</li>
+    <li>最后经 VQ decoder 将 f_hat 解码为图像。</li>
+  </ol>
+  <div class="code-block"><span class="code-label">官方源码节选 · 逐尺度采样与条件引导</span><pre><code>for si,pn in enumerate(self.patch_nums):
+    x = next_token_map
+    for b in self.blocks:
+        x = b(x=x,cond_BD=cond_BD_or_gss,attn_bias=None)
+    logits_BlV = self.get_logits(x,cond_BD)
+    t = cfg*(si/self.num_stages_minus_1)
+    logits_BlV = (1+t)*logits_BlV[:B]-t*logits_BlV[B:]
+    idx_Bl = sample_with_top_k_top_p_(
+        logits_BlV,rng=rng,top_k=top_k,top_p=top_p,num_samples=1)[:,:,0]
+    h_BChw = self.vae_quant_proxy[0].embedding(idx_Bl)
+    f_hat,next_token_map = self.vae_quant_proxy[0].get_next_autoregressive_input(
+        si,len(self.patch_nums),f_hat,h_BChw)</code></pre></div>
+  <p>注意该实现中的 CFG 权重随尺度进度 ratio 变化，而不是固定常数。代码默认 top-k/top-p、温度/平滑选项也有具体接口，不能只写“从 softmax 采样”代替全部细节。</p>
+</section>
+
+<section class="doc-block" id="worked-example">
+  <h2>9. 一个具体例子：从 1×1 轮廓到 16×16 latent</h2>
+  <p>以默认 10 尺度为例，最开始只有 1×1 的全局 token，之后依次变成 2×2、3×3、4×4、5×5、6×6、8×8、10×10、13×13、16×16。每一步输出当前尺度的全部索引，不是逐位置走完 256 次才得到最后 latent。</p>
+  <p>如果最终图像是 256×256，tokenizer 的空间下采样为 16 倍，最终 latent 正是 16×16。Transformer 因此只需 10 个尺度阶段；每个阶段内部并行预测当前 token map。</p>
+  <p>重建时，各尺度 embedding 经上采样、残差卷积并累加为 f_hat，再由 decoder 回到 256×256。这个例子可以帮助我们检查：<strong>最终 latent 尺寸由 tokenizer 决定，尺度列表决定生成阶段数，码本大小决定分类头类别数。</strong></p>
+</section>
+
+<section class="doc-block" id="limitations">
+  <h2>10. 局限、成本与常见误解</h2>
+  <ul>
+    <li><strong>不是完全并行生成：</strong>同尺度并行，但尺度之间仍串行，误差会传递到更细尺度。</li>
+    <li><strong>tokenizer 是信息上限：</strong>多尺度量化损失的细节无法由后续 Transformer 保证恢复。</li>
+    <li><strong>条件控制依赖训练：</strong>类别、文本或其他模态条件需要相应训练，不是任意 prompt 都能直接输入原始 VAR。</li>
+    <li><strong>注意力成本仍存在：</strong>尺度数减少串行步骤，但 token 总量和注意力仍影响显存与时延。</li>
+    <li><strong>后续 Infinity/视频工作不等于原 VAR：</strong>官方 README 中有后续项目链接，本文不将后续功能混入原论文。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>11. 复现与单元测试清单</h2>
+  <ul class="checklist">
+    <li>检查 tokenizer 的尺度列表、共享码本、最终 latent H/W 与图片分辨率。</li>
+    <li>验证残差量化中 f_rest 每步减少的是已重建贡献，而非原始特征被重复量化。</li>
+    <li>检查块级 mask 不读取未来尺度，但同尺度可交互。</li>
+    <li>验证 class null token、条件 dropout 与 CFG 两路 batch 顺序一致。</li>
+    <li>推理时检查采样索引范围、KV cache、码本查询和 f_hat 累加。</li>
+    <li>分别评估 tokenizer 重建、生成质量、阶段数、模型调用次数与实际延迟。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="teacher-input">
+  <h2>附录 A：训练输入为什么不是简单把真实索引 embedding 拼起来</h2>
+  <p>这是阅读 VAR 源码时最容易跳过、但非常关键的一点：next-scale 的输入需要与“已经生成到某个尺度”的信息状态一致。官方量化器的 <code>idxBl_to_var_input</code> 会读取前面尺度的真实索引，查询码本、上采样、通过残差卷积并累加，形成当前 latent 状态的近似，再把它变换到下一尺度的 token 表示。</p>
+  <p>因此训练不是“把真实 r_k 的 embedding 直接喂给网络，让它预测另一个 r_k”这么简单。输入应该代表 r_&lt;k 的已重建信息，输出才是第 k 尺度的新增索引。这样训练时的信息结构与推理时逐尺度生成保持一致，减少 teacher forcing 与 rollout 的分布差异。</p>
+  <p>可以把它理解为：第 k 步不是从空白开始重画，而是看到之前所有粗尺度已经画出的内容，再决定这一层应该补哪些细节。官方 <code>get_next_autoregressive_input</code> 在推理中做对应的累加与下一尺度构造，两个函数应一起阅读。</p>
+</section>
+
+<section class="doc-block" id="cfg-detail">
+  <h2>附录 B：类别条件 dropout、null class 与 CFG 两路顺序</h2>
+  <p>为了让同一个模型同时支持类别条件与无条件生成，训练时一部分标签会被替换为额外 null class。推理时把真实类别和 null class 各复制成一路，分别计算 logits，再按 CFG 公式合并。这里不是复制图片或改变码本，而是复制 Transformer 的条件输入。</p>
+  <p>官方实现把两路沿 batch 维拼成 [2B,...]，前 B 个对应真实类别，后 B 个对应 null class。CFG 合并必须保持这个顺序；若交换两路，条件方向就会反转。其强度 t 还随当前尺度进度 ratio 增长，因此早期粗结构与后期细节可能受到不同程度的条件引导。</p>
+  <p>采样完成后，索引再通过码本变成连续 embedding，进入残差重建路径。CFG 改变的是离散索引的预测分布，不是直接对最终像素做插值。这个区别有助于理解为什么 CFG、top-k/top-p 与码本使用会共同影响生成结果。</p>
+</section>
+
+<section class="doc-block" id="debug-example">
+  <h2>附录 C：从小例子逐步定位实现错误</h2>
+  <p>如果输出图像完全不合理，先不要直接训练大模型。可以用固定类别和固定随机种子，检查 1×1 到 2×2 的前两个阶段：第一阶段的 logits 是否为有限值，采样索引是否落在 [0,V)，码本查询形状是否为 [B,l,Cvae]，f_hat 的空间尺寸是否与最终 latent 一致。</p>
+  <p>接着检查注意力：人为在未来尺度放入一个明显不同的 token，若当前尺度输出改变，说明 mask 可能泄漏未来。再检查 CFG：交换两路后输出应按预期反向改变，若没变化，可能条件 dropout 或 batch 拼接错误。</p>
+  <p>最后才评估完整 16×16 latent 的重建与采样。将 tokenizer 单独重建、固定真实索引的 Transformer 评价、自由采样三者分开，才能定位问题来自量化、条件预测还是采样器，而不是仅凭生成图猜测。</p>
+</section>
+
+<section class="doc-block doc-sources" id="sources">
+  <h2>12. 原文与官方实现</h2>
+  <ul class="source-links">
+    <li><a href="https://arxiv.org/abs/2404.02905">Visual Autoregressive Modeling: Scalable Image Generation via Next-Scale Prediction</a>，重点为 §3.1–3.2、算法 1/2 与实现细节。</li>
+    <li><a href="https://github.com/FoundationVision/VAR">FoundationVision/VAR 官方实现与模型下载说明</a>。</li>
+    <li>源码定位：<a href="https://github.com/FoundationVision/VAR/blob/main/models/vqvae.py">VQVAE</a>、<a href="https://github.com/FoundationVision/VAR/blob/main/models/quant.py">多尺度量化器</a>、<a href="https://github.com/FoundationVision/VAR/blob/main/models/var.py">VAR Transformer、mask 与推理</a>。</li>
+  </ul>
+  <p>本文已阅读原论文与官方实现；未运行训练或生成，不声称复现论文指标。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>
