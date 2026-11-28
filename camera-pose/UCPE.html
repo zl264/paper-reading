@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="UCPE：面向可控视频生成的统一相机位置编码。从相机射线、RRE、AOE、混合注意力到官方代码与 WorldCrafter 集成的中文学术深度解析。">
+  <title>UCPE 深度解析｜统一相机位置编码</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f7f9fc;
+      --surface-blue: #f2f7ff;
+      --ink: #20242c;
+      --muted: #667085;
+      --faint: #98a2b3;
+      --line: #e5eaf1;
+      --line-strong: #d4dce8;
+      --blue: #246bfe;
+      --blue-dark: #174ea6;
+      --blue-soft: #eaf1ff;
+      --cyan: #087ea4;
+      --green: #087a55;
+      --green-soft: #ecf8f2;
+      --amber: #925d06;
+      --amber-soft: #fff7e6;
+      --red: #b42318;
+      --red-soft: #fff1f0;
+      --violet: #6941c6;
+      --violet-soft: #f4f0ff;
+      --rail: 284px;
+      --content: 980px;
+      --radius: 12px;
+      --shadow: 0 18px 55px rgba(18, 38, 63, .12);
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: Inter, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      font-size: 16px;
+      line-height: 1.9;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--blue-dark); text-decoration: none; }
+    a:hover { color: var(--blue); text-decoration: underline; }
+    button { font: inherit; }
+    ::selection { background: #cfe0ff; color: #102a56; }
+    .reading-progress {
+      position: fixed; inset: 0 auto auto 0; z-index: 1000;
+      width: 0; height: 3px; background: var(--blue);
+    }
+    .toc-rail {
+      position: fixed; z-index: 50; inset: 0 auto 0 0;
+      width: var(--rail); padding: 30px 22px 24px;
+      border-right: 1px solid var(--line); background: rgba(255,255,255,.97);
+      display: flex; flex-direction: column;
+    }
+    .toc-brand { padding: 0 10px 24px; border-bottom: 1px solid var(--line); }
+    .toc-kicker { color: var(--blue); font-size: 11px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; }
+    .toc-brand h2 { margin: 8px 0 4px; font-size: 20px; line-height: 1.35; letter-spacing: -.02em; }
+    .toc-brand p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .toc-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 4px 20px 0; scrollbar-width: thin; }
+    .toc-nav a {
+      position: relative; display: block; margin: 2px 0; padding: 7px 10px 7px 15px;
+      color: #5d6675; border-radius: 7px; font-size: 12.5px; line-height: 1.45;
+      transition: color .18s, background .18s;
+    }
+    .toc-nav a::before {
+      content: ""; position: absolute; left: 2px; top: 12px; width: 4px; height: 4px;
+      border-radius: 50%; background: #c8d1df;
+    }
+    .toc-nav a:hover { color: var(--blue-dark); background: var(--surface-blue); text-decoration: none; }
+    .toc-nav a.active { color: var(--blue-dark); background: var(--blue-soft); font-weight: 650; }
+    .toc-nav a.active::before { background: var(--blue); box-shadow: 0 0 0 3px #cfe0ff; }
+    .toc-foot { padding: 16px 10px 0; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; line-height: 1.7; }
+    .mobile-bar { display: none; }
+    .doc-page { margin-left: var(--rail); }
+    .doc-container { width: min(calc(100% - 80px), var(--content)); margin: 0 auto; }
+    .doc-hero { padding: 74px 0 54px; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 16px; color: var(--blue); font-size: 12px; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
+    .doc-title { margin: 0; max-width: 900px; font-size: clamp(38px, 5vw, 62px); line-height: 1.13; letter-spacing: -.045em; font-weight: 780; }
+    .doc-title span { display: block; margin-top: 13px; color: #475467; font-size: .46em; line-height: 1.4; letter-spacing: -.02em; font-weight: 560; }
+    .doc-subtitle { max-width: 820px; margin: 26px 0 0; color: #475467; font-size: 18px; line-height: 1.85; }
+    .paper-meta { margin-top: 25px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 25px; }
+    .badge { display: inline-flex; align-items: center; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; color: #475467; background: #fff; font-size: 11px; line-height: 1.6; }
+    .badge.blue { border-color: #c9d9ff; color: var(--blue-dark); background: var(--surface-blue); }
+    .badge.green { border-color: #bfe6d6; color: var(--green); background: var(--green-soft); }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .button-link { display: inline-flex; align-items: center; justify-content: center; padding: 9px 16px; border: 1px solid var(--line-strong); border-radius: 8px; color: #344054; background: #fff; font-size: 13px; font-weight: 600; }
+    .button-link.primary { border-color: var(--blue); color: #fff; background: var(--blue); }
+    .button-link:hover { transform: translateY(-1px); text-decoration: none; box-shadow: 0 6px 18px rgba(36,107,254,.12); }
+    .doc-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin: 40px 0 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--line); }
+    .metric { padding: 20px; background: #fff; }
+    .metric strong { display: block; color: #172b4d; font-size: 24px; line-height: 1.25; letter-spacing: -.03em; }
+    .metric span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .doc-block { padding: 64px 0 12px; }
+    .doc-block + .doc-block { border-top: 1px solid var(--line); margin-top: 50px; }
+    .section-number { display: block; margin-bottom: 8px; color: var(--blue); font: 700 12px/1.4 var(--mono); letter-spacing: .08em; }
+    .doc-block h2 { margin: 0 0 25px; font-size: 31px; line-height: 1.35; letter-spacing: -.025em; }
+    .doc-block h3 { margin: 42px 0 14px; font-size: 21px; line-height: 1.45; letter-spacing: -.015em; }
+    .doc-block h4 { margin: 30px 0 10px; font-size: 16px; line-height: 1.55; }
+    .doc-block p { margin: 0 0 18px; }
+    .doc-block ul, .doc-block ol { margin: 10px 0 22px; padding-left: 24px; }
+    .doc-block li { margin: 7px 0; padding-left: 4px; }
+    .lead { color: #344054; font-size: 18px; line-height: 1.9; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .term { color: var(--blue-dark); font-weight: 650; }
+    .tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 4px; color: var(--blue-dark); background: var(--blue-soft); font-size: 11px; font-weight: 650; vertical-align: 1px; }
+    .tag.local { color: var(--violet); background: var(--violet-soft); }
+    .tag.paper { color: var(--green); background: var(--green-soft); }
+    .doc-callout { margin: 26px 0; padding: 21px 24px; border-left: 3px solid var(--blue); border-radius: 0 10px 10px 0; background: var(--surface-blue); }
+    .doc-callout > :last-child { margin-bottom: 0; }
+    .doc-callout strong.callout-title { display: block; margin-bottom: 7px; color: #173f7e; }
+    .doc-callout.warning { border-left-color: #dc920e; background: var(--amber-soft); }
+    .doc-callout.warning strong.callout-title { color: var(--amber); }
+    .doc-callout.local { border-left-color: var(--violet); background: var(--violet-soft); }
+    .doc-callout.local strong.callout-title { color: var(--violet); }
+    .doc-callout.limit { border-left-color: var(--red); background: var(--red-soft); }
+    .doc-callout.limit strong.callout-title { color: var(--red); }
+    .doc-note { margin: 20px 0; padding: 14px 18px; border: 1px solid var(--line); border-radius: 9px; color: #475467; background: var(--surface); font-size: 13px; }
+    .math-scroll { position: relative; overflow-x: auto; margin: 24px 0; padding: 20px 54px 20px 22px; border: 1px solid var(--line); border-radius: 10px; background: #fbfcfe; }
+    .math-scroll .katex-display { margin: 0; text-align: left; }
+    .math-scroll .katex { font-size: 1.03em; }
+    .equation-number { position: absolute; right: 17px; top: 50%; transform: translateY(-50%); color: var(--faint); font: 12px/1 var(--mono); }
+    .inline-math { white-space: nowrap; }
+    .doc-diagram { margin: 28px 0; }
+    .diagram-frame { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: #fff; }
+    .diagram-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--surface); font-size: 12px; }
+    .diagram-zoom { padding: 3px 9px; border: 1px solid var(--line-strong); border-radius: 6px; color: #475467; background: #fff; cursor: pointer; font-size: 11px; }
+    .diagram-canvas { overflow-x: auto; padding: 24px; }
+    .diagram-canvas .mermaid { display: flex; justify-content: center; min-width: 560px; margin: 0; font-family: inherit; }
+    .diagram-caption { margin: 10px 3px 0; color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .table-scroll { overflow-x: auto; }
+    .doc-table { width: 100%; margin: 24px 0; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 13px; line-height: 1.6; }
+    .doc-table th { padding: 12px 13px; color: #344054; background: #f2f5f9; border-bottom: 1px solid var(--line-strong); text-align: left; font-weight: 700; white-space: nowrap; }
+    .doc-table td { padding: 12px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .doc-table tr:last-child td { border-bottom: 0; }
+    .doc-table tbody tr:hover { background: #fafcff; }
+    .doc-table .num { text-align: right; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+    .doc-table .best { color: var(--blue-dark); background: var(--surface-blue); font-weight: 700; }
+    .doc-table .rowhead { color: #344054; font-weight: 650; white-space: nowrap; }
+    .table-caption { margin: -13px 0 24px; color: var(--muted); font-size: 12px; }
+    .code-block { position: relative; margin: 24px 0; overflow: hidden; border: 1px solid #d8e0eb; border-radius: 10px; background: #f8fafc; }
+    .code-label { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 9px 14px; border-bottom: 1px solid #dde4ed; color: #475467; background: #f0f4f8; font: 11px/1.5 var(--mono); }
+    .copy-code { flex: 0 0 auto; padding: 3px 9px; border: 1px solid #cbd5e1; border-radius: 5px; color: #475467; background: #fff; cursor: pointer; font: 11px/1.4 inherit; }
+    .copy-code:hover { color: var(--blue-dark); border-color: #9db9e9; }
+    .code-block pre { overflow-x: auto; margin: 0; padding: 18px; color: #243447; font: 12.5px/1.75 var(--mono); tab-size: 4; }
+    .code-block code { font-family: inherit; }
+    .file-ref { display: inline; padding: 2px 6px; border: 1px solid var(--line); border-radius: 5px; color: #475467; background: var(--surface); font: 11px/1.5 var(--mono); word-break: break-all; }
+    a.file-ref:hover { border-color: #b7c9e8; color: var(--blue-dark); text-decoration: none; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin: 24px 0; }
+    .concept-card { padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+    .concept-card h4 { margin: 0 0 8px; }
+    .concept-card p { margin: 0; color: #475467; font-size: 13px; }
+    .pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 24px 0; }
+    .pipeline span { padding: 7px 11px; border: 1px solid #cddbf1; border-radius: 7px; color: #294a77; background: #f5f8fd; font-size: 12px; }
+    .pipeline b { color: #8ba0ba; font-weight: 400; }
+    .shape-list { font-family: var(--mono); font-size: 12px; }
+    .source-links { margin-top: 40px; padding: 26px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .source-links h3 { margin-top: 0; }
+    .source-links li { word-break: break-word; }
+    .doc-footer { margin-top: 64px; padding: 30px 0 46px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    .back-top { position: fixed; right: 24px; bottom: 24px; z-index: 40; width: 40px; height: 40px; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--blue-dark); background: rgba(255,255,255,.95); box-shadow: 0 5px 20px rgba(30,50,80,.1); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity .2s; }
+    .back-top.visible { opacity: 1; pointer-events: auto; }
+    .lightbox { display: none; position: fixed; inset: 0; z-index: 2000; padding: 52px; background: rgba(15,23,42,.82); }
+    .lightbox.open { display: flex; align-items: center; justify-content: center; }
+    .lightbox-content { position: relative; width: 100%; height: 100%; overflow: auto; padding: 36px; border-radius: 12px; background: #fff; }
+    .lightbox-content svg { max-width: none; }
+    .lightbox-close { position: fixed; right: 24px; top: 18px; z-index: 2001; padding: 6px 13px; border: 1px solid rgba(255,255,255,.4); border-radius: 7px; color: #fff; background: rgba(15,23,42,.6); cursor: pointer; }
+    body.locked { overflow: hidden; }
+    @media (max-width: 1180px) {
+      .toc-rail { display: none; }
+      .doc-page { margin-left: 0; }
+      .mobile-bar { position: sticky; top: 0; z-index: 80; display: flex; align-items: center; justify-content: space-between; padding: 11px 20px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.96); backdrop-filter: blur(12px); }
+      .mobile-bar strong { font-size: 13px; }
+      .mobile-bar select { max-width: 58%; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 6px; color: #475467; background: #fff; font-size: 12px; }
+      .doc-container { width: min(calc(100% - 48px), var(--content)); }
+      .doc-hero { padding-top: 50px; }
+    }
+    @media (max-width: 700px) {
+      body { font-size: 15px; }
+      .doc-container { width: min(calc(100% - 30px), var(--content)); }
+      .doc-hero { padding: 36px 0 38px; }
+      .doc-title { font-size: 36px; }
+      .doc-subtitle, .lead { font-size: 16px; }
+      .doc-block { padding-top: 44px; }
+      .doc-block h2 { font-size: 25px; }
+      .doc-block h3 { font-size: 19px; }
+      .doc-metrics { grid-template-columns: repeat(2, 1fr); }
+      .grid-2 { grid-template-columns: 1fr; }
+      .math-scroll { padding: 17px 40px 17px 14px; }
+      .math-scroll .katex { font-size: .91em; }
+      .diagram-canvas { padding: 12px; }
+      .lightbox { padding: 42px 10px 10px; }
+      .lightbox-content { padding: 16px; }
+      .back-top { right: 14px; bottom: 14px; }
+    }
+    @media print {
+      .toc-rail, .mobile-bar, .reading-progress, .back-top, .hero-actions, .copy-code, .diagram-zoom { display: none !important; }
+      .doc-page { margin: 0; }
+      .doc-container { width: 100%; max-width: none; }
+      .doc-hero { padding-top: 0; }
+      .doc-block { break-inside: auto; padding-top: 32px; }
+      .doc-callout, .math-scroll, .concept-card, .doc-table tr, .code-block { break-inside: avoid; }
+      .code-block pre { white-space: pre-wrap; word-break: break-word; }
+      a { color: inherit; text-decoration: none; }
+      body { font-size: 11pt; }
+    }
+  </style>
+</head>
+<body>
+<nav data-site-navigation aria-label="论文精读网站导航" style="position:relative;z-index:20;width:max-content;max-width:calc(100% - 24px);margin:10px 12px 0 auto;padding:7px 11px;border:1px solid #e6e8ec;border-radius:9px;background:#fff;color:#6b7280;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:12px;line-height:1.6"><a href="../index.html" style="color:#526d8c;text-decoration:none">← 首页</a><span style="margin:0 7px;color:#c4c9d1">/</span><a href="../categories/camera-pose.html" style="color:#526d8c;text-decoration:none">相机位姿可控视频生成</a></nav>
+
+  <div class="reading-progress" id="readingProgress"></div>
+  <div class="mobile-bar">
+    <strong>UCPE 深度解析</strong>
+    <select id="mobileToc" aria-label="跳转到章节"><option value="">选择章节</option></select>
+  </div>
+
+  <aside class="toc-rail" aria-label="文档目录">
+    <div class="toc-brand">
+      <div class="toc-kicker">Paper × Code</div>
+      <h2>UCPE 深度解析</h2>
+      <p>Unified Camera Positional Encoding<br>从射线几何到可控视频生成</p>
+    </div>
+    <nav class="toc-nav" id="tocNav"></nav>
+    <div class="toc-foot">arXiv:2512.07237v2<br>论文、官方实现与本地代码分层解读</div>
+  </aside>
+
+  <main class="doc-page" id="top">
+    <div class="doc-container">
+      <header class="doc-hero no-toc">
+        <p class="eyebrow">CVPR 2026 · Controlled Video Generation</p>
+        <h1 class="doc-title">UCPE<span>Unified Camera Positional Encoding<br>面向可控视频生成的统一相机位置编码</span></h1>
+        <p class="doc-subtitle">把“相机如何运动”改写成“每个像素对应的射线如何处于三维空间”。UCPE 以逐射线局部坐标系为核心，将内参、畸变、外参与重力方向统一接入视频扩散 Transformer 的注意力计算。</p>
+        <div class="paper-meta">
+          Cheng Zhang, Boying Li, Meng Wei, Yan-Pei Cao, Camilo Cruz Gambardella, Dinh Phung, Jianfei Cai<br>
+          arXiv:2512.07237v2 [cs.CV]，2026-03-26 · 本文基于论文 v2、官方公开源码及本地 WorldCrafter 静态代码整理
+        </div>
+        <div class="badge-row">
+          <span class="badge blue">逐射线 SE(3)</span>
+          <span class="badge blue">RRE + AOE</span>
+          <span class="badge blue">PRoPE 风格混合注意力</span>
+          <span class="badge green">Wan2.1 官方适配</span>
+          <span class="badge">35.6M 可训练参数</span>
+          <span class="badge">中文 · 学术深度版</span>
+        </div>
+        <div class="hero-actions">
+          <a class="button-link primary" href="https://arxiv.org/abs/2512.07237" target="_blank" rel="noopener">论文页面</a>
+          <a class="button-link" href="https://arxiv.org/html/2512.07237v2" target="_blank" rel="noopener">阅读论文全文</a>
+          <a class="button-link" href="https://github.com/chengzhag/UCPE" target="_blank" rel="noopener">官方代码</a>
+          <a class="button-link" href="https://chengzhag.github.io/publication/ucpe/" target="_blank" rel="noopener">项目主页</a>
+        </div>
+        <div class="doc-metrics">
+          <div class="metric"><strong>1 ray / token</strong><span>每个空间 token 对应一个局部几何坐标系</span></div>
+          <div class="metric"><strong>½ + ¼ + ¼</strong><span>几何变换、水平 RoPE、垂直 RoPE</span></div>
+          <div class="metric"><strong>35.6M</strong><span>论文报告：含 AOE 的适配器参数量</span></div>
+          <div class="metric"><strong>48k clips</strong><span>论文报告：最终训练片段约 4.8 万条</span></div>
+        </div>
+      </header>
+
+      <section id="reading-guide" class="doc-block">
+        <span class="section-number">00 / READING GUIDE</span>
+        <h2>先建立全局图景：UCPE 到底统一了什么？</h2>
+        <p class="lead">UCPE 的关键并不是再设计一种“相机向量”，而是把相机条件放入注意力机制的几何结构中：图像 token 不再只带有二维位置，还带有其对应三维射线的位置与朝向。不同镜头模型先被转换为同一种射线语言，再通过逐射线变换参与 Q、K、V、O 的计算。</p>
+        <p>这里的“统一”有三层含义。第一，<strong>统一投影模型</strong>：针孔、广角、鱼眼等模型都可以经反投影得到相机坐标系射线。第二，<strong>统一几何表达</strong>：射线方向与相机中心共同构造世界到射线局部坐标系的刚体变换。第三，<strong>统一网络接口</strong>：几何变换与绝对朝向嵌入分别通过乘法和加法进入一个轻量注意力分支，无需重写视频扩散主干。</p>
+        <div class="doc-diagram">
+          <div class="diagram-frame">
+            <div class="diagram-toolbar"><span>图 0-1 · UCPE 的完整条件流</span><button class="diagram-zoom" type="button">放大</button></div>
+            <div class="diagram-canvas"><pre class="mermaid">
+flowchart LR
+  A["相机轨迹 c2w<br/>每帧 R, t"] --> D["逐射线局部 SE(3)"]
+  B["镜头参数<br/>xFoV, ξ"] --> C["UCM 反投影<br/>d_cam"]
+  C --> D
+  A --> E["世界方向射线<br/>d_world"]
+  C --> E
+  D --> F["RRE<br/>逐射线 viewmats"]
+  E --> G["AOE<br/>Up + Latitude"]
+  F --> H["Q / K / V / O<br/>几何变换"]
+  G --> I["Linear(3,D)<br/>加性 token 条件"]
+  H --> J["Spatial Attention Adapter"]
+  I --> J
+  K["视频 token"] --> J
+  J --> L["并行残差注入<br/>视频 DiT"]
+            </pre></div>
+          </div>
+          <p class="diagram-caption">自绘结构图，对应论文图 3 的适配器思想。RRE 是乘性几何变换，AOE 是加性嵌入，两者不能混为同一种位置编码。</p>
+        </div>
+        <div class="grid-2">
+          <div class="concept-card"><h4>一句话理解 RRE</h4><p>给每条射线建立一个“z 轴沿视线、原点位于相机中心”的局部坐标系，让注意力直接读取射线之间的相对三维关系。</p></div>
+          <div class="concept-card"><h4>一句话理解 AOE</h4><p>相对几何不知道世界的“上”在哪里，因此额外提供射线纬度与向上扰动在图像中的位移方向。</p></div>
+          <div class="concept-card"><h4>一句话理解适配器</h4><p>复制一条独立、压缩的相机自注意力支路，以零初始化输出投影并行加回主干，使训练从原模型行为附近开始。</p></div>
+          <div class="concept-card"><h4>一句话理解代码链</h4><p><code>pose + x_fov + xi → d_cam → raymats → viewmats</code>，同时生成 <code>cam_emb</code>，最后进入 <code>cam_self_attn</code>。</p></div>
+        </div>
+        <div class="doc-callout warning">
+          <strong class="callout-title">证据边界</strong>
+          文中标记为<span class="tag paper">论文报告</span>的数字均来自论文，不是本地复现实验；标记为<span class="tag local">本地静态代码分析</span>的 WorldCrafter 内容仅依据源码阅读，不代表已执行训练、推理或性能测量。官方公开实现与本地扩展始终分节说明。
+        </div>
+        <h3>推荐学习路线</h3>
+        <ol>
+          <li>先读第 1～2 节，明确“像素—射线—坐标系”的对应关系。</li>
+          <li>再读第 3～4 节，理解为何 Plücker 与逐相机 PRoPE 仍不够，以及 RRE 的精确相对变换。</li>
+          <li>第 5～8 节把公式逐行映射到官方源码，适合实现与调试。</li>
+          <li>第 9～10 节区分官方 Wan 数据流和 WorldCrafter 的本地工程扩展。</li>
+          <li>最后读第 11～12 节，用实验、消融和限制检验方法的真实收益与适用边界。</li>
+        </ol>
+      </section>
+
+      <section id="motivation" class="doc-block">
+        <span class="section-number">01 / MOTIVATION</span>
+        <h2>问题定义：视频模型需要的不只是轨迹，而是可计算的空间关系</h2>
+        <p class="lead">可控视频生成的目标是：给定文本、初始图像或其他内容条件，再给定镜头内参与相机轨迹，生成既满足语义又遵循指定观察几何的视频。难点在于，相机控制本质上定义了三维世界到二维图像的映射，而视频 DiT 接收的是潜空间 token 序列；两种表示之间存在明显的结构鸿沟。</p>
+        <p>设第 \(t\) 帧的外参为 \(T_t^{cw}=[R_t\mid \mathbf t_t]\)，它把世界坐标点变到相机坐标系；其逆 \(T_t^{wc}\) 则给出相机在世界中的位置与朝向。用户指定的“向左移动”“抬头”“扩大视场角”“鱼眼畸变”，最终都会改变每个像素所观察到的三维射线。若网络只得到一个拼接后的外参向量，它必须自行学习从矩阵数值到每个 token 几何含义的复杂映射。</p>
+        <p>早期方法常把相机参数编码为全局条件，再经交叉注意力或特征拼接注入。这种设计在固定针孔相机、有限轨迹范围内可以工作，但存在三个问题：</p>
+        <ul>
+          <li><strong>空间粒度不匹配。</strong>一个相机矩阵对应整帧，而一帧内不同像素具有不同视线方向；局部透视与畸变信息被压平。</li>
+          <li><strong>模型形式不统一。</strong>针孔、广角、鱼眼的内参与畸变参数维度不同，直接拼接难以形成稳定、共享的表示。</li>
+          <li><strong>绝对与相对关系混杂。</strong>世界坐标原点可以任意选取，真正决定多视图对应关系的往往是射线间相对几何；但只保留相对几何又会丢失重力和绝对朝向。</li>
+        </ul>
+        <p>UCPE 将问题重新表述为：对视频 token \((t,u,v)\)，先找到它所对应的射线，再构造该射线的局部三维坐标系。这样，网络不必从抽象矩阵反推“这个 token 看向哪里”，而是直接在该 token 的几何坐标系中执行注意力。</p>
+        <div class="math-scroll">
+          \[\mathcal V=\operatorname{VideoDiT}_{\theta}(\mathbf z,\ c_{text},\ \Phi_\psi,\ \{T_t^{wc}\}_{t=1}^{F})\]
+          <span class="equation-number">(1.1)</span>
+        </div>
+        <p>其中 \(\Phi_\psi\) 是投影模型决定的像素到射线映射，\(\psi\) 可包含视场角和 UCM 参数 \(\xi\)。UCPE 并不替代视频生成模型，而是给模型增加一个几何一致的条件接口。</p>
+
+        <h3>1.1 为什么“相机位置编码”比“相机特征”更准确</h3>
+        <p>“特征”通常指一个与内容特征相加或拼接的向量；UCPE 的主体 RRE 却不是一个六维或十二维向量，而是作用在注意力隐藏维度上的分块线性变换。每个 token 的 \(4\times4\) 矩阵被展开成适用于 head 子空间的矩阵操作，直接改变 Q/K/V/O 所表达的坐标系。因此，它更接近 RoPE：RoPE 用位置相关旋转让注意力感知相对位置，UCPE 用射线相关的 SE(3) 变换让注意力感知相对三维观察几何。</p>
+        <p>这也解释了为何 UCPE 可以同时改变内参、外参和畸变，而无需为每种相机设置独立控制分支。模型看到的一直是统一形式的射线局部坐标系；投影模型只影响射线如何生成，不影响后续注意力的数据类型。</p>
+        <div class="doc-callout">
+          <strong class="callout-title">核心洞察</strong>
+          把相机控制从“整帧条件嵌入”提升为“逐 token 坐标系变换”。UCPE 的表达力来自几何结构，而不只是增加参数或提高嵌入维度。
+        </div>
+
+        <h3>1.2 RRE 与 AOE 缺一不可</h3>
+        <p>仅有 RRE 时，同一组相机整体绕世界任意旋转，射线之间的相对关系可以保持不变；但生成视频中的地平线、重力和天空方向通常需要与世界坐标对齐。AOE 因而补充绝对朝向：射线纬度描述俯仰，Up 图描述将射线朝世界上方向轻微旋转后，在图像平面产生的方向性位移。论文实验显示，加入 AOE 后 Pitch、Roll 和视觉质量明显改善，但平移相关指标不一定同步改善，这说明两种编码承担的是不同任务，而非简单叠加越多越好。</p>
+      </section>
+
+      <section id="geometry" class="doc-block">
+        <span class="section-number">02 / GEOMETRY</span>
+        <h2>几何基础：从像素到世界坐标中的射线</h2>
+        <p class="lead">理解 UCPE 最重要的前置知识，是区分“相机坐标系中的点”“相机中心”“射线方向”和“世界到局部坐标系的变换”。下面统一采用列向量、齐次坐标和左乘矩阵。</p>
+
+        <h3>2.1 四个坐标系与两类外参</h3>
+        <table class="doc-table">
+          <thead><tr><th>对象</th><th>本文记号</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">像素坐标</td><td>\((u,v)\)</td><td>图像或潜空间网格上的位置，经过内参与畸变模型映射到射线。</td></tr>
+            <tr><td class="rowhead">相机坐标系</td><td>cam</td><td>本文采用 x 向右、y 向下、z 向前；射线方向默认在该坐标系生成。</td></tr>
+            <tr><td class="rowhead">世界坐标系</td><td>world / wld</td><td>所有帧共享的参考系；世界上方向为 \(u^{wld}=[0,-1,0]^T\)。</td></tr>
+            <tr><td class="rowhead">射线局部坐标系</td><td>ray / local</td><td>每条射线独有的右手坐标系，z 轴沿射线方向，原点位于相机中心。</td></tr>
+            <tr><td class="rowhead">camera-to-world</td><td>\(T^{wc}=[R_{cam}\mid t_{cam}]\)</td><td>把相机坐标变为世界坐标，列 \(R_{cam}\) 是相机轴在世界中的方向。</td></tr>
+            <tr><td class="rowhead">world-to-camera</td><td>\(T^{cw}=(T^{wc})^{-1}\)</td><td>把世界点变到当前相机；不要与 per-ray 的 \(T^{rw}\) 混淆。</td></tr>
+          </tbody>
+        </table>
+        <p>代码中的 <code>c2w</code> 明确表示 camera-to-world。若输入轨迹是 world-to-camera，必须先求逆；若直接把二者混用，射线会转向错误方向，相机中心也会错误。WorldCrafter 的本地接口同样要求轨迹字段名为 <code>c2w</code>。</p>
+
+        <h3>2.2 统一射线表示</h3>
+        <p>对任意投影模型，定义像素到相机射线的映射：</p>
+        <div class="math-scroll">
+          \[\Phi_\psi:(u,v)\longmapsto\left(\mathbf o_{u,v}^{cam},\mathbf d_{u,v}^{cam}\right)\]
+          <span class="equation-number">(2.1)</span>
+        </div>
+        <p>对于中心投影相机，所有射线共享相机中心，因此 \(\mathbf o_{u,v}^{cam}=\mathbf 0\)，差异完全由方向 \(\mathbf d_{u,v}^{cam}\) 表达。UCPE 的一般定义允许非中心相机，即不同像素可以有不同的射线原点；但在本文核查的官方默认路径中，<code>t_cam</code> 被广播到一帧所有 \(H\times W\) 个网格位置，实际实现主要对应中心投影模型。不能把一般定义扩展成“公开训练代码已经支持任意非中心相机”。</p>
+        <p>已知 camera-to-world 外参后，方向只旋转不平移，射线原点则等于世界中的相机中心：</p>
+        <div class="math-scroll">
+          \[\mathbf d^{world}=R_{cam}\mathbf d^{cam},\qquad \mathbf o^{world}=t_{cam}\]
+          <span class="equation-number">(2.2)</span>
+        </div>
+        <p>方向是否归一化不影响射线所代表的直线，但会影响后续局部坐标轴的构造。官方 RRE 代码对 \(d_{world}\) 做 <code>F.normalize</code>，因此 \(z_{ray}\) 是单位向量。UCM 反投影本身输出的方向不必为单位长度，这一点不应与最终局部坐标的归一化混为一谈。</p>
+
+        <h3>2.3 针孔反投影：最简单的特例</h3>
+        <p>忽略畸变时，针孔模型满足 \(u=f_xX/Z+c_x\)、\(v=f_yY/Z+c_y\)。从像素恢复方向可直接写成：</p>
+        <div class="math-scroll">
+          \[\widetilde{\mathbf d}^{cam}=\left[\frac{u-c_x}{f_x},\frac{v-c_y}{f_y},1\right]^T,\qquad \mathbf d^{cam}=\frac{\widetilde{\mathbf d}^{cam}}{\|\widetilde{\mathbf d}^{cam}\|_2}\]
+          <span class="equation-number">(2.3)</span>
+        </div>
+        <p>这一公式揭示：内参不是只能作为网络输入的标量，它天然决定每个空间 token 的方向。视场角增大时，同样的像素偏移对应更大的光线倾角；主点偏移时，整幅图像的射线束随之偏移。UCPE 将这些变化转化为统一的几何操作。</p>
+
+        <h3>2.4 SE(3) 与齐次变换的方向</h3>
+        <div class="math-scroll">
+          \[T_{a\leftarrow b}=\begin{bmatrix}R_{a\leftarrow b}&t_{a\leftarrow b}\\0^T&1\end{bmatrix},\qquad x_a=R_{a\leftarrow b}x_b+t_{a\leftarrow b}\]
+          <span class="equation-number">(2.4)</span>
+        </div>
+        <p>读矩阵时应始终问“输入坐标属于哪个系、输出坐标属于哪个系”。若 \(T_{l2w}=[R_{l2w}\mid t_{cam}]\) 把射线局部点变到世界，那么其逆 \(T_{w2l}\) 才是 UCPE 代码中的 <code>raymats</code>：</p>
+        <div class="math-scroll">
+          \[R_{w2l}=R_{l2w}^{T},\qquad t_{w2l}=-R_{w2l}t_{cam}\]
+          <span class="equation-number">(2.5)</span>
+        </div>
+        <p>平移项不是简单的 \(-t_{cam}\)，而是先把相机中心取负，再旋转到射线局部坐标系。这个细节决定跨帧平移是否能被正确表达。</p>
+        <div class="doc-note">维度速查：<code>d_cam: [B,H,W,3]</code>；<code>c2w: [B,F,4,4]</code>；<code>d_world: [B,F,H,W,3]</code>；<code>raymats: [B,F,H,W,4,4]</code>；展平后 <code>viewmats: [B,F·H·W,4,4]</code>。</div>
+      </section>
+
+      <section id="evolution" class="doc-block">
+        <span class="section-number">03 / REPRESENTATION EVOLUTION</span>
+        <h2>表示演进：Direct、Plücker、CaPE、GTA、PRoPE 到 UCPE</h2>
+        <p class="lead">UCPE 并非孤立出现。它继承了两条路线：一条把相机或射线编码成向量，另一条把相机几何作为注意力的坐标变换。理解这些前代方案，有助于准确判断 UCPE 的创新究竟发生在哪里。</p>
+
+        <h3>3.1 Direct embedding：直接拼接相机参数</h3>
+        <p>Direct 方法把内外参展开成向量，经 MLP 后与文本或视频特征结合。它实现简单，但参数排列依赖相机模型，数值尺度和坐标约定也会直接影响学习。更重要的是，整帧共用一个向量，无法自然描述“同一帧中左上角与右下角射线方向不同”这一事实。</p>
+
+        <h3>3.2 Plücker embedding：用直线几何统一射线</h3>
+        <p>三维直线可用 Plücker 坐标表示。设射线上一点为 \(\mathbf o\)，方向为 \(\mathbf d\)，则矩向量 \(\mathbf m=\mathbf o\times\mathbf d\)，六维表示为：</p>
+        <div class="math-scroll">
+          \[\mathbf m=\mathbf o\times\mathbf d,\qquad \mathcal P(\mathbf o,\mathbf d)=[\mathbf m,\mathbf d]\in\mathbb R^6\]
+          <span class="equation-number">(3.1)</span>
+        </div>
+        <p>叉积消除了沿射线方向选择不同点的歧义：若 \(\mathbf o'=\mathbf o+\lambda\mathbf d\)，则 \(\mathbf o'\times\mathbf d=\mathbf o\times\mathbf d\)。因此 Plücker 坐标非常适合表达射线，并可逐像素构造特征图。然而 \([\mathbf m,\mathbf d]\) 仍依赖世界坐标原点与轴方向；网络还需自行从六维数值学习两射线间的关系。它提供的是统一输入，不是坐标系不变的注意力。</p>
+        <p>对于中心相机，所有射线原点相同，\(\mathbf m=t_{cam}\times\mathbf d\)。当相机中心位于世界原点时，所有矩向量都为零，Plücker 图只剩方向。这并非信息错误，但说明其六维数值会随参考系选取发生显著变化。</p>
+
+        <h3>3.3 CaPE 与 GTA：把几何放入注意力</h3>
+        <p>CaPE 的核心是把相机变换应用于 Q/K，使点积反映两个位置之间的相对相机关系。GTA 在此基础上进一步变换 V 和注意力输出 O：如果只有 Q/K 感知几何，注意力权重具有几何意义，但被聚合的 Value 仍留在原坐标表达中；同时变换 V/O 能让整个注意力块在几何一致的表示下工作。</p>
+        <p>这一思路与 UCPE 的 Q/K/V/O 设计直接相关。UCPE 的改进不是首次提出“变换注意力”，而是把变换的粒度从每个相机或每帧推进到每条射线，并用统一的射线局部 SE(3) 处理不同镜头。</p>
+
+        <h3>3.4 PRoPE：投影矩阵与 RoPE 的组合</h3>
+        <p>PRoPE 将针孔内参形成的投影矩阵引入注意力，同时保留 RoPE 对二维图像位置的表达。其典型做法是把 head 通道划分为不同子空间：一部分应用相机投影相关线性变换，另一部分分别应用水平和垂直旋转位置编码。</p>
+        <p>但逐相机投影矩阵仍不能完整表达一帧内每条射线的局部三维朝向，尤其在强畸变和非针孔模型中。UCPE 保留这种混合通道设计，却把 \(P\) 替换为逐射线世界到局部变换，使注意力从“相机投影感知”升级为“射线几何感知”。</p>
+
+        <table class="doc-table">
+          <thead><tr><th>方法</th><th>基本表示</th><th>作用位置</th><th>主要局限或推进</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">Direct</td><td>参数向量</td><td>拼接 / 条件分支</td><td>模型相关、粒度较粗，网络需自行解码几何。</td></tr>
+            <tr><td class="rowhead">Plücker</td><td>逐射线 \([\mathbf o\times\mathbf d,\mathbf d]\)</td><td>射线特征图</td><td>统一射线但仍是绝对坐标中的数值嵌入。</td></tr>
+            <tr><td class="rowhead">CaPE</td><td>相机变换</td><td>Q / K</td><td>让注意力权重感知相对几何。</td></tr>
+            <tr><td class="rowhead">GTA</td><td>相机变换</td><td>Q / K / V / O</td><td>Value 聚合与输出也进入一致的几何表达。</td></tr>
+            <tr><td class="rowhead">PRoPE</td><td>逐相机投影矩阵 + RoPE</td><td>分通道注意力变换</td><td>引入针孔内参，但每帧仍主要是单一矩阵。</td></tr>
+            <tr><td class="rowhead">UCPE</td><td>逐射线 SE(3) + AOE</td><td>Q / K / V / O 与加性 token 条件</td><td>统一不同镜头，并同时表达相对射线几何与绝对朝向。</td></tr>
+          </tbody>
+        </table>
+        <p class="table-caption">总结表依据论文图 2 及方法脉络自绘。论文图 2 直观比较了 Direct、Plücker、PRoPE 与 RRE，可在<a href="https://arxiv.org/html/2512.07237v2" target="_blank" rel="noopener">论文全文</a>中对照阅读。</p>
+        <div class="doc-callout">
+          <strong class="callout-title">最容易混淆的一点</strong>
+          每帧一个 \(4\times4\) 外参矩阵不等于每 token 一个局部 SE(3)。UCPE 的 <code>viewmats</code> 第二维是 \(F\cdot H\cdot W\)，不是只有 \(F\)；同一帧内不同 patch 的旋转通常不同。
+        </div>
+      </section>
+
+      <section id="rre" class="doc-block">
+        <span class="section-number">04 / RAY-BASED RELATIVE ENCODING</span>
+        <h2>RRE：为每条射线建立一个局部三维坐标系</h2>
+        <p class="lead">Ray-based Relative Encoding（RRE）是 UCPE 的主体。它不把射线编码为六维向量，而是为每个 token 构造世界到射线局部坐标系的刚体变换。这样，两个 token 的注意力关系可以由两个局部坐标系之间的相对 SE(3) 精确描述。</p>
+
+        <h3>4.1 三个局部坐标轴如何确定</h3>
+        <p>设当前 token 的世界射线方向为 \(d_{world}\)，相机 y 轴在世界中的方向为 \(cam_y=R_{cam}[:,1]\)。UCPE 依次构造：</p>
+        <div class="math-scroll">
+          \[\begin{aligned}
+          z_{ray}&=\operatorname{normalize}(d_{world}),\\
+          x_{ray}&=\operatorname{normalize}(cam_y\times z_{ray}),\\
+          y_{ray}&=\operatorname{normalize}(z_{ray}\times x_{ray}).
+          \end{aligned}\]
+          <span class="equation-number">(4.1)</span>
+        </div>
+        <p>这三个向量形成右手正交基。z 轴锁定观察方向；x 轴由相机向下方向与视线叉乘得到，通常指向图像右侧；y 轴再由 z 与 x 叉乘补全。相较于任意构造一个垂直向量，使用 \(cam_y\) 作为参考保留了相机 roll 的信息。</p>
+        <div class="math-scroll">
+          \[R_{l2w}=[x_{ray}\ y_{ray}\ z_{ray}]\in SO(3),\qquad R_{w2l}=R_{l2w}^{T}\]
+          <span class="equation-number">(4.2)</span>
+        </div>
+        <p>这里 \(R_{l2w}\) 的三列分别是局部 x、y、z 轴在世界坐标中的表示。局部坐标原点放在世界相机中心 \(t_{cam}\)，因此完整的世界到射线局部变换为：</p>
+        <div class="math-scroll">
+          \[T_i^{rw}=\begin{bmatrix}R_i^T&-R_i^Tt_i\\0^T&1\end{bmatrix},\qquad T_i^{wr}=\begin{bmatrix}R_i&t_i\\0^T&1\end{bmatrix}\]
+          <span class="equation-number">(4.3)</span>
+        </div>
+        <p>记号 \(T_i^{rw}\) 表示 world→ray，输入世界齐次点，输出第 \(i\) 条射线的局部坐标。代码变量 <code>raymats</code> 保存的就是 \(T_i^{rw}\)，后续作为 <code>viewmats</code> 输入 PRoPE 风格注意力。</p>
+
+        <h3>4.2 两条射线之间的相对几何</h3>
+        <p>把射线 \(j\) 局部坐标中的点变到射线 \(i\) 局部坐标，需要先回到世界，再进入 \(i\)：</p>
+        <div class="math-scroll">
+          \[T_{i\leftarrow j}=T_i^{rw}T_j^{wr}\]
+          <span class="equation-number">(4.4)</span>
+        </div>
+        <p>略去齐次最后一行，展开旋转和平移：</p>
+        <div class="math-scroll">
+          \[\begin{aligned}
+          R_{i\leftarrow j}&=R_i^TR_j,\\
+          t_{i\leftarrow j}&=R_i^T(t_j-t_i),\\
+          x_i&=R_i^TR_jx_j+R_i^T(t_j-t_i).
+          \end{aligned}\]
+          <span class="equation-number">(4.5)</span>
+        </div>
+        <p>这就是 RRE 的几何含义：\(R_i^TR_j\) 描述两个观察方向的相对旋转，\(R_i^T(t_j-t_i)\) 描述从相机 \(i\) 指向相机 \(j\) 的基线在射线 \(i\) 局部坐标中的表示。它不再依赖一个任意的全局原点，而是以接收注意力的射线为参照。</p>
+        <div class="grid-2">
+          <div class="concept-card"><h4>同一帧、同一相机中心</h4><p>若 \(t_i=t_j\)，平移项为零，仅剩不同像素视线之间的旋转。内参和畸变正是通过这些方向差异进入注意力。</p></div>
+          <div class="concept-card"><h4>跨帧、相机发生平移</h4><p>若 \(t_i\neq t_j\)，相对变换包含旋转后的基线。网络因而能区分纯旋转与带视差的相机移动。</p></div>
+        </div>
+        <p>需要注意，RRE 不是把注意力显式限制为某个物理极线约束，也没有在代码中直接计算所有 token 对的 \(N\times N\) 个 SE(3)。它保存每个 token 的局部变换，再通过 Q/K 的矩阵组合让点积隐式获得相对关系，避免了显式构造巨大的成对几何张量。</p>
+
+        <div class="doc-diagram">
+          <div class="diagram-frame">
+            <div class="diagram-toolbar"><span>图 4-1 · 从两条世界射线到相对局部变换</span><button class="diagram-zoom" type="button">放大</button></div>
+            <div class="diagram-canvas"><pre class="mermaid">
+flowchart TB
+  W["世界坐标点 / 方向"] --> I["T_i^rw<br/>世界 → 射线 i"]
+  J["射线 j 的局部点 x_j"] --> A["T_j^wr<br/>射线 j → 世界"]
+  A --> W
+  I --> R["x_i = R_i^T R_j x_j<br/>+ R_i^T(t_j - t_i)"]
+  C["同一相机中心<br/>t_i = t_j"] --> D["只剩 R_i^T R_j"]
+  E["跨帧平移<br/>t_i ≠ t_j"] --> F["增加局部基线<br/>R_i^T(t_j - t_i)"]
+            </pre></div>
+          </div>
+          <p class="diagram-caption">RRE 的“相对”不是简单相减两个外参向量，而是坐标系的复合变换。</p>
+        </div>
+
+        <h3>4.3 官方源码逐行解释</h3>
+        <p>以下代码来自官方仓库 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/src/camera_control.py#L336-L398" target="_blank" rel="noopener">camera_control.py · world_to_ray_mats</a>。为突出数学结构，保留了核心语句。</p>
+        <div class="code-block">
+          <div class="code-label"><span>src/camera_control.py · RRE 核心构造</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>d_world = einsum(
+    R_cam, d_cam, 'b t i j, b t h w j -> b t h w i'
+)
+cam_y = R_cam[..., :, 1]
+cam_y = repeat(cam_y, 'b t c -> b t h w c', h=H, w=W)
+
+z_ray = F.normalize(d_world, dim=-1, eps=1e-6)
+x_ray = torch.cross(cam_y, z_ray, dim=-1)
+x_ray = F.normalize(x_ray, dim=-1, eps=1e-6)
+y_ray = torch.cross(z_ray, x_ray, dim=-1)
+y_ray = F.normalize(y_ray, dim=-1, eps=1e-6)
+
+R_l2w = torch.stack([x_ray, y_ray, z_ray], dim=-1)
+R_w2l = rearrange(R_l2w, 'b t h w i j -> b t h w j i')
+t_world = repeat(t_cam, 'b t c -> b t h w c', h=H, w=W)
+t_w2l = -einsum(
+    R_w2l, t_world,
+    'b t h w i j, b t h w j -> b t h w i'
+)
+
+raymats = torch.zeros(B, T, H, W, 4, 4, device=device, dtype=dtype)
+raymats[..., :3, :3] = R_w2l
+raymats[..., :3, 3] = t_w2l
+raymats[..., 3, 3] = 1.0</code></pre>
+        </div>
+        <ol>
+          <li><code>einsum</code> 对每个时间、每个网格位置执行 \(R_{cam}d_{cam}\)。由于 \(R_{cam}\) 只有 \([B,T,3,3]\)，同一帧共享外参，而方向随 \(H,W\) 改变。</li>
+          <li><code>cam_y</code> 取旋转矩阵第二列，而非第二行。列表示相机坐标轴在世界中的方向，这与 camera-to-world 约定一致。</li>
+          <li><code>stack(..., dim=-1)</code> 把三个轴作为矩阵列，得到 \(R_{l2w}\)；<code>rearrange</code> 转置最后两维得到 \(R_{w2l}\)。</li>
+          <li><code>t_world</code> 被复制到每个空间网格，说明默认路径中同一帧所有局部坐标原点相同。</li>
+          <li>最终矩阵最后一行是 \([0,0,0,1]\)。它既是旋转和平移的容器，也是后续分块矩阵乘法的输入。</li>
+        </ol>
+        <div class="doc-callout warning">
+          <strong class="callout-title">数值边界</strong>
+          当 \(cam_y\) 与 \(z_{ray}\) 接近平行时，\(x_{ray}\) 的叉乘接近零，局部 x/y 轴会变得不稳定。<code>eps=1e-6</code> 能缓解归一化除零，却不等于为严格退化情形恢复了唯一坐标轴。实现自定义投影或极端视角时应检查这一条件。
+        </div>
+
+        <h3>4.4 RRE 的存储与计算代价</h3>
+        <p>若总 token 数为 \(N=FHW\)，<code>viewmats</code> 的浮点元素数为 \(16BN\)。相较 \(N^2\) 注意力矩阵，这是一项关于 \(N\) 的线性存储开销。真正增加的计算主要来自每条支路的 Q/K/V/O 投影、逐 token 矩阵运算和一次压缩后的自注意力。论文延迟实验表明，UCPE 总生成时间相对同 Wan 基线方法仅有小幅增加，但这属于论文在指定硬件与配置下的报告，不应外推为任意分辨率下的固定比例。</p>
+      </section>
+
+      <section id="ucm" class="doc-block">
+        <span class="section-number">05 / UNIFIED CAMERA MODEL</span>
+        <h2>UCM：把视场角、焦距与鱼眼畸变连成一条射线</h2>
+        <p class="lead">Unified Camera Model（UCM）用一个额外的 \(\xi\) 参数扩展针孔投影。UCPE 使用它生成覆盖针孔、广角、鱼眼乃至极端鱼眼的训练数据与控制信号。理解 UCM 的正向投影与反投影，才能理解“统一相机”具体如何落地。</p>
+
+        <h3>5.1 从水平视场角到焦距</h3>
+        <p>官方公开接口中的 <code>x_fov</code> 接受角度制数值，并在内部通过 <code>torch.deg2rad</code> 转为弧度。图像宽度为 \(W\)，UCM 参数为 \(\xi\)，焦距为：</p>
+        <div class="math-scroll">
+          \[f_x=f_y=\frac{W}{2}\frac{\cos(xFoV/2)+\xi}{\sin(xFoV/2)}\]
+          <span class="equation-number">(5.1)</span>
+        </div>
+        <p>当 \(\xi=0\) 时，公式退化为 \(f=W/2\cot(xFoV/2)\)，正是水平视场角与针孔焦距的关系。角度单位是常见的集成错误：若把已经转为弧度的值再次传给接受度数的接口，会产生完全不同的焦距和射线束。</p>
+
+        <h3>5.2 UCM 正向投影</h3>
+        <p>设相机坐标点为 \([X,Y,Z]^T\)，其到原点距离为 \(r=\sqrt{X^2+Y^2+Z^2}\)，主点为 \((c_x,c_y)\)，则：</p>
+        <div class="math-scroll">
+          \[\begin{aligned}
+          u&=f_x\frac{X}{Z+\xi r}+c_x,\\
+          v&=f_y\frac{Y}{Z+\xi r}+c_y.
+          \end{aligned}\]
+          <span class="equation-number">(5.2)</span>
+        </div>
+        <p>\(\xi=0\) 时分母就是 \(Z\)，回到针孔模型。非零 \(\xi\) 改变径向投影规律，从而模拟更广阔的视场与镜头畸变。分母中的 \(r\) 是三维点到相机中心的距离，不是二维图像半径，也不是 \(X^2+Y^2\) 的平方根。</p>
+
+        <h3>5.3 公开代码中的反投影</h3>
+        <p>UCPE 实际调用的 equi2pers 路径在 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/thirdparty/equilib/equilib/equi2pers/torch.py#L22-L70" target="_blank" rel="noopener">equi2pers/torch.py · ucm_unproject_grid</a> 中实现。先把像素偏移归一化为 \(x,y\)，再恢复方向：</p>
+        <div class="math-scroll">
+          \[\begin{aligned}
+          x&=(u-c_x)/f_x,\qquad y=(v-c_y)/f_y,\qquad r^2=x^2+y^2,\\
+          \alpha&=\xi+\sqrt{1+(1-\xi^2)r^2},\\
+          \gamma&=\frac{\alpha}{1+r^2},\\
+          d^{cam}&=[\gamma x,\ \gamma y,\ \gamma-\xi]^T.
+          \end{aligned}\]
+          <span class="equation-number">(5.3)</span>
+        </div>
+        <div class="code-block">
+          <div class="code-label"><span>thirdparty/equilib/equilib/equi2pers/torch.py · UCM 反投影</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>x = (u - cx) / fx
+y = (v - cy) / fy
+if not y_down:
+    y = -y
+
+r2 = x * x + y * y
+alpha = xi + torch.sqrt(1 + (1 - xi * xi) * r2)
+gamma = alpha / (1 + r2)
+
+X = gamma * x
+Y = gamma * y
+Z = gamma - xi
+d_cam = torch.stack([X, Y, Z], dim=-1)</code></pre>
+        </div>
+        <p>当 \(\xi=0\) 时，\(\alpha=\sqrt{1+r^2}\)、\(\gamma=1/\sqrt{1+r^2}\)，所以：</p>
+        <div class="math-scroll">
+          \[d^{cam}=\frac{[x,y,1]^T}{\sqrt{1+x^2+y^2}}\]
+          <span class="equation-number">(5.4)</span>
+        </div>
+        <p>这与式 (2.3) 的归一化针孔射线完全一致，是检查实现是否正确的重要单元测试。对于一般 \(\xi\)，还需要关注根号定义域、有效视场、坐标 y 方向和主点约定。</p>
+        <div class="doc-callout warning">
+          <strong class="callout-title">论文附录与公开代码的表达差异</strong>
+          本文逐项对照后，论文附录式 A.6 与上述公开反投影代码对于一般 \(\xi\) 并非字面等价；二者在 \(\xi=0\) 时都退化为针孔射线。这里将其记录为论文排版/推导表达与代码实现之间的差异，不在缺少作者进一步说明时判定任何一方错误。严格复现应以所运行版本的代码与配置为准，并记录 commit。
+        </div>
+
+        <h3>5.4 为什么 UCM 适合 UCPE</h3>
+        <p>UCM 的作用不是替代所有现实镜头模型，而是提供一个连续、可采样、能够覆盖大视场变化的参数族。训练时通过不同 \(xFoV,\xi\) 组合产生多种投影下的视频和轨迹；测试时只要新模型能够反投影为射线，RRE 接口就保持相同。论文还展示了未见 Brown-Conrady 模型上的零样本例子，但完整 360° ERP 失败，说明“统一接口”不等于“任意投影都必然泛化”。</p>
+        <table class="doc-table">
+          <thead><tr><th>采样区间</th><th>xFoV</th><th>UCM \(\xi\)</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">Pinhole</td><td>90°–110°</td><td>0</td><td>普通针孔视角</td></tr>
+            <tr><td class="rowhead">Wide-angle</td><td>110°–140°</td><td>0.5–0.95</td><td>广角投影</td></tr>
+            <tr><td class="rowhead">Fisheye</td><td>140°–180°</td><td>1.05–2.0</td><td>鱼眼投影</td></tr>
+            <tr><td class="rowhead">Extreme fisheye</td><td>160°–200°</td><td>1.5–2.3</td><td>极端大视场与强畸变</td></tr>
+          </tbody>
+        </table>
+        <p class="table-caption"><span class="tag paper">论文报告</span>训练数据生成时的镜头参数采样范围。区间彼此衔接，但不应据此假定区间外同样有效。</p>
+      </section>
+
+      <section id="aoe" class="doc-block">
+        <span class="section-number">06 / ABSOLUTE ORIENTATION ENCODING</span>
+        <h2>AOE：为相对射线几何补上“世界的上方向”</h2>
+        <p class="lead">Absolute Orientation Encoding（AOE）解决 RRE 的信息盲区：即使所有相机与射线在世界中整体旋转，射线间相对关系仍可能不变，但视频中的天空、地面和重力方向已经改变。AOE 用 Latitude 与 Up 两个逐射线量提供绝对朝向。</p>
+
+        <h3>6.1 为什么相对编码无法唯一决定 pitch 与 roll</h3>
+        <p>考虑所有 \(R_i\) 与 \(t_i\) 同时经一个全局刚体变换。相对项 \(R_i^TR_j\) 中的全局旋转会抵消，基线也只变到相应局部坐标中；RRE 并没有一个外部参考告诉它哪个方向是重力反方向。对于纯旋转轨迹，这种歧义尤其直观：局部视线之间的夹角相同，并不说明相机相对于地平线处于相同姿态。</p>
+        <p>UCPE 采用 x 右、y 下、z 前的相机约定，并令世界上方向 \(u^{wld}=[0,-1,0]^T\)。因此世界 y 轴负方向是“上”，正方向是“下”。如果数据预处理后世界坐标轴定义不同，AOE 必须同步转换，否则 Lat 和 Up 会给出相反或错误的信息。</p>
+
+        <h3>6.2 Latitude：射线在世界中的纬度</h3>
+        <p>设单位世界射线 \(d=[X_w,Y_w,Z_w]^T\)，其纬度定义为：</p>
+        <div class="math-scroll">
+          \[Lat=\operatorname{atan2}\left(-Y_w,\sqrt{X_w^2+Z_w^2}\right)\]
+          <span class="equation-number">(6.1)</span>
+        </div>
+        <p>当射线朝世界上方向时，\(Y_w<0\)，Lat 为正；朝向地面时为负；位于水平面时接近零。Lat 是一个标量图，每个空间 token 一个值，再沿时间帧排列。它不是相机中心的高度，也不是相机外参中的单个欧拉角，而是每条射线的绝对俯仰信息。</p>
+
+        <h3>6.3 Up：把世界上方向转成图像位移</h3>
+        <p>仅有 Lat 仍不足以清楚表达所有 roll 信息。Up 图的做法是：将当前射线朝世界上方向旋转一个很小固定角度 <code>delta=0.1</code> rad，再把旋转后的射线重新投影回当前镜头，观察像素坐标向哪里移动。设单位旋转轴为 \(\hat k=\operatorname{normalize}(d\times u^{wld})\)，Rodrigues 公式为：</p>
+        <div class="math-scroll">
+          \[d_{up}=d\cos\delta+(\hat k\times d)\sin\delta+\hat k(\hat k^Td)(1-\cos\delta)\]
+          <span class="equation-number">(6.2)</span>
+        </div>
+        <div class="math-scroll">
+          \[\Delta p_{up}=\Pi_\psi(d_{up})-\Pi_\psi(d),\qquad Up=\operatorname{normalize}(\Delta p_{up})\in\mathbb R^2\]
+          <span class="equation-number">(6.3)</span>
+        </div>
+        <p>这里 \(\Pi_\psi\) 是相同镜头模型的正向投影。因为 Up 最终表示图像平面位移，它自动包含当前内参与畸变对方向变化的影响。与直接给网络一个世界向上向量相比，这种设计更贴近 token 所在的二维视觉坐标。</p>
+
+        <h3>6.4 代码中的通道顺序与注入方式</h3>
+        <p>官方 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/src/camera_control.py#L439-L520" target="_blank" rel="noopener">camera_control.py · compute_up_lat_map</a> 返回 <code>up_map</code> 和 <code>lat_map</code>，Wan pipeline 再按以下方式拼接：</p>
+        <div class="code-block">
+          <div class="code-label"><span>diffsynth/pipelines/wan_video_panshot.py · AOE 输入构造</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>up_map, lat_map = ucpe.compute_up_lat_map(
+    R=pose[..., :3, :3],
+    x_fov=x_fov,
+    xi=xi,
+    width=attn.patches_x,
+    height=attn.patches_y,
+    device=pipe.device,
+)
+absmap = torch.cat([up_map, lat_map], dim=-1)
+cam_emb = rearrange(absmap, "B T H W C -> B (T H W) C")</code></pre>
+        </div>
+        <p>因此实际张量通道是 <strong>\([up_x,up_y,lat]\)</strong>。论文文字有时写为 \([Lat,Up]\)，两者是描述顺序与代码拼接顺序的差异；复现和自定义数据接口必须以代码张量顺序为准。最终 <code>cam_emb</code> 的形状是 \([B,N,3]\)，随后由 <code>Linear(3,D)</code> 映射到 token 维度并相加。</p>
+        <div class="doc-callout">
+          <strong class="callout-title">RRE 与 AOE 的接口差异</strong>
+          RRE 的 <code>viewmats</code> 是 \([B,N,4,4]\)，通过矩阵乘法作用于注意力隐藏维度；AOE 的 <code>cam_emb</code> 是 \([B,N,3]\)，通过线性层加到 token 上。前者主要表达相对几何，后者补充绝对世界朝向。
+        </div>
+      </section>
+
+      <section id="hybrid-attention" class="doc-block">
+        <span class="section-number">07 / HYBRID GEOMETRIC ATTENTION</span>
+        <h2>混合注意力：RRE 如何进入 Q、K、V、O</h2>
+        <p class="lead">构造 <code>viewmats</code> 只完成了几何准备。UCPE 真正影响生成的地方，是把逐射线 SE(3) 变成注意力隐藏通道上的线性变换，同时保留二维 RoPE 对图像网格位置的表达。</p>
+
+        <h3>7.1 每个 head 的 ½ + ¼ + ¼ 通道布局</h3>
+        <p>设单个注意力 head 的维度为 \(d_h\)。UCPE 将通道划分为三个互不重叠的子空间：前 \(d_h/2\) 通道应用逐射线几何矩阵，中间 \(d_h/4\) 通道应用水平 RoPE，最后 \(d_h/4\) 通道应用垂直 RoPE。</p>
+        <div class="math-scroll">
+          \[q_i=\operatorname{Concat}(q_i^{geo}\in\mathbb R^{d_h/2},\ q_i^{x}\in\mathbb R^{d_h/4},\ q_i^{y}\in\mathbb R^{d_h/4})\]
+          <span class="equation-number">(7.1)</span>
+        </div>
+        <p>这种分工避免让单一表示承担全部任务。SE(3) 子空间处理三维观察几何，水平与垂直 RoPE 子空间保留规则图像网格中的相对位置先验。对于经过 VAE 与 patchify 的视频 token，二维网格仍是内容组织的重要归纳偏置，完全移除 RoPE 并非必然更优。</p>
+        <div class="pipeline" aria-label="注意力通道划分">
+          <span>½：per-ray SE(3)</span><b>+</b><span>¼：horizontal RoPE</span><b>+</b><span>¼：vertical RoPE</span>
+        </div>
+
+        <h3>7.2 Q、K、V、O 使用不同方向的矩阵</h3>
+        <p>在默认 <code>Ks=None</code> 路径中，令 \(P_i\) 为第 \(i\) 个 token 的 <code>viewmats</code>，即世界到射线局部变换。官方 PRoPE 风格实现取 \(P_T=P^T\)、\(P_{inv}=P^{-1}\)，并按下表作用：</p>
+        <table class="doc-table">
+          <thead><tr><th>位置</th><th>几何子空间</th><th>水平 / 垂直 RoPE 子空间</th><th>目的</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">Query</td><td>\(P_i^Tq_i\)</td><td>正向位置旋转</td><td>把查询转换到适合相对几何点积的表示。</td></tr>
+            <tr><td class="rowhead">Key</td><td>\(P_j^{-1}k_j\)</td><td>正向位置旋转</td><td>与 Query 组合后形成 \(P_iP_j^{-1}\) 的相对关系。</td></tr>
+            <tr><td class="rowhead">Value</td><td>\(P_j^{-1}v_j\)</td><td>正向位置旋转</td><td>让被聚合的信息也经过一致的几何变换。</td></tr>
+            <tr><td class="rowhead">Output</td><td>\(P_i o_i\)</td><td><code>inverse=True</code> 逆旋转</td><td>把聚合结果映回当前 token 的输出表示。</td></tr>
+          </tbody>
+        </table>
+        <p>只看几何子空间，Query 与 Key 的点积可写为：</p>
+        <div class="math-scroll">
+          \[(P_i^Tq_i)^T(P_j^{-1}k_j)=q_i^TP_iP_j^{-1}k_j\]
+          <span class="equation-number">(7.2)</span>
+        </div>
+        <p>由于 \(P_j^{-1}=T_j^{wr}\)，所以 \(P_iP_j^{-1}=T_i^{rw}T_j^{wr}\)，恰好就是式 (4.4) 的“射线 j 局部 → 世界 → 射线 i 局部”。这解释了矩阵方向为何不能任意交换：它不是为了让矩阵形式更复杂，而是为了让注意力点积直接包含相对坐标变换。</p>
+        <div class="doc-callout">
+          <strong class="callout-title">不是显式构造 N×N 几何矩阵</strong>
+          实现只保存每个 token 的 \(P_i\)，在 Q/K 上分别作用。相对变换 \(P_iP_j^{-1}\) 在点积的代数关系中隐式出现，无需额外存储 \(N^2\) 个 SE(3)。
+        </div>
+
+        <h3>7.3 官方变换列表</h3>
+        <p>以下代码来自官方 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/thirdparty/prope/torch.py#L323-L341" target="_blank" rel="noopener">thirdparty/prope/torch.py</a>。<code>_apply_tiled_projmat</code> 负责几何子空间，<code>_rope_apply_coeffs</code> 负责两个 RoPE 子空间。</p>
+        <div class="code-block">
+          <div class="code-label"><span>thirdparty/prope/torch.py · Q/K/V/O 的分通道变换</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>transforms_q = [
+    (partial(_apply_tiled_projmat, matrix=P_T), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y), head_dim // 4),
+]
+transforms_kv = [
+    (partial(_apply_tiled_projmat, matrix=P_inv), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y), head_dim // 4),
+]
+transforms_o = [
+    (partial(_apply_tiled_projmat, matrix=P), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x, inverse=True), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y, inverse=True), head_dim // 4),
+]</code></pre>
+        </div>
+        <p>当矩阵第二维等于序列长度时，代码进入逐 token 矩阵路径，而不是整帧共享矩阵路径：</p>
+        <div class="code-block">
+          <div class="code-label"><span>thirdparty/prope/torch.py · 逐 token 矩阵乘法</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>if matrix.shape[1] == seqlen:
+    feats_ = feats.view(batch, num_heads, seqlen, feat_dim // D, D)
+    out = torch.einsum("btij,bntpj->bntpi", matrix, feats_)
+    return out.reshape(feats.shape)</code></pre>
+        </div>
+        <p>这里的 <code>D</code> 是局部矩阵操作的维度，<code>feat_dim // D</code> 表示一个 head 中被几何矩阵覆盖的分块数量。UCPE 传入的是 \(4\times4\) 齐次矩阵，配合铺展方式在指定通道上执行块对角式变换。阅读代码时应把 <code>D</code> 与整个 DiT 的隐藏维度区分开。</p>
+
+        <h3>7.4 为什么 V 与 O 也必须参与</h3>
+        <p>如果只变换 Q/K，注意力权重会感知几何，但 Value 仍是未经坐标调整的内容向量；加权求和后再直接输出，几何表达与内容表达之间可能不一致。UCPE 对 K/V 使用同一组 <code>transforms_kv</code>，再对输出使用相反方向的 \(P\) 与逆 RoPE，使“注意力分配—信息聚合—结果写回”形成闭环。</p>
+        <p>不过，几何变换不是可逆性在任意浮点条件下都绝对无损的保证。矩阵条件数、数据类型、归一化与零初始化分支都会影响实际训练。严格诊断时，可分别关闭几何、AOE 和 RoPE 子空间，检查控制误差与生成质量的变化。</p>
+      </section>
+
+      <section id="adapter" class="doc-block">
+        <span class="section-number">08 / SPATIAL ATTENTION ADAPTER</span>
+        <h2>Spatial Attention Adapter：把相机分支轻量插入视频 DiT</h2>
+        <p class="lead">UCPE 不直接微调 Wan 的全部参数，而是在每个 DiT 自注意力块旁增加一个独立、压缩的相机注意力分支。该分支同时接收视频 token、RRE 矩阵和可选 AOE 嵌入，再把结果作为残差加回主干。</p>
+
+        <h3>8.1 独立投影与压缩维度</h3>
+        <p>设主干 token 维度为 \(D\)，压缩系数为 \(C\)。相机分支的注意力隐藏维度为 \(D/C\)，head 数也按同一系数减少。它拥有自己的 Q/K/V/O 投影，而不是复用主干投影权重；因此可以专门学习相机控制，同时让原始 Wan 注意力继续负责原有生成能力。</p>
+        <div class="code-block">
+          <div class="code-label"><span>src/camera_control.py · UcpeSelfAttention 初始化</span><button class="copy-code" type="button" aria-label="复制适配器初始化代码">复制代码</button></div>
+          <pre><code>self.q_proj = nn.Linear(dim, attn_dim)
+self.k_proj = nn.Linear(dim, attn_dim)
+self.v_proj = nn.Linear(dim, attn_dim)
+self.out_proj = nn.Linear(attn_dim, dim)
+if emb_dim is not None:
+    self.cam_encoder = nn.Linear(emb_dim, dim)
+
+nn.init.zeros_(self.out_proj.weight)
+nn.init.zeros_(self.out_proj.bias)</code></pre>
+        </div>
+        <p>源码位置为官方 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/src/camera_control.py#L570-L610" target="_blank" rel="noopener">camera_control.py · UcpeSelfAttention</a>。<code>emb_dim=3</code> 时创建 AOE 的 <code>Linear(3,D)</code>；只有 RRE 时不需要这个加性嵌入层，因为 RRE 已经通过 Q/K/V/O 的矩阵路径进入。</p>
+
+        <h3>8.2 AOE 在投影前加到 token 上</h3>
+        <div class="math-scroll">
+          \[\widetilde x_i=x_i+W_{aoe}\,\operatorname{AOE}_i,\qquad
+          q_i=W_q\widetilde x_i,\quad k_i=W_k\widetilde x_i,\quad v_i=W_v\widetilde x_i\]
+          <span class="equation-number">(8.1)</span>
+        </div>
+        <p>这与 RRE 的乘性注入完全不同。AOE 先改变分支的 token 表示，再经 Q/K/V 投影；RRE 则在投影之后对隐藏向量进行几何变换。若把 <code>cam_emb</code> 错当成 <code>viewmats</code>，或者把三维 AOE 直接送入矩阵乘法接口，张量形状和语义都会同时出错。</p>
+
+        <h3>8.3 before、parallel、after 三种插入位置</h3>
+        <table class="doc-table">
+          <thead><tr><th>模式</th><th>结构含义</th><th>特征</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead"><code>before</code></td><td>相机分支在主注意力之前处理特征</td><td>更接近前置条件调制；论文消融称 Pre-Attn。</td></tr>
+            <tr><td class="rowhead"><code>parallel</code></td><td>相机分支与原自注意力读取同一输入，输出相加</td><td>默认与主实验配置；保留原分支并增加独立几何残差。</td></tr>
+            <tr><td class="rowhead"><code>after</code></td><td>相机分支在主注意力之后继续处理</td><td>更接近后置修正；论文消融称 Post-Attn。</td></tr>
+          </tbody>
+        </table>
+        <p>默认并行分支可简写为：</p>
+        <div class="math-scroll">
+          \[h_{out}=h_{base}+\operatorname{Attn}_{base}(x)+W_o\,\operatorname{Attn}_{cam}(\widetilde x;P)\]
+          <span class="equation-number">(8.2)</span>
+        </div>
+        <p>官方 Wan DiT 中的核心调用非常直接：</p>
+        <div class="code-block">
+          <div class="code-label"><span>diffsynth/models/wan_video_dit.py · 并行残差</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>residual = self.self_attn(input_x, freqs)
+if self.cam_self_attn.adaptation_method == "parallel":
+    residual = residual + self.cam_self_attn(
+        input_x, control_camera_dit_input
+    )</code></pre>
+        </div>
+
+        <h3>8.4 零初始化为何重要</h3>
+        <p>训练开始时，<code>out_proj.weight=0</code> 且 <code>out_proj.bias=0</code>，因此无论相机分支内部输出什么，<code>W_o Attn_cam</code> 都严格为零，整个 DiT 初始行为等于未加控制的原模型。随着反向传播更新输出投影，相机分支才逐渐获得影响生成结果的能力。</p>
+        <p>零初始化并不意味着整个分支永远没有梯度。输出层为零时，较前面的 Q/K/V 层在第一步可能梯度受限，但输出层本身可以收到非零梯度；一旦输出层脱离零点，前面的层也进入正常训练。这是一种常见的稳定适配策略，而不是冻结适配器。</p>
+        <div class="doc-callout">
+          <strong class="callout-title">结构上的参数效率</strong>
+          参数效率主要来自“只训练适配器”和“同时压缩隐藏维度与 head 数”，而不是把 \(4\times4\) 矩阵当作一个小向量。论文默认配置报告 35.6M 可训练参数，原 Wan 文本编码器、DiT 与 3D VAE 权重保持冻结。
+        </div>
+      </section>
+
+      <section id="official-pipeline" class="doc-block">
+        <span class="section-number">09 / OFFICIAL IMPLEMENTATION</span>
+        <h2>官方 Wan 数据流：从 81 帧轨迹到逐 token 条件</h2>
+        <p class="lead">把前述组件放回官方 pipeline，可以得到一条完整且可调试的数据链。以下以论文的 81 帧视频设置为例，重点核对时间采样、张量形状和各模块的责任边界。</p>
+
+        <div class="doc-diagram">
+          <div class="diagram-frame">
+            <div class="diagram-toolbar"><span>图 9-1 · 官方 Wan + UCPE 的执行链</span><button class="diagram-zoom" type="button">放大</button></div>
+            <div class="diagram-canvas"><pre class="mermaid">
+flowchart TB
+  A["RGB 轨迹位姿<br/>B × 81 × 3 × 4"] --> B["pose[:, ::4]<br/>21 个潜时间位置"]
+  C["x_fov / xi"] --> D["UCM 反投影<br/>d_cam: B × H × W × 3"]
+  B --> E["补齐 c2w<br/>B × 21 × 4 × 4"]
+  D --> F["world_to_ray_mats"]
+  E --> F
+  F --> G["viewmats<br/>B × N × 4 × 4"]
+  E --> H["compute_up_lat_map"]
+  C --> H
+  H --> I["cam_emb<br/>B × N × 3"]
+  J[" noisy latent tokens"] --> K["每个 DiT block"]
+  G --> K
+  I --> K
+  K --> L["冻结 Wan 主干<br/>+ 可训练并行相机分支"]
+            </pre></div>
+          </div>
+          <p class="diagram-caption">\(N=F\cdot H_p\cdot W_p\)。81 个 RGB 帧经时间 stride 4 采样为 21 个潜时间位置；空间网格由 VAE 与 DiT patch 大小共同决定。</p>
+        </div>
+
+        <h3>9.1 时间采样与空间网格</h3>
+        <p>Wan 的 3D VAE 时间压缩倍率为 4。对于 81 个 RGB 帧，潜时间长度为 \(F=(81-1)/4+1=21\)，与 <code>pose[:, ::4]</code> 的采样一致。空间 token 网格则不能只看图像宽高：若 VAE 空间缩放为 \(s\)，DiT patch 高宽为 \(p_h,p_w\)，则 \(H_p=H_{img}/(sp_h)\)、\(W_p=W_{img}/(sp_w)\)。</p>
+        <p>UCM 反投影直接在注意力 patch 网格上执行，而不是先在完整 RGB 分辨率生成超大射线图再简单平均。这一点使 <code>d_cam</code> 的空间维度天然与 token 数对齐，也意味着每个 patch 的几何代表点由网格采样约定决定。</p>
+
+        <h3>9.2 官方 pipeline 核心代码</h3>
+        <div class="code-block">
+          <div class="code-label"><span>diffsynth/pipelines/wan_video_panshot.py · 条件构造</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>pose = pose[:, ::4]
+c2w = torch.eye(4, device=pose.device, dtype=pose.dtype)
+c2w = repeat(c2w, "... -> B T ...", B=pose.shape[0], T=pose.shape[1]).clone()
+c2w[..., :3, :4] = pose
+
+d_cam = ucpe.ucm_unproject_grid_fov(
+    x_fov=x_fov,
+    xi=xi,
+    height=attn.patches_y,
+    width=attn.patches_x,
+    device=pipe.device,
+    dtype=pose.dtype,
+)
+raymats = ucpe.world_to_ray_mats(d_cam, c2w)
+viewmats = rearrange(raymats, "B T H W ... -> B (T H W) ...")</code></pre>
+        </div>
+        <p>源码见官方 <a class="file-ref" href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/diffsynth/pipelines/wan_video_panshot.py" target="_blank" rel="noopener">wan_video_panshot.py</a>。<code>torch.eye</code> 先构造批量单位齐次矩阵，再填入旋转和平移，确保最后一行是合法的 \([0,0,0,1]\)。随后 AOE 也按同样的 <code>B T H W C → B (T H W) C</code> 顺序展平，保证它与 <code>viewmats</code>、视频 token 的时间—空间顺序一致。</p>
+
+        <h3>9.3 全链路形状检查表</h3>
+        <div class="table-scroll"><table class="doc-table shape-list">
+          <thead><tr><th>张量</th><th>形状</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td>pose</td><td>[B, 81, 3, 4] → [B, 21, 3, 4]</td><td>RGB 帧位姿及潜时间采样结果</td></tr>
+            <tr><td>c2w</td><td>[B, F, 4, 4]</td><td>每帧 camera-to-world，本文例子 F=21</td></tr>
+            <tr><td>d_cam</td><td>[B, Hp, Wp, 3]</td><td>共享镜头模型生成的相机射线</td></tr>
+            <tr><td>d_world</td><td>[B, F, Hp, Wp, 3]</td><td>每帧外参旋转后的世界射线</td></tr>
+            <tr><td>raymats</td><td>[B, F, Hp, Wp, 4, 4]</td><td>每个 token 的 world-to-ray SE(3)</td></tr>
+            <tr><td>viewmats</td><td>[B, N, 4, 4]</td><td>N=F·Hp·Wp，与 token 一一对应</td></tr>
+            <tr><td>cam_emb</td><td>[B, N, 3]</td><td>[up_x, up_y, lat]，可选 AOE</td></tr>
+            <tr><td>视频 token x</td><td>[B, N, D]</td><td>当前视频序列的主干隐藏状态</td></tr>
+            <tr><td>相机分支 Q/K/V</td><td>[B, heads_c, N, attn_dim / heads_c]</td><td>heads_c 与 attn_dim 都经过压缩</td></tr>
+            <tr><td>分支输出</td><td>[B, N, D]</td><td>经 out_proj 恢复到主干维度后相加</td></tr>
+          </tbody>
+        </table></div>
+        <div class="doc-note">调试时首先断言 <code>viewmats.shape[1] == cam_emb.shape[1] == token_seq_len</code>，再检查时间优先、行优先的展平顺序。大量“相机控制不生效”问题实际上是 F、H、W 排列不一致，而不是公式错误。</div>
+
+        <h3>9.4 patch_dit 做了什么</h3>
+        <p>官方 <code>src/camera_control.py</code> 中的 <code>patch_dit</code> 遍历 DiT block，为每个 block 安装 <code>cam_self_attn</code>，并根据实际分辨率计算 <code>patches_x</code> 与 <code>patches_y</code>。这使得 RRE 网格始终针对当前注意力 token，而非写死一个训练分辨率。</p>
+        <p>但“能按新分辨率构造网格”不代表任意长宽比、任意帧数都能保持论文性能。形状兼容是工程条件，分布外泛化仍取决于训练覆盖和主干模型能力。</p>
+
+        <h3>9.5 官方复现依赖不只是克隆仓库</h3>
+        <ul>
+          <li>基础模型：Wan2.1-T2V-1.3B，以及官方指定的 UCPE 适配器权重。</li>
+          <li>数据与元信息：PanFlow / PanShot 相关元数据、轨迹归一化数据和示例位姿。</li>
+          <li>环境：Python 3.11、匹配 CUDA 的 PyTorch、<code>flash-attn==2.8.0.post2</code>、本地包及 <code>thirdparty/equilib</code>。</li>
+          <li>版本记录：本文核对官方 commit <code>d992f1807803ba99331e807e8f018ed552886afd</code>；后续更新可能改变接口与数值细节。</li>
+        </ul>
+        <div class="doc-callout warning">
+          <strong class="callout-title">本文没有声称本地复现</strong>
+          上述内容来自论文和官方源码静态核查。未在本机下载全部模型、执行训练或生成论文中的视频，因此后文所有数值都保留“论文报告”标签。
+        </div>
+      </section>
+
+      <section id="worldcrafter" class="doc-block">
+        <span class="section-number">10 / LOCAL INTEGRATION</span>
+        <h2>WorldCrafter 集成：分块、Fast 模式与显存优化</h2>
+        <p class="lead"><span class="tag local">本地静态代码分析</span>本节只讨论 <code>D:\projects\trae\WorldCrafter</code> 中的实现。分块轨迹、记忆机制、粗到细金字塔、紧凑存储和多 GPU 上下文并行属于本地工程集成，不应写成 UCPE 论文原有组件。</p>
+
+        <h3>10.1 每个 chunk 如何构造 UCPE 条件</h3>
+        <p>本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">bridge.py</span> 为每个 DiT block 注入 <code>cam_self_attn</code>。与只压缩隐藏维度不同，这里同时执行 <code>num_heads = block.attn1.heads // attn_compress</code> 和 <code>hidden_dim // attn_compress</code>，并在 head 数不足时直接报错。</p>
+        <div class="code-block">
+          <div class="code-label"><span>worldcrafter/ucpe/bridge.py · 本地适配器注入</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>patch_factor = vae_scale_factor_spatial * transformer.config.patch_size[1]
+patches_x = width // patch_factor
+patches_y = height // patch_factor
+emb_dim = 3 if "absmap" in method else None
+
+for block in transformer.blocks:
+    num_heads = block.attn1.heads // attn_compress
+    if num_heads <= 0:
+        raise ValueError(
+            f"attn_compress={attn_compress} is too large for heads={block.attn1.heads}"
+        )
+    hidden_dim = block.attn1.to_q.weight.shape[0]
+    block.cam_self_attn = attention_cls(
+        hidden_dim,
+        hidden_dim // attn_compress,
+        num_heads,
+        patches_x=patches_x,
+        patches_y=patches_y,
+        image_width=width,
+        image_height=height,
+        emb_dim=emb_dim,
+        adaptation_method=adaptation_method,
+    )</code></pre>
+        </div>
+        <p>WorldCrafter 的一个 chunk 对应 33 个 RGB 帧。代码先通过 <code>_relative_pose_chunk</code> 取当前窗口位姿，并把位姿转换到该 chunk 首帧的相对坐标系，再以时间倍率 4 采样为 9 个潜时间位置：</p>
+        <div class="math-scroll">
+          \[F_{RGB}=(F_{latent}-1)\times4+1=(9-1)\times4+1=33,\qquad pose\_chunk=pose[:,::4]\]
+          <span class="equation-number">(10.1)</span>
+        </div>
+        <p>这解释了为什么本地接口看到的是“每 chunk 9 帧几何”，而官方 81 帧示例是 21 个潜时间位置。二者使用相同的时间对齐原则，但窗口组织不同。若跨 chunk 直接复用上一段 <code>viewmats</code>，就会忽略新 chunk 的相对基准变化。</p>
+
+        <h3>10.2 UCPE 只修改当前 noisy tokens</h3>
+        <p>WorldCrafter 的序列还包含记忆 \(M\)、近期上下文 \(z_r\) 与当前待去噪片段 \(z_t\)。本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">transformer.py</span> 明确把相机分支结果写入全序列的后半段，历史部分保持零：</p>
+        <div class="code-block">
+          <div class="code-label"><span>worldcrafter/diffusers/transformer.py · 仅注入当前片段</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>if hasattr(self, "cam_self_attn") and camera_control_ucpe_input is not None:
+    if self.cam_self_attn.adaptation_method == "parallel":
+        cam_current = self.cam_self_attn(
+            current_norm_hidden_states, camera_control_ucpe_input
+        )
+        cam_full = torch.zeros_like(attn_output)
+        cam_full[:, history_seq_len:, :] = cam_current
+        attn_output = attn_output + cam_full</code></pre>
+        </div>
+        <p>因此，不能说 UCPE 给记忆 token 和近期上下文也逐一赋予了当前相机矩阵。当前实现的设计是：主干注意力仍可读取完整历史，而相机残差只修正当前 noisy tokens。这既保持记忆条件接口不变，也避免为不同来源的历史 token 强行构造不匹配的当前射线。</p>
+
+        <h3>10.3 Fast 模式的粗到细射线金字塔</h3>
+        <p>本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">fast/camera.py</span> 根据真实 token 网格逐层减半构造几何金字塔，而不是假定固定分辨率。若最细网格为 \(24\times40\)、共 3 个阶段，则由粗到细为 \(6\times10\)、\(12\times20\)、\(24\times40\)。9 个时间位置分别对应：</p>
+        <table class="doc-table">
+          <thead><tr><th>阶段</th><th>空间网格</th><th>每帧 token</th><th>9 帧总 token</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">粗</td><td class="num">6 × 10</td><td class="num">60</td><td class="num">540</td></tr>
+            <tr><td class="rowhead">中</td><td class="num">12 × 20</td><td class="num">240</td><td class="num">2160</td></tr>
+            <tr><td class="rowhead">细</td><td class="num">24 × 40</td><td class="num">960</td><td class="num">8640</td></tr>
+          </tbody>
+        </table>
+        <p>每次减半前会检查上一层的 H/W 是否为偶数，不能整除时抛出错误。这是必要的结构约束：若任意截断奇数网格，粗层射线中心与细层 token 的对应关系会偏移。</p>
+        <p>不同尺度的 RoPE 还需要保持一致的连续图像坐标。本地实现采用中心对齐映射：</p>
+        <div class="math-scroll">
+          \[pos_s(m)=(m+0.5)\frac{W_{ref}}{W_s}-0.5\]
+          <span class="equation-number">(10.2)</span>
+        </div>
+        <p>其中 \(m\) 是当前尺度网格索引，\(W_s\) 是当前宽度，\(W_{ref}\) 是参考宽度。该式把 patch 中心先映射到参考网格，再恢复为零基索引；简单使用整数倍率 \(mW_{ref}/W_s\) 会漏掉半格中心修正。</p>
+
+        <h3>10.4 compact_ucpe：精确存储压缩，不是激活量化</h3>
+        <p>本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">compact_ucpe.py</span> 对 UCPE 线性层参数做一种保守的 BF16 存储优化。转换前必须满足 <code>torch.equal(p, p.bfloat16().float())</code>，即每个参数都能被 BF16 精确表示；否则直接拒绝转换。前向时再把权重和 bias 转回 FP32 参与计算。</p>
+        <div class="code-block">
+          <div class="code-label"><span>worldcrafter/fast/compact_ucpe.py · BF16 存储、FP32 计算</span><button class="copy-code" type="button">复制代码</button></div>
+          <pre><code>def _forward(self, x):
+    return F.linear(
+        x, self.weight.float(),
+        None if self.bias is None else self.bias.float()
+    )
+
+if not torch.equal(p, p.bfloat16().float()):
+    raise ValueError("UCPE storage conversion would lose information")
+p.data = p.data.bfloat16()
+layer.forward = types.MethodType(_forward, layer)</code></pre>
+        </div>
+        <p>所以它不是“把相机矩阵量化成 BF16 后近似推理”，也不是把激活统一压成 BF16。它只减少满足精确表示条件的参数存储；运行时仍有 FP32 转换成本。可训练参数若处于任意浮点值，通常不会满足这个严格条件，因此它更适合特定的已训练/特殊初始化状态，而非泛化为通用无损半精度训练。</p>
+
+        <h3>10.5 流式、多 GPU 与 RepEncoder 的边界</h3>
+        <div class="grid-2">
+          <div class="concept-card"><h4>流式分块</h4><p>每个 chunk 重新构造当前相对几何并与记忆/上下文组合。它是长视频生成组织方式，不改变 RRE 的局部坐标公式。</p></div>
+          <div class="concept-card"><h4>多 GPU context parallel</h4><p><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">context_parallel.py</span> 中的 K/V all-gather 用于跨设备上下文注意力，不等于 UCPE 自己发明了 KV cache。</p></div>
+          <div class="concept-card"><h4>几何缓存</h4><p><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">geometry_cache.py</span> 可复用可复用的几何结果，但不能把跨 denoising step、跨 chunk 的缓存当作天然合法；坐标基准与网格必须一致。</p></div>
+          <div class="concept-card"><h4>RepEncoder</h4><p>RepEncoder 是独立的记忆条件路径，负责另一路历史表达。它不是 RRE、AOE 或 Spatial Attention Adapter 的组成部分。</p></div>
+        </div>
+        <p>本地所谓 <code>absolute</code> 模式也应谨慎理解：它使用“当前 chunk 内相对几何 + 世界上方向信息”。由于每个 chunk 位姿先相对其首帧，不能仅凭模式名就断言整条长轨迹始终处于一个全局固定坐标原点中。</p>
+        <div class="doc-callout local">
+          <strong class="callout-title">官方方法与本地扩展对照</strong>
+          官方 UCPE 负责统一射线、RRE/AOE 与相机注意力；WorldCrafter 额外负责 33 帧 chunk、当前 token 注入、Fast 金字塔、参数存储、流式记忆和多 GPU 调度。二者可以组合，但论文实验不能自动证明这些本地扩展的速度或质量。
+        </div>
+      </section>
+
+      <section id="experiments" class="doc-block">
+        <span class="section-number">11 / EXPERIMENTS AND ABLATIONS</span>
+        <h2>实验：UCPE 改善了什么，又没有改善什么？</h2>
+        <p class="lead"><span class="tag paper">论文报告</span>本节全部数值来自 UCPE 论文 v2，不是本地运行结果。阅读时应同时看相机控制误差、视觉质量、参数量与推理设置，而不能只凭某一个 FVD 或 RotErr 下结论。</p>
+
+        <h3>11.1 数据构建与训练配置</h3>
+        <p>作者从约 2.41 万个 4K、360° YouTube 视频出发，切分得到约 40 万个十秒片段。经 SLAM 与有效性筛选，第二次 SLAM 后约有 30 万个带有效位姿片段，最终形成约 4.8 万个训练片段。每个训练片段为 81 帧、480×832、16 FPS；测试集包含 272 个片段。</p>
+        <div class="pipeline" aria-label="数据集筛选流程">
+          <span>24.1k 个 4K 360° 视频</span><b>→</b><span>400k 个十秒片段</span><b>→</b><span>300k 个有效 posed clips</span><b>→</b><span>48k 个最终训练片段</span>
+        </div>
+        <p>数据生成约使用一个 A800 GPU 节点运行三天。训练基座为 Wan2.1-T2V-1.3B；文本编码器、DiT 与 3D VAE 合计约 7.3B 参数。原始权重全部冻结，只训练相机适配器。优化器为 AdamW，学习率 \(10^{-4}\)，训练 10k steps，batch size 为 8，使用 8×A800 约一天。</p>
+        <p>这些数字同时说明 UCPE 的“轻量”是相对于全量微调而言：可训练参数只有几十 M，但基础模型、视频 VAE、数据构建和训练硬件仍然庞大。将 35.6M 理解为整个系统的模型大小是错误的。</p>
+
+        <h3>11.2 相机控制指标如何计算</h3>
+        <p>论文从生成视频估计相机轨迹，再与目标轨迹比较。旋转误差使用两个旋转矩阵之间的测地角，平移误差使用欧氏距离；CamMC 则直接比较相机矩阵向量化后的差异：</p>
+        <div class="math-scroll">
+          \[\operatorname{RotErr}=\sum_i\arccos\frac{\operatorname{Tr}(R_i^T\hat R_i)-1}{2}\]
+          <span class="equation-number">(11.1)</span>
+        </div>
+        <div class="math-scroll">
+          \[\operatorname{TransErr}=\sum_i\|t_i-\hat t_i\|_2,\qquad
+          \operatorname{CamMC}=\sum_i\|\operatorname{Vec}(T_i)-\operatorname{Vec}(\hat T_i)\|_2\]
+          <span class="equation-number">(11.2)</span>
+        </div>
+        <p>评估位姿均相对首帧，所有方法在相同的 16 个采样时间戳比较。这里的 RotErr、TransErr、CamMC 是求和形式，不应与逐帧平均角度或平均位移混用。FoV、径向畸变 \(k_1,k_2\)、Pitch、Roll 用于检查内参与绝对姿态控制；FVD、FID、CLIP 分别衡量视频分布、图像分布和文本语义一致性。</p>
+
+        <h3>11.3 主结果：同基座比较与 AOE 的影响</h3>
+        <div class="table-scroll"><table class="doc-table">
+          <thead><tr><th>方法</th><th>FoV</th><th>k1</th><th>k2</th><th>Pitch</th><th>Roll</th><th>RotErr</th><th>TransErr</th><th>CamMC</th><th>FVD</th><th>FID</th><th>CLIP</th><th>Params</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">UCPE，无 AOE</td><td class="num">9.62</td><td class="num">0.174</td><td class="num">0.120</td><td class="num">8.03</td><td class="num">6.64</td><td class="num">4.29</td><td class="num best">13.46</td><td class="num best">15.94</td><td class="num">569.31</td><td class="num">66.22</td><td class="num">25.11</td><td class="num">35.5M</td></tr>
+            <tr><td class="rowhead">UCPE，含 AOE</td><td class="num best">8.22</td><td class="num best">0.129</td><td class="num best">0.102</td><td class="num best">4.35</td><td class="num best">3.74</td><td class="num best">4.12</td><td class="num">15.21</td><td class="num">17.59</td><td class="num best">495.14</td><td class="num best">63.37</td><td class="num best">25.12</td><td class="num">35.6M</td></tr>
+            <tr><td class="rowhead">同基座 ReCamMaster，无绝对朝向</td><td class="num">10.25</td><td class="num">0.210</td><td class="num">0.143</td><td class="num">10.00</td><td class="num">7.42</td><td class="num">10.89</td><td class="num">31.44</td><td class="num">37.38</td><td class="num">555.54</td><td class="num">69.91</td><td class="num">24.86</td><td class="num">354M</td></tr>
+            <tr><td class="rowhead">同基座 ReCamMaster，含绝对朝向</td><td class="num">10.04</td><td class="num">0.183</td><td class="num">0.136</td><td class="num">6.62</td><td class="num">5.29</td><td class="num">9.23</td><td class="num">28.95</td><td class="num">33.88</td><td class="num">605.83</td><td class="num">67.07</td><td class="num">24.84</td><td class="num">354M</td></tr>
+            <tr><td class="rowhead">同基座 Wan CameraCtrl，无绝对朝向</td><td class="num">10.05</td><td class="num">0.222</td><td class="num">0.142</td><td class="num">9.35</td><td class="num">7.31</td><td class="num">17.04</td><td class="num">35.09</td><td class="num">46.10</td><td class="num">593.10</td><td class="num">67.83</td><td class="num">25.05</td><td class="num">1.5B</td></tr>
+            <tr><td class="rowhead">同基座 Wan CameraCtrl，含绝对朝向</td><td class="num">9.86</td><td class="num">0.230</td><td class="num">0.162</td><td class="num">6.25</td><td class="num">6.01</td><td class="num">17.92</td><td class="num">39.16</td><td class="num">50.32</td><td class="num">554.43</td><td class="num">65.73</td><td class="num">25.01</td><td class="num">1.5B</td></tr>
+          </tbody>
+        </table></div>
+        <p class="table-caption"><span class="tag paper">论文报告</span>表 1 数值。除 CLIP 越高越好外，其余列均为误差或参数量，通常越低越好。蓝色为表内最优；不同“绝对朝向”设置需按行区分。</p>
+        <p>与同 Wan 基座的 ReCamMaster、Wan CameraCtrl 相比，UCPE 在相机轨迹控制上取得明显更低误差，同时可训练参数量分别约为 354M 与 1.5B 的十分之一和数十分之一。加入 AOE 后，FoV、畸变、Pitch、Roll、RotErr、FVD 和 FID 改善，但 TransErr 从 13.46 增至 15.21，CamMC 从 15.94 增至 17.59。</p>
+        <p>这一取舍很重要：AOE 的收益集中在绝对朝向与视觉质量，不应被概括为“所有指标全面提升”。无 AOE 的纯 RRE 在平移与整体相机矩阵误差上反而略好。论文图 4、图 5 的定性比较应与这些数值一起阅读，视觉示例用于观察轨迹遵循、畸变和画面稳定性，而不是替代定量评估。</p>
+
+        <h3>11.4 RealEstate10K 分布外评估</h3>
+        <p>作者在 RealEstate10K 上随机选 100 个测试片段，统一使用固定 100° xFoV 的针孔相机，不做微调。这一设置同时改变数据来源和镜头分布，可检验方法是否只记住训练域。</p>
+        <div class="table-scroll"><table class="doc-table">
+          <thead><tr><th>方法</th><th>RotErr</th><th>TransErr</th><th>CamMC</th><th>Image Quality</th><th>Image Aesthetic</th><th>Video Quality</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">ReCamMaster</td><td class="num">1.10</td><td class="num">5.64</td><td class="num">6.15</td><td class="num">0.9492</td><td class="num">0.5185</td><td class="num">0.9720</td></tr>
+            <tr><td class="rowhead">Wan CameraCtrl</td><td class="num">2.22</td><td class="num">7.42</td><td class="num">8.67</td><td class="num best">0.9822</td><td class="num best">0.5691</td><td class="num best">0.9885</td></tr>
+            <tr><td class="rowhead">CameraCtrl</td><td class="num">1.17</td><td class="num">3.96</td><td class="num">4.59</td><td class="num">0.6877</td><td class="num">0.3306</td><td class="num">0.7338</td></tr>
+            <tr><td class="rowhead">AC3D</td><td class="num">0.62</td><td class="num">2.11</td><td class="num">2.43</td><td class="num">0.7699</td><td class="num">0.3651</td><td class="num">0.8211</td></tr>
+            <tr><td class="rowhead">UCPE</td><td class="num best">0.56</td><td class="num best">1.25</td><td class="num best">1.58</td><td class="num">0.9480</td><td class="num">0.4686</td><td class="num">0.9694</td></tr>
+          </tbody>
+        </table></div>
+        <p class="table-caption"><span class="tag paper">论文报告</span>表 2：RealEstate10K OOD 结果。前三项为相对位姿误差，后三项为 Q-Align 质量指标。</p>
+        <p>UCPE 在三个相对位姿指标上均为最优，并在 Q-Align 指标上超过 CameraCtrl 与 AC3D。但 Wan CameraCtrl 的 Image Quality、Image Aesthetic、Video Quality 更高，ReCamMaster 的部分视觉指标也略高。因此准确结论是“UCPE 的 OOD 相机控制最好，且保持有竞争力的视觉质量”，而不是“所有视觉质量指标都第一”。</p>
+
+        <h3>11.5 插入位置与几何方法消融</h3>
+        <div class="table-scroll"><table class="doc-table">
+          <thead><tr><th>配置</th><th>RotErr</th><th>TransErr</th><th>CamMC</th><th>FVD</th><th>解读</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">UCPE 默认 Parallel</td><td class="num">4.12</td><td class="num best">15.21</td><td class="num best">17.59</td><td class="num best">495.14</td><td>综合默认选择</td></tr>
+            <tr><td class="rowhead">Pre-Attn</td><td class="num best">4.03</td><td class="num">15.77</td><td class="num">17.85</td><td class="num">502.73</td><td>旋转误差略低，但其余指标未同步改善</td></tr>
+            <tr><td class="rowhead">Post-Attn</td><td class="num">4.68</td><td class="num">17.47</td><td class="num">20.00</td><td class="num">515.32</td><td>后置注入整体较弱</td></tr>
+            <tr><td class="rowhead">PRoPE</td><td class="num">5.35</td><td class="num">17.52</td><td class="num">20.58</td><td class="num">516.59</td><td>逐相机投影表达弱于逐射线 RRE</td></tr>
+            <tr><td class="rowhead">GTA</td><td class="num">5.27</td><td class="num">17.07</td><td class="num">20.14</td><td class="num">497.19</td><td>FVD 接近默认，但相机控制误差更高</td></tr>
+          </tbody>
+        </table></div>
+        <p>Pre-Attn 的 RotErr 4.03 比默认 4.12 更低，说明默认 Parallel 是综合折中而非所有指标的单点最优。GTA 的 FVD 497.19 接近 UCPE 495.14，却具有更高 RotErr、TransErr 和 CamMC，再次说明视觉分布指标不能替代相机轨迹精度。</p>
+
+        <h3>11.6 压缩率消融</h3>
+        <table class="doc-table">
+          <thead><tr><th>分支配置</th><th>可训练参数</th><th>论文结果说明</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">1/2-dim（128×6）</td><td class="num">141M</td><td>更大容量，未作为默认</td></tr>
+            <tr><td class="rowhead">1/4-dim（128×3）</td><td class="num">71.0M</td><td>中等容量</td></tr>
+            <tr><td class="rowhead">默认 1/8-dim（192×1）</td><td class="num">35.6M</td><td>主结果采用的平衡点</td></tr>
+            <tr><td class="rowhead">1/12-dim（128×1）</td><td class="num">23.8M</td><td>FVD 487.54、FID 62.98，但旋转/控制指标弱于默认</td></tr>
+          </tbody>
+        </table>
+        <p>最小分支的 FVD、FID 甚至略好，却不能据此认定它全面优于默认配置。对于可控生成，控制精度是任务定义的一部分；视觉质量略高但轨迹误差更大，可能意味着模型更倾向于生成“好看但没有严格听相机指令”的视频。</p>
+
+        <h3>11.7 推理延迟：必须同时比较帧数与分辨率</h3>
+        <table class="doc-table">
+          <thead><tr><th>方法</th><th>单 A800 时间</th><th>帧数</th><th>分辨率</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">ReCamMaster</td><td class="num">179 s</td><td class="num">81</td><td class="num">480×832</td></tr>
+            <tr><td class="rowhead">Wan CameraCtrl</td><td class="num">177 s</td><td class="num">81</td><td class="num">480×832</td></tr>
+            <tr><td class="rowhead">CameraCtrl</td><td class="num">17 s</td><td class="num">16</td><td class="num">256×384</td></tr>
+            <tr><td class="rowhead">AC3D</td><td class="num">632 s</td><td class="num">48</td><td class="num">480×720</td></tr>
+            <tr><td class="rowhead">UCPE</td><td class="num">184 s</td><td class="num">81</td><td class="num">480×832</td></tr>
+          </tbody>
+        </table>
+        <p class="table-caption"><span class="tag paper">论文报告</span>单张 A800 推理延迟。UCPE 与两个 Wan 同基座方法可直接观察相近设置下的增量，但不能把 CameraCtrl 的 17 秒与其他方法的 81 帧高分辨率结果做同任务速度排名。</p>
+        <p>UCPE 相比 Wan CameraCtrl 的 177 秒为 184 秒，增量约 7 秒；相比 ReCamMaster 的 179 秒也只增加少量时间。这是特定实现、硬件、采样步数和分辨率下的结果，不等于 WorldCrafter Fast、多 GPU 或 compact 模式的本地实测。</p>
+
+        <h3>11.8 泛化、鲁棒性与 I2V 扩展</h3>
+        <ul>
+          <li><strong>未见投影模型。</strong>论文展示 Brown-Conrady 的零样本例子，支持“射线接口有助于模型迁移”的判断；完整 360° ERP 失败则给出明确反例。</li>
+          <li><strong>轨迹与噪声鲁棒性。</strong>论文及附录实验考察不同轨迹、畸变和扰动条件。评估时应区分位姿输入误差、生成轨迹估计误差与数据预处理误差。</li>
+          <li><strong>图像转视频。</strong>I2V 的首帧已经强烈约束镜头和初始朝向，RRE 可主要驱动后续帧。作者还展示在 Wan2.1-I2V-14B 上微调的结果，说明接口可迁移到另一个主干，但并非无需训练就必然有效。</li>
+        </ul>
+        <p>建议对照论文图 4、图 5 以及附录中的泛化和鲁棒性可视化阅读这些结论。图像示例能揭示翻滚、视角跳变、结构扭曲等失败模式，而单一数值表往往无法完整呈现。</p>
+      </section>
+
+      <section id="limitations" class="doc-block">
+        <span class="section-number">12 / LIMITATIONS, REPRODUCTION AND CONCLUSION</span>
+        <h2>适用边界、复现清单与结论</h2>
+        <p class="lead">UCPE 的贡献可以概括为“以逐射线局部 SE(3) 统一相机条件，并用轻量几何注意力注入视频 DiT”。但它仍受训练位姿、镜头覆盖、局部坐标退化与基础模型能力约束。</p>
+
+        <h3>12.1 方法与工程限制</h3>
+        <div class="doc-callout limit">
+          <strong class="callout-title">限制一：训练依赖可靠相机位姿</strong>
+          数据构建需要 SLAM 提供有效轨迹，训练信号因而继承位姿估计的误差、尺度和筛选偏差。没有位姿的普通视频不能直接进入同一训练流程；错误的世界轴定义还会同时破坏 RRE 与 AOE。
+        </div>
+        <div class="doc-callout limit">
+          <strong class="callout-title">限制二：控制范围不等于全部摄影参数</strong>
+          当前控制覆盖相机位姿、内参与畸变，但论文明确未覆盖变焦过程中的复杂镜头行为、对焦和景深等效果。FOV 可调也不意味着已模拟真实镜头的全部光学属性。
+        </div>
+        <div class="doc-callout limit">
+          <strong class="callout-title">限制三：统一接口不保证任意投影零样本成功</strong>
+          Brown-Conrady 示例体现了一定泛化能力，完整 360° ERP 却失败。新投影能够反投影成射线只是接口前提；若射线分布远离训练覆盖，网络仍可能无法生成正确内容。
+        </div>
+        <div class="doc-callout limit">
+          <strong class="callout-title">限制四：RRE 存在局部坐标退化</strong>
+          当相机 y 轴与射线方向接近平行，构造 x 轴的叉积趋近零。<code>eps</code> 只能抑制数值除零，不能在严格退化时凭空确定唯一的 roll 参考轴。
+        </div>
+        <p>此外还有两个实际边界。其一，相机控制精度依赖从生成视频重新估计轨迹的工具，评估误差并不全是生成模型误差。其二，轻量适配器减少的是可训练参数与部分训练成本，并不会消除大模型视频扩散本身的推理开销。</p>
+
+        <h3>12.2 论文表述、官方代码与本地实现的差异</h3>
+        <table class="doc-table">
+          <thead><tr><th>事项</th><th>论文 / 一般定义</th><th>代码核查结果</th><th>实践建议</th></tr></thead>
+          <tbody>
+            <tr><td class="rowhead">UCM 反投影</td><td>附录式 A.6 给出一种表达</td><td>公开 <code>ucm_unproject_grid</code> 对一般 \(\xi\) 并非字面等价；\(\xi=0\) 均回到针孔</td><td>固定 commit，以实际运行代码为准，并用针孔特例做单元测试</td></tr>
+            <tr><td class="rowhead">AOE 通道顺序</td><td>文字描述为 \([Lat,Up]\)</td><td>Wan pipeline 使用 <code>cat([up_map, lat_map])</code>，即 \([up_x,up_y,lat]\)</td><td>自定义输入必须遵循代码顺序</td></tr>
+            <tr><td class="rowhead">非中心相机</td><td>统一映射允许逐像素不同射线原点</td><td>默认路径把一个 <code>t_cam</code> 广播到一帧所有 patch</td><td>不要声称公开默认训练路径已覆盖任意非中心相机</td></tr>
+            <tr><td class="rowhead">WorldCrafter absolute</td><td>AOE 提供相对世界的绝对朝向</td><td><span class="tag local">本地静态代码分析</span>每个 chunk 先相对首帧，再加入世界 Up 信息</td><td>不要把模式名等同于全局唯一轨迹坐标系</td></tr>
+          </tbody>
+        </table>
+        <p>这些差异不必然意味着论文或代码错误，可能来自符号简写、版本演化或实现范围不同。科学复现的关键是公开具体版本、坐标约定和张量顺序，而不是隐藏不一致。</p>
+
+        <h3>12.3 最小复现与调试清单</h3>
+        <ol>
+          <li><strong>确认版本。</strong>记录论文 v2、官方 commit、PyTorch/CUDA/FlashAttention 版本以及本地 WorldCrafter 修改状态。</li>
+          <li><strong>确认外参方向。</strong>检查输入是否确为 camera-to-world；用单位阵和已知平移验证 <code>d_world=Rd_cam</code>、<code>o_world=t_cam</code>。</li>
+          <li><strong>验证针孔特例。</strong>令 <code>xi=0</code>，比较 UCM 输出与归一化的 <code>[(u-cx)/fx,(v-cy)/fy,1]</code>。</li>
+          <li><strong>验证局部旋转。</strong>检查 \(R_{l2w}^TR_{l2w}\approx I\)、\(\det R\approx1\)，并检查近退化射线的叉乘范数。</li>
+          <li><strong>验证成对变换。</strong>随机选择两条射线，比较 <code>viewmats[i] @ inverse(viewmats[j])</code> 与显式 \(T_i^{rw}T_j^{wr}\)。</li>
+          <li><strong>验证 token 对齐。</strong>断言 <code>N=F·Hp·Wp</code>，并确保视频 token、<code>viewmats</code>、<code>cam_emb</code> 都按 T→H→W 展平。</li>
+          <li><strong>验证 AOE 方向。</strong>构造水平、向上、向下射线，检查 Lat 符号；构造已知 roll，检查 Up 的图像位移方向。</li>
+          <li><strong>验证零初始化。</strong>训练前比较关闭和开启相机分支的输出，理论上应一致；随后确认 <code>out_proj</code> 能获得非零梯度。</li>
+          <li><strong>最后再做性能比较。</strong>固定主干、采样器、步数、帧数、分辨率、硬件与精度；分别报告控制指标、FVD/FID/CLIP 和延迟。</li>
+        </ol>
+        <div class="doc-note">若只复现推理，可先使用官方权重和示例位姿，避免把数据处理、SLAM、训练与推理问题混在一次调试中。若复现训练，则应先小规模过拟合单个片段，检查分支是否确实能学习相机条件。</div>
+
+        <h3>12.4 结论：如何准确理解 UCPE 的创新</h3>
+        <p>UCPE 最重要的思想不是“把更多相机参数喂给网络”，而是<strong>让网络在正确的几何坐标系中计算注意力</strong>。UCM 把不同镜头转成射线；RRE 把每条射线变成局部 SE(3)，使 Q/K 点积包含射线间相对旋转与平移；AOE 补上世界上方向；PRoPE 风格通道划分让三维几何与二维 RoPE 共存；Spatial Attention Adapter 则以零初始化并行残差稳定接入冻结的视频 DiT。</p>
+        <p>论文结果支持这一设计：在同 Wan 基座下，UCPE 以约 35.6M 可训练参数获得显著更低的相机控制误差，并在 RealEstate10K OOD 测试的三个相对位姿指标上最佳。同时，AOE 对平移指标存在取舍，最小压缩分支的视觉指标与控制指标也不完全一致，部分 Wan 方法仍在若干视觉质量子指标上领先。这些结果共同说明：UCPE 是更强的几何条件接口，而不是脱离主干、数据与评估设置的万能质量保证。</p>
+        <p>对于 WorldCrafter，本地集成进一步把 UCPE 放入分块长视频、当前 token 注入、粗到细生成和多 GPU 上下文并行系统。正确的分析方式是把“论文方法的有效证据”与“本地工程的静态设计”分开，再通过固定配置的实测验证二者组合后的效果。</p>
+
+        <div class="source-links">
+          <h3>主要资料与代码来源</h3>
+          <ul>
+            <li>论文：Cheng Zhang 等，<em>Unified Camera Positional Encoding for Controlled Video Generation</em>，CVPR 2026，<a href="https://arxiv.org/abs/2512.07237" target="_blank" rel="noopener">arXiv:2512.07237</a>，本文使用 <a href="https://arxiv.org/html/2512.07237v2" target="_blank" rel="noopener">v2 HTML 全文</a>。</li>
+            <li>官方实现：<a href="https://github.com/chengzhag/UCPE" target="_blank" rel="noopener">chengzhag/UCPE</a>，核查 commit <code>d992f1807803ba99331e807e8f018ed552886afd</code>。</li>
+            <li>项目主页：<a href="https://chengzhag.github.io/publication/ucpe/" target="_blank" rel="noopener">UCPE Project Page</a>。</li>
+            <li>官方关键文件：<a href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/src/camera_control.py" target="_blank" rel="noopener">camera_control.py</a>、<a href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/thirdparty/prope/torch.py" target="_blank" rel="noopener">prope/torch.py</a>、<a href="https://github.com/chengzhag/UCPE/blob/d992f1807803ba99331e807e8f018ed552886afd/thirdparty/equilib/equilib/equi2pers/torch.py" target="_blank" rel="noopener">equilib UCM</a>。</li>
+            <li>本地代码：<span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">WorldCrafter UCPE bridge</span>、<span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">Fast camera</span>、<span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">compact_ucpe</span>；仅做静态阅读。</li>
+            <li>版式参考：本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">SolarWM.html</span>；本文另行加入 KaTeX 数学渲染。</li>
+          </ul>
+        </div>
+      </section>
+
+      <footer class="doc-footer">
+        <strong>UCPE 中文学术深度解析</strong> · 原理、几何、结构、官方源码与本地 WorldCrafter 集成<br>
+        内容依据论文 v2 与指定代码版本整理。论文数值不代表本地复现；本地扩展不代表论文原始实现。
+      </footer>
+    </div>
+  </main>
+
+  <button class="back-top" id="backTop" type="button" aria-label="返回顶部" title="返回顶部">↑</button>
+  <div class="lightbox" id="diagramLightbox" role="dialog" aria-modal="true" aria-label="放大查看结构图">
+    <button class="lightbox-close" id="lightboxClose" type="button">关闭</button>
+    <div class="lightbox-content" id="lightboxContent"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      const sections = Array.from(document.querySelectorAll("main section[id]")).filter(
+        (section) => !section.classList.contains("no-toc") && section.querySelector("h2")
+      );
+      const tocNav = document.getElementById("tocNav");
+      const mobileToc = document.getElementById("mobileToc");
+
+      sections.forEach((section) => {
+        const title = section.querySelector("h2").textContent.trim();
+        const link = document.createElement("a");
+        link.href = "#" + section.id;
+        link.textContent = title;
+        link.dataset.target = section.id;
+        tocNav.appendChild(link);
+
+        const option = document.createElement("option");
+        option.value = section.id;
+        option.textContent = title;
+        mobileToc.appendChild(option);
+      });
+
+      function setActive(id) {
+        document.querySelectorAll("#tocNav a").forEach((link) => {
+          link.classList.toggle("active", link.dataset.target === id);
+        });
+        if (mobileToc.value !== id) mobileToc.value = id;
+      }
+
+      if ("IntersectionObserver" in window) {
+        const visible = new Map();
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => visible.set(entry.target.id, entry.isIntersecting));
+          const current = sections.find((section) => visible.get(section.id));
+          if (current) setActive(current.id);
+        }, { rootMargin: "-22% 0px -62% 0px", threshold: 0.01 });
+        sections.forEach((section) => observer.observe(section));
+      }
+      if (sections.length) setActive(sections[0].id);
+
+      mobileToc.addEventListener("change", function () {
+        if (!this.value) return;
+        const target = document.getElementById(this.value);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+
+      const progress = document.getElementById("readingProgress");
+      const backTop = document.getElementById("backTop");
+      function updateScrollUI() {
+        const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+        const ratio = Math.min(1, Math.max(0, window.scrollY / max));
+        progress.style.width = (ratio * 100).toFixed(2) + "%";
+        backTop.classList.toggle("visible", window.scrollY > 600);
+      }
+      window.addEventListener("scroll", updateScrollUI, { passive: true });
+      window.addEventListener("resize", updateScrollUI);
+      updateScrollUI();
+      backTop.addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
+
+      function fallbackCopy(text) {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand("copy");
+        textarea.remove();
+        return ok;
+      }
+
+      document.querySelectorAll(".copy-code").forEach((button) => {
+        button.addEventListener("click", async function () {
+          const block = this.closest(".code-block");
+          const code = block && block.querySelector("pre code");
+          if (!code) return;
+          const text = code.textContent;
+          let copied = false;
+          try {
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(text);
+              copied = true;
+            } else {
+              copied = fallbackCopy(text);
+            }
+          } catch (error) {
+            copied = fallbackCopy(text);
+          }
+          const original = "复制代码";
+          this.textContent = copied ? "已复制" : "复制失败";
+          window.setTimeout(() => { this.textContent = original; }, 1600);
+        });
+      });
+
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "\\[", right: "\\]", display: true },
+            { left: "\\(", right: "\\)", display: false }
+          ],
+          ignoredTags: ["script", "style", "textarea", "pre", "code"],
+          throwOnError: false,
+          strict: false
+        });
+      }
+
+      const lightbox = document.getElementById("diagramLightbox");
+      const lightboxContent = document.getElementById("lightboxContent");
+      const lightboxClose = document.getElementById("lightboxClose");
+      function closeLightbox() {
+        lightbox.classList.remove("open");
+        lightboxContent.replaceChildren();
+        document.body.classList.remove("locked");
+      }
+      function bindDiagramZoom() {
+        document.querySelectorAll(".diagram-zoom").forEach((button) => {
+          if (button.dataset.bound === "true") return;
+          button.dataset.bound = "true";
+          button.addEventListener("click", function () {
+            const frame = this.closest(".diagram-frame");
+            const svg = frame && frame.querySelector("svg");
+            if (!svg) return;
+            lightboxContent.replaceChildren(svg.cloneNode(true));
+            lightbox.classList.add("open");
+            document.body.classList.add("locked");
+            lightboxClose.focus();
+          });
+        });
+      }
+      lightboxClose.addEventListener("click", closeLightbox);
+      lightbox.addEventListener("click", (event) => {
+        if (event.target === lightbox) closeLightbox();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape" && lightbox.classList.contains("open")) closeLightbox();
+      });
+
+      if (window.mermaid) {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "loose",
+          theme: "base",
+          flowchart: { htmlLabels: true, useMaxWidth: false, curve: "basis" },
+          themeVariables: {
+            primaryColor: "#f2f7ff",
+            primaryBorderColor: "#9db9e9",
+            primaryTextColor: "#243447",
+            lineColor: "#7d96b8",
+            secondaryColor: "#f7f9fc",
+            tertiaryColor: "#ffffff",
+            fontFamily: "Inter, Microsoft YaHei, sans-serif",
+            fontSize: "14px"
+          }
+        });
+        mermaid.run({ querySelector: ".mermaid" }).then(bindDiagramZoom).catch((error) => {
+          console.error("Mermaid rendering failed:", error);
+          bindDiagramZoom();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReSplat 深度解析 — Learning Recurrent Gaussian Splatting</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+:root{
+  --ink:#2f302d; --ink-soft:#55564f; --muted:#7c7d76;
+  --line:#e6e4dd; --line-soft:#efeee8;
+  --bg:#fbfaf6; --card:#ffffff;
+  --accent:#2f6b4f; --accent-dark:#244f3b; --accent-soft:#e8f1ec;
+  --warn:#b45309; --warn-soft:#fdf3e7;
+  --code-bg:#1f2421; --code-ink:#e8ebe6; --code-muted:#8a918a;
+  --shadow:0 1px 2px rgba(47,48,45,.04),0 8px 24px rgba(47,48,45,.06);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+  font-size:16px;line-height:1.78;-webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* ---------- 固定侧边栏 TOC (参照 SolarWM) ---------- */
+.toc-rail{
+  position:fixed;top:0;left:0;width:284px;height:100vh;
+  background:#f4f3ee;border-right:1px solid var(--line);
+  padding:40px 22px 40px 28px;overflow-y:auto;z-index:20;
+}
+.toc-rail .brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.toc-rail h1{font-size:17px;line-height:1.4;margin-bottom:22px;color:var(--ink)}
+.toc-rail .toc-title{font-size:12px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin:18px 0 8px}
+.toc-rail a{
+  display:block;color:var(--ink-soft);font-size:13.5px;line-height:1.55;
+  padding:4px 0;border-left:2px solid transparent;padding-left:10px;margin-left:-12px;
+  text-decoration:none;
+}
+.toc-rail a:hover{color:var(--accent);text-decoration:none}
+.toc-rail a.active{color:var(--accent);border-left-color:var(--accent);font-weight:600}
+.toc-progress{position:absolute;top:0;left:0;height:3px;background:var(--accent);width:0;transition:width .15s}
+
+/* ---------- 主内容区 ---------- */
+.doc-page{
+  width:calc(100% - 284px);margin:0 0 0 284px;padding:56px 56px 80px;
+  max-width:1180px;
+}
+.doc-page > .wrap{max-width:860px;margin:0 auto}
+
+.eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:14px}
+.doc-hero{padding:18px 0 30px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.doc-hero h1{font-size:34px;line-height:1.25;letter-spacing:-.01em;margin-bottom:12px}
+.doc-hero .sub{font-size:16px;color:var(--ink-soft);margin-bottom:18px}
+.meta-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 28px;margin-top:14px;font-size:13.5px}
+.meta-grid div span{color:var(--muted);display:block;font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:2px}
+
+/* 摘要盒 */
+.summary-box{
+  background:linear-gradient(135deg,#eef4f0,#f6f8f3);
+  border:1px solid #dce8df;border-radius:12px;padding:22px 26px;margin:28px 0;
+}
+.summary-box h3{color:var(--accent-dark);font-size:15px;margin-bottom:8px}
+.summary-box p{color:var(--ink);font-size:15px;margin:6px 0}
+
+/* metric 卡片 */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0}
+.metric-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;box-shadow:var(--shadow)}
+.metric-card .num{font-size:26px;font-weight:700;color:var(--accent-dark);line-height:1.1}
+.metric-card .num small{font-size:13px;font-weight:500;color:var(--muted)}
+.metric-card .label{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.4}
+
+section[id]{scroll-margin-top:24px}
+section h2{
+  font-size:26px;line-height:1.3;color:var(--ink);
+  margin:52px 0 6px;padding-bottom:10px;border-bottom:2px solid var(--accent-soft);
+  display:flex;align-items:baseline;gap:12px;
+}
+section h2 .no{font-size:15px;color:var(--accent);font-weight:700;letter-spacing:.05em;flex:0 0 auto}
+section h3{font-size:19px;margin:30px 0 10px;color:var(--ink)}
+section h4{font-size:16px;margin:22px 0 8px;color:var(--ink-soft)}
+p{margin:12px 0;color:var(--ink)}
+ul,ol{margin:10px 0 10px 22px}
+li{margin:5px 0;color:var(--ink)}
+strong{color:var(--ink);font-weight:600}
+
+.callout{
+  border-left:4px solid var(--accent);background:var(--accent-soft);
+  border-radius:0 10px 10px 0;padding:14px 18px;margin:18px 0;font-size:14.5px;
+}
+.callout.warn{border-left-color:var(--warn);background:var(--warn-soft)}
+.callout b{color:var(--accent-dark)}
+.callout.warn b{color:var(--warn)}
+
+/* 公式块 */
+.formula{
+  background:#fbfcfa;border:1px solid var(--line-soft);border-radius:10px;
+  padding:18px 16px;margin:18px 0;overflow-x:auto;text-align:center;
+}
+.formula .katex-display{margin:0}
+.formula-cap{font-size:12.5px;color:var(--muted);margin-top:8px;text-align:center}
+
+/* 代码块 (深色) */
+.code-wrap{position:relative;margin:18px 0;border-radius:10px;overflow:hidden;box-shadow:var(--shadow)}
+.code-wrap .code-label{
+  background:#2a302c;color:var(--code-muted);font-size:11.5px;
+  padding:6px 14px;font-family:"SF Mono",Consolas,monospace;letter-spacing:.02em;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.code-wrap .code-label .path{color:#b9c2ba}
+.code-wrap pre{
+  background:var(--code-bg);color:var(--code-ink);padding:16px 18px;
+  font-family:"SF Mono","Fira Code",Consolas,monospace;font-size:13px;line-height:1.62;
+  overflow-x:auto;margin:0;
+}
+.code-wrap pre code{background:none;padding:0;color:inherit}
+.code-wrap .copy-btn{
+  background:#3a413c;color:#cfd6d0;border:1px solid #4a524c;border-radius:5px;
+  padding:2px 10px;font-size:11px;cursor:pointer;font-family:inherit;
+}
+.code-wrap .copy-btn:hover{background:#464f48;color:#fff}
+.kw{color:#7fb3d5}.str{color:#a3d9a5}.cm{color:#6f7a6f;font-style:italic}
+.num{color:#e0b87a}.fn{color:#d9c27a}.cls{color:#e8a3a3}
+
+/* 表格 */
+.tbl-wrap{overflow-x:auto;margin:18px 0;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--card);min-width:520px}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line-soft);text-align:left}
+thead th{background:#f3f5f1;color:var(--ink);font-weight:600;font-size:12.5px;letter-spacing:.02em}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#fafbf8}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.hi{background:#eef4f0;font-weight:600}
+.tbl-note{font-size:12.5px;color:var(--muted);margin-top:6px}
+
+/* Mermaid 图框 */
+.mermaid-frame{position:relative;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin:20px 0;box-shadow:var(--shadow);text-align:center}
+.mermaid-frame pre.mermaid{background:none;text-align:center}
+.diagram-actions{position:absolute;top:8px;right:10px;display:flex;gap:6px;opacity:0;transition:opacity .2s}
+.mermaid-frame:hover .diagram-actions{opacity:1}
+.diagram-actions button{background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;color:var(--ink-soft)}
+.diagram-actions button:hover{background:var(--accent-soft);color:var(--accent)}
+.fig-cap{font-size:12.5px;color:var(--muted);margin-top:10px;text-align:center}
+
+/* 图表面板 */
+.chart-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:20px 0;box-shadow:var(--shadow)}
+.chart{width:100%;height:340px}
+.chart-card .fig-cap{margin-top:4px}
+
+/* 两列对比 */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+.col-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:var(--shadow)}
+.col-card h4{margin-top:0;color:var(--accent-dark)}
+
+/* Lightbox */
+.lightbox{position:fixed;inset:0;background:rgba(20,22,20,.92);z-index:100;display:none;align-items:center;justify-content:center;padding:30px}
+.lightbox.open{display:flex}
+.lightbox img,.lightbox svg{max-width:95vw;max-height:90vh;cursor:zoom-in;background:#fff;border-radius:6px}
+.lightbox .lb-close{position:absolute;top:18px;right:26px;color:#fff;font-size:28px;cursor:pointer;background:none;border:none}
+.lightbox .lb-ctrl{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
+.lightbox .lb-ctrl button{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:13px}
+
+/* 响应式 */
+@media(max-width:1180px){
+  .toc-rail{width:240px}
+  .doc-page{width:calc(100% - 240px);margin-left:240px;padding:40px 36px 70px}
+  .metric-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:820px){
+  .toc-rail{position:static;width:100%;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:20px 22px}
+  .toc-rail .toc-links{display:flex;flex-wrap:wrap;gap:4px 16px}
+  .toc-rail a{border-left:none;padding-left:0;margin-left:0;font-size:12.5px}
+  .doc-page{width:100%;margin:0;padding:28px 22px 60px}
+  .doc-hero h1{font-size:27px}
+  .two-col{grid-template-columns:1fr}
+  .meta-grid{grid-template-columns:1fr}
+}
+@media(max-width:560px){
+  .metric-grid{grid-template-columns:1fr 1fr}
+  .doc-page{padding:20px 16px 50px}
+  section h2{font-size:21px}
+  .doc-hero h1{font-size:23px}
+}
+
+/* 打印 */
+@media print{
+  .toc-rail,.diagram-actions,.code-wrap .copy-btn,.lightbox{display:none!important}
+  .doc-page{width:100%;margin:0;padding:0;max-width:none}
+  body{background:#fff;font-size:11pt}
+  .code-wrap pre{white-space:pre-wrap}
+  section{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<nav data-site-navigation aria-label="论文精读网站导航" style="position:relative;z-index:20;width:max-content;max-width:calc(100% - 24px);margin:10px 12px 0 auto;padding:7px 11px;border:1px solid #e6e8ec;border-radius:9px;background:#fff;color:#6b7280;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:12px;line-height:1.6"><a href="index.html" style="color:#526d8c;text-decoration:none">← 首页</a><span style="margin:0 7px;color:#c4c9d1">/</span><a href="categories/3dgs.html" style="color:#526d8c;text-decoration:none">3D 重建与 3D Gaussian Splatting</a></nav>
+
+
+<aside class="toc-rail">
+  <div class="toc-progress" id="tocProgress"></div>
+  <div class="brand">Paper Deep Dive</div>
+  <h1>ReSplat：循环高斯泼溅重建</h1>
+  <div class="toc-title">目录</div>
+  <nav class="toc-links" id="tocNav"></nav>
+</aside>
+
+<main class="doc-page">
+<div class="wrap">
+
+<!-- ===== Hero ===== -->
+<header class="doc-hero">
+  <div class="eyebrow">ECCV 2026 · Spotlight · arXiv:2510.08575v4</div>
+  <h1>ReSplat：Learning Recurrent Gaussian Splatting</h1>
+  <div class="sub">从有位姿的多视图图像前馈预测一组 3D 高斯，再用<strong>渲染误差作为学习到的反馈信号</strong>对同一组高斯做多轮循环更新——不做测试时梯度优化，也不做经典 3DGS 的自适应稠密化。</div>
+  <div class="meta-grid">
+    <div><span>论文</span><a href="https://arxiv.org/abs/2510.08575" target="_blank" rel="noopener">arXiv:2510.08575v4（2026-08-26 修订）</a></div>
+    <div><span>会议</span>ECCV 2026 · Spotlight</div>
+    <div><span>作者</span>Haofei Xu, Daniel Barath, Andreas Geiger, Marc Pollefeys</div>
+    <div><span>机构</span>ETH Zurich · University of Copenhagen · Max Planck ETH Center</div>
+    <div><span>项目页</span><a href="https://haofeixu.github.io/resplat/" target="_blank" rel="noopener">haofeixu.github.io/resplat</a></div>
+    <div><span>代码</span><a href="https://github.com/cvg/resplat" target="_blank" rel="noopener">github.com/cvg/resplat</a>（已开源）</div>
+    <div><span>环境</span>Python 3.12 · PyTorch 2.7.0 · CUDA 12.8 · gsplat 1.5.3</div>
+    <div><span>相机约定</span>内参按宽高归一化；外参为 OpenCV 风格 camera-to-world（+X 右，+Y 下，+Z 向前）</div>
+  </div>
+</header>
+
+<div class="summary-box">
+  <h3>一句话总结</h3>
+  <p>ReSplat 把"前馈一次性预测"和"基于渲染误差的迭代修正"统一进同一个可微网络：先用紧凑初始化得到少量高斯，再在每一轮把输入视图上的 RGB 差与冻结 ResNet 特征差投影回 3D，经多视图注意力聚合后，由一个共享权重的循环模块预测高斯参数增量与循环状态，从而在固定高斯集合上逼近优化式 3DGS 的质量，同时把重建时间压到亚秒级。</p>
+</div>
+
+<div class="metric-grid">
+  <div class="metric-card"><div class="num">27.70<small> dB</small></div><div class="label">DL3DV 8 视图 512×960，4 轮循环（论文 Table 1）</div></div>
+  <div class="metric-card"><div class="num">246K<small> 高斯</small></div><div class="label">仅为 DepthSplat 3932K 的 1/16，质量反而更高</div></div>
+  <div class="metric-card"><div class="num">0.816<small> s</small></div><div class="label">4 轮循环重建耗时；3DGS 需约 70s</div></div>
+  <div class="metric-card"><div class="num">77M<small> 参数</small></div><div class="label">小模型循环 4 次达 29.07 dB，超 559M 大初始化模型</div></div>
+</div>
+
+<!-- ===== 1 背景 ===== -->
+<section id="sec-background">
+  <h2><span class="no">01</span>研究背景与动机</h2>
+  <p>新视角合成（Novel View Synthesis, NVS）的目标是：给定一组已知相机位姿的输入图像，重建出场景的几何与外观表示，并能从任意未见视角渲染出照片级真实的图像。2023 年提出的 <strong>3D Gaussian Splatting（3DGS）</strong> 用一组各向异性的 3D 高斯作为场景表示，配合可微光栅化器，在质量和速度上同时超越了 NeRF 类方法，迅速成为实时 NVS 的事实标准。</p>
+  <p>但经典 3DGS 是一个<strong>逐场景优化</strong>范式：需要从 SfM 点云初始化，然后对每个场景单独跑数千步梯度下降，过程中不断分裂、克隆、修剪高斯（自适应稠密化，densification）。这意味着每个新场景都要付出分钟级到小时级的优化成本，无法做到"输入即出"。</p>
+  <p>为了解决这一瓶颈，前馈式（feed-forward）重建方法应运而生：训练一个大型网络，在测试时一次性直接预测出场景的高斯或神经场。DepthSplat、Scaffold-GS、FSGS 等工作在这条路线上取得了显著进展，但它们通常面临一个核心矛盾——<strong>高斯数量与表达能力的权衡</strong>：要覆盖整个场景，要么预测海量逐像素高斯（计算与显存昂贵），要么用稀疏高斯（细节丢失）。</p>
+  <p>ReSplat 的出发点是：能否兼得两者之长？既保留前馈方法"一次前向即可用"的速度，又获得优化式方法"迭代修正、越渲越准"的质量。作者给出的答案是——<strong>把迭代修正本身变成网络的一部分</strong>：网络不直接输出最终高斯，而是输出"当前高斯应该往哪个方向改"，每一轮都用渲染结果与真值的差作为监督信号，循环若干次。</p>
+  <div class="callout">
+    <b>关键区别：</b>经典 3DGS 的迭代是"对损失做梯度下降"，而 ReSplat 的迭代是"网络预测参数增量"。前者每步都要反传渲染器梯度，后者是纯前向预测；前者会自适应增删高斯，后者高斯集合固定。因此 ReSplat 被称为 <em>gradient-free test-time adaptation</em>——测试时没有显式的梯度优化，但训练时仍然用反向传播学习这个"预测增量"的能力。
+  </div>
+</section>
+
+<!-- ===== 2 预备知识 ===== -->
+<section id="sec-prelim">
+  <h2><span class="no">02</span>3D 高斯泼溅预备知识</h2>
+  <p>理解 ReSplat 前，先明确 3DGS 的基本表示。一个 3D 高斯由中心、不透明度、协方差和球谐颜色四元组描述：</p>
+  <div class="formula">
+    $$\mathcal{G}=\{(\mu_j,\alpha_j,\Sigma_j,\mathrm{sh}_j)\}_{j=1}^{M},\qquad \mu_j\in\mathbb{R}^3,\ \alpha_j\in\mathbb{R},\ \Sigma_j\in\mathbb{R}^{3\times3},\ \mathrm{sh}_j\in\mathbb{R}^{3\times16}$$
+  </div>
+  <p>其中 $M$ 是高斯总数，$\mathrm{sh}_j$ 是 $3\times 16$ 的球谐系数（sh_degree=3 时每个颜色通道有 $(3+1)^2=16$ 个系数）。高斯的各向异性形状由协方差矩阵 $\Sigma$ 决定，它由尺度向量 $s\in\mathbb{R}^3$ 和单位四元数 $q\in\mathbb{R}^4$ 构造：</p>
+  <div class="formula">
+    $$\Sigma = R\,S\,S^\top R^\top,\qquad S=\mathrm{diag}(s_1,s_2,s_3),\quad R=R(q)$$
+  </div>
+  <p>渲染时，世界系下的 3D 高斯先投影到相机系，再经雅可比 $J$ 映射到 2D 图像平面，得到 2D 协方差 $\Sigma'$，并加入一个小的各向同性正则项（代码中 <code>eps2d=0.1</code>）防止退化。最终每个像素的颜色由沿视线从前到后的 alpha 合成得到：</p>
+  <div class="formula">
+    $$C = \sum_{i} c_i\,\alpha_i \prod_{j<i}(1-\alpha_j),\qquad \alpha_i = \mathrm{sigmoid}(o_i)\cdot\exp\!\big(-\tfrac{1}{2}(p-\mu_i')^\top\Sigma_i'^{-1}(p-\mu_i')\big)$$
+  </div>
+  <p>同理可渲染期望深度。ReSplat 直接复用 gsplat 的 <code>rasterization</code> 作为可微渲染器，使用 <code>rasterize_mode="antialiased"</code> 与 <code>render_mode="RGB+ED"</code>（同时输出 RGB 与期望深度），并开启 <code>packed=True</code> 以减少显存。</p>
+</section>
+
+<!-- ===== 3 整体架构 ===== -->
+<section id="sec-overview">
+  <h2><span class="no">03</span>整体架构总览</h2>
+  <p>ReSplat 的输入是 $N$ 张有位姿图像及其内参、外参，输出是一组可渲染的 3D 高斯：</p>
+  <div class="formula">
+    $$\{I_i,K_i,R_i,t_i\}_{i=1}^{N} \;\longrightarrow\; \{(p_j,f_j)\}_{j=1}^{M}$$
+  </div>
+  <p>整个系统由四个核心模块串成一个循环：<strong>紧凑初始化</strong>给出初始高斯 $\mathcal{G}^0$，<strong>渲染</strong>得到输入视角的预测图像，与真值计算<strong>渲染误差</strong>，误差经多视图聚合后送入<strong>循环更新模块</strong>预测增量，得到 $\mathcal{G}^{t+1}$。如此往复 $T$ 轮。</p>
+
+  <div class="mermaid-frame">
+    <pre class="mermaid">
+flowchart LR
+  IN["N views with pose"] --> INIT["Compact Gaussian Initialization<br/>G^0 (fixed M points)"]
+  INIT --> R0["Render input views"]
+  R0 --> ERR["Rendering Error Feedback<br/>RGB diff + frozen ResNet feat diff"]
+  ERR --> AGG["Multi-view Global Attention"]
+  AGG --> UPD["Recurrent Gaussian Update<br/>delta g, delta z (shared weights)"]
+  UPD -->|G^{t+1}=G^t+delta| R0
+  UPD -->|t less than T| R0
+  INIT --> OUT["Final Gaussian Set<br/>render novel views"]
+  R0 --> OUT
+  classDef init fill:#e8f1ec,stroke:#2f6b4f,color:#244f3b
+  classDef rec fill:#fdf3e7,stroke:#b45309,color:#92400e
+  class INIT init
+  class ERR,AGG,UPD rec
+    </pre>
+    <div class="diagram-actions"><button onclick="window.__lb(this.closest('.mermaid-frame'))">放大</button></div>
+    <div class="fig-cap">图解 1：ReSplat 整体流水线。初始化只跑一次；渲染—误差—更新构成可循环的闭环。</div>
+  </div>
+
+  <h3>两个贯穿全文的设计选择</h3>
+  <ul>
+    <li><strong>固定高斯集合：</strong>循环过程只修改高斯的属性（中心、尺度、旋转、不透明度、球谐），不做 3DGS 式的 densification / pruning。$M$ 在初始化时就确定。</li>
+    <li><strong>两阶段训练：</strong>先训练初始化网络（<code>num_refine=0</code>），再冻结非循环参数、单独训练更新模块。这避免了"初始化还没学好，更新模块就学不动"的耦合问题。</li>
+  </ul>
+</section>
+
+<!-- ===== 4 紧凑初始化 ===== -->
+<section id="sec-init">
+  <h2><span class="no">04</span>Compact Gaussian Initialization</h2>
+  <p>前馈方法通常在每个输入视图的每个像素上预测一个或多个高斯，导致 $M$ 随分辨率暴涨。ReSplat 的初始化只在一个<strong>下采样后的潜在网格</strong>上预测高斯，从而把高斯数量压到原来的 $1/16$。</p>
+  <p>设输入图像分辨率为 $H\times W$，潜在特征下采样倍数为 $s$（默认 <code>latent_downsample=4</code>），每个潜在点预测的高斯倍数为 $q$（默认 <code>init_gaussian_multiple=1</code>），则 $N$ 个视图产生的高斯总数为：</p>
+  <div class="formula">
+    $$M = N \cdot \frac{H}{s} \cdot \frac{W}{s} \cdot q$$
+  </div>
+  <div class="callout warn">
+    <b>重要：16× 缩减只适用于主多视图配置，不通用。</b>论文默认 $s=4,\ q=1$ 时 $M=NHW/16$（比逐像素少 16×）。但官方发布的 RealEstate10K 两视图脚本用了不同组合：
+    <ul style="margin:6px 0 0 18px">
+      <li>初始化脚本：<code>latent_downsample=4</code>，<code>init_gaussian_multiple=16</code> → $M=NHW$</li>
+      <li>循环精修脚本：<code>latent_downsample=2</code>，<code>init_gaussian_multiple=4</code> → $M=NHW$</li>
+    </ul>
+    两者都得到逐像素量级的高斯，但下采样率和倍数不同。因此不能笼统说"ReSplat 总是用 16× 更少的高斯"。
+  </div>
+
+  <h3>初始高斯的 59 维参数</h3>
+  <p>每个高斯的原始回归向量 $g_j^0\in\mathbb{R}^{59}$ 由以下部分拼接而成（sh_degree=3）：</p>
+  <ul>
+    <li>中心 $\mu$：3 维（由 2D 像素坐标 + 预测深度反投影得到，代码中还有 2 维 offset 精修）</li>
+    <li>尺度 $s$：3 维</li>
+    <li>四元数 $q$（未归一化）：4 维</li>
+    <li>不透明度 logit：1 维</li>
+    <li>球谐系数：$3\times(3+1)^2=48$ 维</li>
+  </ul>
+  <p>源码中这一切分由 <code>raw_gaussians.split</code> 完成，随后做尺度约束、四元数归一化、世界系协方差构造、以及从射线反投影求中心：</p>
+
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — EncoderReSplat 初始化</span><button class="copy-btn">复制</button></div>
+<pre><code><span class="cm"># 按 [旋转, 尺度, 不透明度, 偏移, 球谐] 切分原始回归向量</span>
+rotations_unnorm, scales, opacities_raw, offset, sh = raw_gaussians.split(
+    [4 * repeat, 3 * repeat, 1 * repeat, 2 * repeat, 3 * num_sh * repeat],
+    dim=-1,
+)
+
+<span class="cm"># 尺度: softplus 后裁剪到 [clamp_min_scale, gaussian_scale_max]</span>
+scales = torch.clamp(
+    F.softplus(scales - self.cfg.gaussian_adapter.exp_scale_bias),
+    min=self.cfg.gaussian_adapter.clamp_min_scale,
+    max=self.cfg.gaussian_adapter.gaussian_scale_max
+)
+
+<span class="cm"># 四元数归一化</span>
+rotations = rotations_unnorm / (
+    rotations_unnorm.norm(dim=-1, keepdim=True) + 1e-8
+)
+
+<span class="cm"># 构造世界系协方差，并施加 camera-to-world 旋转</span>
+covariances = build_covariance(scales, rotations)
+c2w_rotations = context["extrinsics"][..., :3, :3].unsqueeze(2)
+covariances = c2w_rotations @ covariances @ c2w_rotations.transpose(-1, -2)
+
+<span class="cm"># 由射线原点 + 方向 * 深度 反投影得到 3D 中心</span>
+origins, directions = get_world_rays(
+    xy_ray, context["extrinsics"].unsqueeze(2).unsqueeze(2),
+    context["intrinsics"].unsqueeze(2).unsqueeze(2)
+)
+means = origins + directions * depths</code></pre>
+  </div>
+
+  <p>球谐的直流分量（DC，即零阶项）直接用输入 RGB 初始化，使初始渲染在颜色上接近真值：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — SH DC 初始化</span><button class="copy-btn">复制</button></div>
+<pre><code><span class="cm"># 把输入 RGB 转成 SH 的零阶系数，加到预测的 sh[..., 0] 上</span>
+sh[..., 0] = sh[..., 0] + RGB2SH(sh_input_images)</code></pre>
+  </div>
+</section>
+
+<!-- ===== 5 上下文聚合 ===== -->
+<section id="sec-context">
+  <h2><span class="no">05</span>3D Context Aggregation</h2>
+  <p>紧凑初始化只在稀疏网格上预测，每个潜在点的感受野有限，容易丢失跨视图、跨空间的信息。为此 ReSplat 在初始化和循环更新中都插入了一个<strong>交替式上下文聚合模块</strong>：局部 kNN 注意力 + 多视图全局注意力交替堆叠。</p>
+
+  <h3>局部 kNN 注意力</h3>
+  <p>对每个 3D 点，在其 $k$ 个最近邻（默认初始化 <code>knn_samples=16</code>，循环 <code>refine_knn_samples=8</code>）内做注意力。这捕捉局部几何与外观的一致性：</p>
+  <div class="formula">
+    $$\mathrm{out}_i = \sum_{j\in\mathcal{N}_k(i)} \mathrm{softmax}\!\left(\frac{q_i^\top k_j}{\sqrt{d}}\right) v_j$$
+  </div>
+  <p>源码中 <code>KNNAttention</code> 的核心就是这段缩放点积：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/point_transformer/layer.py — KNNAttention</span><button class="copy-btn">复制</button></div>
+<pre><code>scores = torch.matmul(
+    x_q.unsqueeze(1),
+    x_k.permute(0, 2, 1)
+) * scale_factor
+out = torch.matmul(
+    torch.softmax(scores, dim=2), x_v
+).squeeze(1)</code></pre>
+  </div>
+
+  <h3>多视图全局注意力</h3>
+  <p>单靠局部 kNN 无法让相距较远的同一物体的多个视图互通信息。<code>MultViewLowresAttn</code> 先把每个视图的 token 分辨率降下来，做一次全局自注意力，再升回原分辨率，从而以可接受的成本实现跨视图全局信息交换。</p>
+  <p>初始化阶段默认用 <strong>6 个交替块</strong>（局部 ↔ 全局），循环阶段用 <strong>4 个 kNN 块</strong>加 1 个渲染误差多视图注意力块（<code>render_error_mv_attn_blocks=1</code>）。</p>
+
+  <h3>工程加速：local_knn</h3>
+  <p>当分辨率高或视图多时，全局暴力最近邻搜索代价大。官方实现的 <code>local_knn.py</code> 不做全空间搜索，而是先构造候选集：同视图的 2D 空间窗口（默认半径 $r_s=3$，即 $7\times7$）+ 跨视图投影窗口（半径 $r_c=3$），再只在候选集内算精确 3D 距离取 top-k：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/point_transformer/local_knn.py — 候选集 + 精确 top-k</span><button class="copy-btn">复制</button></div>
+<pre><code>all_indices = torch.cat([spatial_indices, cross_indices], dim=1)
+sq_dist = ((candidate_pos - query_pos) ** 2).sum(dim=-1)
+sq_dist[~all_valid] = float("inf")
+topk_dist, topk_local = sq_dist.topk(k, largest=False)</code></pre>
+  </div>
+  <p>论文附录报告：把全局 kNN 换成局部 kNN 后，重建时间从 0.816s 降到 0.591s，而 PSNR 仅从 27.70 微降到 27.65——以极小质量损失换来 27% 的加速。</p>
+</section>
+
+<!-- ===== 6 循环更新 ===== -->
+<section id="sec-recurrent">
+  <h2><span class="no">06</span>Recurrent Gaussian Update</h2>
+  <p>循环更新模块是 ReSplat 的心脏。它维护每个高斯的一个循环状态 $z_j$，并在每一轮根据"当前高斯参数 + 循环状态 + 渲染误差"预测参数增量：</p>
+  <div class="formula">
+    $$g_j^{t+1}=g_j^t+\Delta g_j^t,\qquad z_j^{t+1}=z_j^t+\Delta z_j^t$$
+  </div>
+  <p>这里 $g_j^t$ 是当前高斯参数，$\Delta g_j^t$ 是增量。这种<strong>残差式预测</strong>而非直接回归绝对值，是循环网络稳定训练的关键：初始高斯已经不错，增量只需做小幅修正。</p>
+
+  <h3>循环结构</h3>
+  <p>每一轮的数据流为：把当前高斯参数 $g^t$、循环状态 $z^t$、渲染误差 $E^t$ 拼接，先过一次 Point Transformer 编码得到点特征，再经 4 个 kNN 注意力块更新状态，最后由一个线性头 <code>update_head</code> 输出 $\Delta g$：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — forward_update 核心</span><button class="copy-btn">复制</button></div>
+<pre><code><span class="cm"># 拼接: 高斯参数 + 循环状态 + 渲染误差</span>
+concat = torch.cat((tmp_gaussian, tmp_state, tmp_render_error), dim=-1)
+
+<span class="cm"># 第一层 Point Transformer 编码点特征</span>
+pxo = self.update_module[0]([point_cloud, concat, offset])
+
+<span class="cm"># kNN 注意力块更新循环状态 (残差)</span>
+tmp_state = self.update_module[1](pxo, **refine_pt_kwargs) + tmp_state
+
+<span class="cm"># 线性头预测参数增量</span>
+delta_gaussians = self.update_head(tmp_state)</code></pre>
+  </div>
+
+  <p>增量再逐项加回原始参数（尺度要重新裁剪到合法范围）：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — 增量施加</span><button class="copy-btn">复制</button></div>
+<pre><code>prev_means = prev_means + delta_means
+prev_scales = (prev_scales + delta_scales).clamp(
+    min=self.cfg.gaussian_adapter.clamp_min_scale
+)
+prev_rotations_unnorm = prev_rotations_unnorm + delta_rotations
+prev_opacities_raw = prev_opacities_raw + delta_opacities
+prev_shs = prev_shs + delta_shs</code></pre>
+  </div>
+
+  <p>论文附录观察到一个有趣现象：<strong>循环更新主要修改中心、尺度和零阶球谐</strong>，高阶球谐的调整几乎可以忽略。这说明循环修正的核心是把几何摆对、把低频颜色对齐，而非重新学习高频纹理。</p>
+</section>
+
+<!-- ===== 7 渲染误差反馈 ===== -->
+<section id="sec-feedback">
+  <h2><span class="no">07</span>Rendering Error Feedback</h2>
+  <p>循环更新需要一个"往哪改"的信号。ReSplat 用渲染结果与真值输入视图的差作为反馈，包含两条互补的通路：<strong>RGB 像素差</strong>和<strong>冻结 ResNet-18 特征差</strong>。</p>
+  <p>形式化地，第 $t$ 轮的渲染误差为：</p>
+  <div class="formula">
+    $$\hat E^t = \{\hat F_i^t - F_i\}_{i=1}^{N} \;+\; \mathrm{proj}\Big(\{\hat I_i^t - I_i\}_{i=1}^{N}\Big)$$
+  </div>
+  <p>其中 $\hat F_i^t$ 是第 $t$ 轮渲染图像经冻结 ResNet 提取的特征，$F_i$ 是真值图像的特征；$\hat I_i^t - I_i$ 是 RGB 差，经一个投影层 <code>update_rgb_error_proj</code> 映射到特征空间后与特征差相加。随后误差再经过多视图全局注意力聚合，得到用于更新的 $E^t$：</p>
+  <div class="formula">
+    $$E^t = \mathrm{global\_attention}(\hat E^t)$$
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — 渲染误差构造</span><button class="copy-btn">复制</button></div>
+<pre><code><span class="cm"># 特征差: 渲染特征 - 真值输入特征 (ResNet 提取, 冻结且 no_grad)</span>
+corr = render_view_features - input_view_features
+
+<span class="cm"># RGB 差: 渲染 - 真值, 投影后加到特征差上</span>
+rgb_render_error = input_render.color - context["image"]
+rgb_render_error = self.update_rgb_error_proj(rgb_render_error)
+input_render_error = input_render_error + rgb_render_error</code></pre>
+  </div>
+
+  <h3>为什么需要两条通路？</h3>
+  <p>消融实验（论文 Table 6，DL3DV 8 视图 256×448 Small）给出了清晰答案：</p>
+  <ul>
+    <li>只用 RGB 误差：27.90 dB</li>
+    <li>只用特征误差：28.77 dB</li>
+    <li>RGB + 特征拼接：28.93 dB</li>
+    <li>RGB + 特征相加（本文最终）：<strong>29.07 dB</strong></li>
+  </ul>
+  <p>特征差比像素差更强，因为它对光照、对比度的微小偏移更鲁棒；而 RGB 差提供精确的像素级对齐信号。两者相加优于拼接，说明它们在特征空间是可加的互补信号。</p>
+
+  <div class="mermaid-frame">
+    <pre class="mermaid">
+flowchart TB
+  GT["Ground-truth input views I_i, F_i"] --> D1
+  REN["Rendered views at round t<br/>hat I_i^t, hat F_i^t"] --> D1
+  D1["Feature diff hat F-F"] --> ADD
+  REN --> D2
+  GT --> D2
+  D2["RGB diff hat I-I"] --> PROJ["update_rgb_error_proj"]
+  PROJ --> ADD
+  ADD["Add to error tensor"] --> ATT["Multi-view global attention"]
+  ATT --> E["E^t per-point error"]
+  E --> UPD["Recurrent update head"]
+  classDef e fill:#fdf3e7,stroke:#b45309,color:#92400e
+  class D1,D2,PROJ,ADD,ATT,E e
+    </pre>
+    <div class="diagram-actions"><button onclick="window.__lb(this.closest('.mermaid-frame'))">放大</button></div>
+    <div class="fig-cap">图解 2：渲染误差反馈通路。ResNet 特征提取在 <code>torch.no_grad()</code> 下运行，但 RGB 通路本身不是全局无梯度。</div>
+  </div>
+
+  <div class="callout warn">
+    <b>精确的 detach 语义（易误解点）：</b>源码并非"每轮都把整张计算图截断"。实际 detach 的只有：送入循环模块的<strong>初始高斯参数</strong>、以及作为更新输入的<strong>上一轮 means / scales / 未归一化旋转 / opacity logits / SH</strong>，还有 <code>condition_features</code> 在 <code>update_proj</code> 之前。但循环状态 $z$ 并非每轮都统一 detach，RGB 渲染误差通路也不是全局 no-gradient，只有 ResNet 特征提取本身在 <code>torch.no_grad()</code> 下。
+  </div>
+</section>
+
+<!-- ===== 8 两阶段训练 ===== -->
+<section id="sec-training">
+  <h2><span class="no">08</span>两阶段训练策略</h2>
+  <p>ReSplat 采用两阶段训练，核心目的是<strong>解耦初始化与循环更新</strong>：</p>
+  <ol>
+    <li><strong>第一阶段：</strong>设 <code>num_refine=0</code>，只训练初始化网络，使其能独立产出不错的初始高斯。</li>
+    <li><strong>第二阶段：</strong>加载第一阶段检查点，<strong>冻结所有参数名不含 <code>encoder.update</code> 的参数</strong>，只训练循环更新模块。初始化前向在 <code>torch.no_grad()</code> 下运行。</li>
+  </ol>
+
+  <h3>中间监督的指数加权</h3>
+  <p>第二阶段中，循环的每一轮输出都会被渲染并计算损失，但权重按指数衰减，越靠后的输出权重越大：</p>
+  <div class="formula">
+    $$L_{\mathrm{2nd}} = \sum_{t=0}^{T-1} \gamma^{\,T-1-t} \sum_{v=1}^{V} \ell_{\mathrm{render}}(\hat I_v^t, I_v),\qquad \gamma=0.9$$
+  </div>
+  <p>即最后一轮输出权重恒为 1，倒数第二轮 0.9，依此类推。源码中：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/model_wrapper.py — 中间输出加权</span><button class="copy-btn">复制</button></div>
+<pre><code>curr_loss_weight = self.train_cfg.intermediate_loss_weight ** (
+    num_output - 1 - i
+)
+total_loss = total_loss + curr_loss_weight * loss</code></pre>
+  </div>
+
+  <h3>损失与优化器的几个"名不副实"</h3>
+  <p>读官方代码时要特别注意命名与实际行为的差异：</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>配置项 / 名称</th><th>实际行为</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>loss_mse</code></td><td>加权 <strong>L1</strong>（F.l1_loss）</td><td>名字叫 MSE，实际不是平方误差</td></tr>
+        <tr><td><code>warm_up_steps=2000</code></td><td>未被实际 <code>configure_optimizers</code> 使用</td><td>真正的 warmup 由 OneCycleLR 的 <code>pct_start</code> 控制</td></tr>
+        <tr><td><code>perceptual loss weight=0.5</code></td><td><code>apply_after_step=0</code></td><td>从第 0 步就生效</td></tr>
+        <tr><td>Shell 脚本 override</td><td>优先于 YAML 默认值</td><td>以可执行脚本为准，不要只看 YAML</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>优化器用 AdamW（默认 <code>weight_decay=0.01</code>），调度器是 OneCycleLR，余弦退火，<code>pct_start=warm_up_ratio</code>（默认 0.01），<code>cycle_momentum=False</code>，每次 optimizer step 后调度器 step。</p>
+
+  <h3>训练时的随机循环步数</h3>
+  <p>测试时循环数由 <code>model.encoder.num_refine</code> 固定控制（如 2 或 4），但训练时为了增强鲁棒性会在区间内随机采样：</p>
+  <div class="code-wrap">
+    <div class="code-label"><span>src/model/encoder/encoder_resplat.py — 训练时随机循环步数</span><button class="copy-btn">复制</button></div>
+<pre><code>num_refine = self.cfg.num_refine
+if self.training and self.cfg.train_min_refine > 0 \
+        and self.cfg.train_max_refine > 0:
+    num_refine = np.random.randint(
+        self.cfg.train_min_refine,
+        self.cfg.train_max_refine + 1
+    )</code></pre>
+  </div>
+  <p>DL3DV 8 视图配置中训练时 <code>train_min_refine=1, train_max_refine=4</code>，即每轮随机选 1~4 次更新，让模型对不同循环深度都鲁棒。</p>
+</section>
+
+<!-- ===== 9 推理与复杂度 ===== -->
+<section id="sec-inference">
+  <h2><span class="no">09</span>推理流程与复杂度分析</h2>
+  <p>推理时，整个流程是纯前向的：初始化一次 → 循环 $T$ 次"渲染输入视图 → 算误差 → 更新高斯" → 用最终高斯渲染任意新视角。没有梯度反传，没有 densification。</p>
+  <p>论文 Table 1 给出了 DL3DV 8 视图 512×960 上的完整耗时曲线（见下节图表）：每增加一轮循环约增加 0.125s，4 轮总耗时 0.816s，而经典 3DGS 跑 4000 步优化需约 70s。论文 Figure 4 进一步显示，<strong>4 次 ReSplat 循环就超过了 3DGS 80 步优化</strong>，在该对比中报告了 53× 的重建加速。</p>
+  <div class="callout">
+    <b>复杂度的两个主要开销：</b>(1) 深度预测（128 个深度候选的代价体）是初始化阶段最重的部分；(2) kNN 注意力是循环阶段的主要计算量，因此 <code>local_knn</code> 加速对高分辨率配置至关重要。
+  </div>
+</section>
+
+<!-- ===== 10 实验 ===== -->
+<section id="sec-experiments">
+  <h2><span class="no">10</span>主要实验结果</h2>
+
+  <h3>论文 Table 1：DL3DV 8 视图，512×960</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>方法</th><th>更新/优化步数</th><th class="num">PSNR↑</th><th class="num">SSIM↑</th><th class="num">LPIPS↓</th><th class="num">高斯数</th><th class="num">重建耗时</th></tr></thead>
+      <tbody>
+        <tr><td>DepthSplat</td><td class="num">0</td><td class="num">24.17</td><td class="num">0.815</td><td class="num">0.208</td><td class="num">3932K</td><td class="num">0.190s</td></tr>
+        <tr><td>ReSplat</td><td class="num">0</td><td class="num">26.21</td><td class="num">0.842</td><td class="num">0.185</td><td class="num">246K</td><td class="num">0.311s</td></tr>
+        <tr><td>ReSplat</td><td class="num">1</td><td class="num">27.15</td><td class="num">0.859</td><td class="num">0.169</td><td class="num">246K</td><td class="num">0.437s</td></tr>
+        <tr><td>ReSplat</td><td class="num">2</td><td class="num">27.51</td><td class="num">0.865</td><td class="num">0.163</td><td class="num">246K</td><td class="num">0.563s</td></tr>
+        <tr><td>ReSplat</td><td class="num">3</td><td class="num">27.65</td><td class="num">0.867</td><td class="num">0.161</td><td class="num">246K</td><td class="num">0.689s</td></tr>
+        <tr class="hi"><td>ReSplat</td><td class="num">4</td><td class="num">27.70</td><td class="num">0.868</td><td class="num">0.160</td><td class="num">246K</td><td class="num">0.816s</td></tr>
+        <tr><td>3DGS</td><td class="num">4000</td><td class="num">23.46</td><td class="num">0.770</td><td class="num">0.224</td><td class="num">359K</td><td class="num">~70s</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>这张表最有说服力的一点是：<strong>ReSplat 用 1/16 的高斯数，在零更新时就已超过 DepthSplat</strong>（26.21 vs 24.17 dB），而每加一轮循环质量持续提升，4 轮时达到 27.70 dB，远超跑 4000 步优化的 3DGS（23.46 dB）。这说明"学习到的迭代修正"比"通用梯度下降"高效得多。</p>
+
+  <div class="chart-card">
+    <div id="chart1" class="chart"></div>
+    <div class="fig-cap">图：ReSplat 循环步数 vs PSNR（柱，左轴）与重建耗时（折线，右轴）。质量随轮次提升但边际收益递减。</div>
+  </div>
+
+  <h3>论文 Table 2：参数效率</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>配置</th><th class="num">参数量</th><th class="num">PSNR↑</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>Small init</td><td class="num">62M</td><td class="num">26.77</td><td>仅初始化，无循环</td></tr>
+        <tr><td>Base init</td><td class="num">209M</td><td class="num">27.37</td><td>仅初始化，无循环</td></tr>
+        <tr><td>AnySplat (init)</td><td class="num">886M</td><td class="num">20.79</td><td>仅初始化，无循环</td></tr>
+        <tr><td>WorldMirror (init)</td><td class="num">1263M</td><td class="num">23.54</td><td>仅初始化，无循环</td></tr>
+        <tr><td>Large init</td><td class="num">559M</td><td class="num">27.86</td><td>仅初始化，无循环</td></tr>
+        <tr><td>Small recurrent ×1</td><td class="num">77M</td><td class="num">28.17</td><td>循环 1 次</td></tr>
+        <tr class="hi"><td>Small recurrent ×4</td><td class="num">77M</td><td class="num">29.07</td><td>循环 4 次</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>这张表揭示了 ReSplat 最核心的论点：<strong>循环比堆参数更划算</strong>。77M 的小模型循环 4 次（29.07 dB）轻松超过 559M 的大初始化模型（27.86 dB），参数量只有后者的 1/7。循环相当于在测试时"复用"参数，把训练好的更新能力反复应用。</p>
+
+  <div class="chart-card">
+    <div id="chart2" class="chart"></div>
+    <div class="fig-cap">图：参数量 vs PSNR。橙色（循环）明显在同等参数下优于蓝色（纯初始化），且小模型循环 4 次超越大模型初始化。</div>
+  </div>
+
+  <h3>其他数据集结果</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>数据集 / 设置</th><th class="num">PSNR↑</th><th class="num">SSIM↑</th><th class="num">LPIPS↓</th><th class="num">高斯数</th></tr></thead>
+      <tbody>
+        <tr><td>DL3DV 16 视图 540×960（循环 2）</td><td class="num">23.51</td><td class="num">—</td><td class="num">—</td><td class="num">518K</td></tr>
+        <tr><td>RealEstate10K 两视图</td><td class="num">29.75</td><td class="num">0.912</td><td class="num">0.100</td><td class="num">—</td></tr>
+        <tr><td>RE10K → ACID 零样本迁移</td><td class="num">29.87</td><td class="num">0.864</td><td class="num">0.135</td><td class="num">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>值得注意的是 RE10K → ACID 的零样本结果：在 RE10K 上训练的模型直接迁移到 ACID（室内场景）仍能保持高质量，说明 ReSplat 学到的循环修正能力具有跨数据集泛化性，而非过拟合到特定场景分布。论文 Figure 5(a) 的跨数据集曲线也显示，循环模型在未见数据集上的提升幅度比单步模型更显著——因为渲染误差反馈能在测试时缓解域间差距。论文 Figure 7 的定性可视化进一步表明，在 RE10K 上 ReSplat 渲染出的结构比 MVSplat 和 DepthSplat 更锐利。</p>
+</section>
+
+<!-- ===== 11 消融 ===== -->
+<section id="sec-ablation">
+  <h2><span class="no">11</span>消融实验与机制分析</h2>
+  <p>论文 Table 6（Ablations）在 DL3DV 8 视图 256×448 Small 设置下做了系统消融，下表汇总了其中渲染误差反馈与循环组件两部分的关键数据：</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>变体</th><th class="num">PSNR↑</th><th>相对基线变化</th></tr></thead>
+      <tbody>
+        <tr><td>仅初始化（无循环）</td><td class="num">26.77</td><td>—</td></tr>
+        <tr><td>无渲染误差反馈</td><td class="num">27.19</td><td>+0.42（循环本身仍有帮助）</td></tr>
+        <tr><td>仅 RGB 误差</td><td class="num">27.90</td><td>+1.13</td></tr>
+        <tr><td>仅特征误差</td><td class="num">28.77</td><td>+2.00</td></tr>
+        <tr><td>RGB + 特征（拼接）</td><td class="num">28.93</td><td>+2.16</td></tr>
+        <tr class="hi"><td>RGB + 特征（相加，本文）</td><td class="num">29.07</td><td>+2.30</td></tr>
+        <tr><td>无循环状态 $z$</td><td class="num">27.79</td><td>−1.28（状态很重要）</td></tr>
+        <tr><td>无循环 kNN 注意力</td><td class="num">28.58</td><td>−0.49</td></tr>
+        <tr><td>无循环全局注意力</td><td class="num">28.96</td><td>−0.11</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="chart-card">
+    <div id="chart3" class="chart"></div>
+    <div class="fig-cap">图：消融实验 PSNR 对比。渲染误差、循环状态、kNN 注意力是三个最关键的组件。</div>
+  </div>
+
+  <p>从消融中可以读出三条机制结论：</p>
+  <ol>
+    <li><strong>渲染误差是循环有效的核心：</strong>去掉误差反馈后 PSNR 从 29.07 掉到 27.19（−1.88），说明"知道哪里错了"比"盲目循环"重要得多。</li>
+    <li><strong>循环状态 $z$ 不可替代：</strong>去掉状态后掉 1.28 dB，说明多轮修正需要记忆"已经改过什么、还剩什么没改"，无状态的逐轮独立预测会重复修正或遗漏。</li>
+    <li><strong>局部 kNN 比全局注意力更关键：</strong>去掉 kNN 掉 0.49，去掉全局只掉 0.11，因为高斯修正本质是局部几何对齐。</li>
+  </ol>
+  <p>论文 Figure 4 还对比了 ReSplat 循环步数与 3DGS 优化步数的质量—时间曲线：4 次 ReSplat 循环的 PSNR 已超过 3DGS 80 步优化，且单次循环远快于一次 3DGS 优化步，体现了"学习到的更新方向"的高效性。</p>
+</section>
+
+<!-- ===== 12 训练配置速查 ===== -->
+<section id="sec-config">
+  <h2><span class="no">12</span>官方训练配置速查</h2>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>设置</th><th>初始化阶段</th><th>循环训练阶段</th><th>推理循环数</th></tr></thead>
+      <tbody>
+        <tr><td>RE10K Base</td><td class="num">200K steps</td><td class="num">100K steps</td><td class="num">固定 2</td></tr>
+        <tr><td>DL3DV 8v 256×448</td><td class="num">50K steps</td><td class="num">30K steps</td><td class="num">随机 1–4（训练）/ 固定（测试）</td></tr>
+        <tr><td>DL3DV 8v 512×960</td><td class="num">50K steps</td><td class="num">30K steps</td><td class="num">随机 1–4 / 固定</td></tr>
+        <tr><td>DL3DV 16v 高分辨率精修</td><td class="num">—</td><td class="num">30K steps</td><td class="num">固定 2</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>关键 YAML 默认值（<code>config/model/encoder/resplat.yaml</code>）：<code>num_depth_candidates=128</code>、<code>gaussian_regressor_channels=512</code>、<code>knn_samples=16</code>、<code>num_blocks=6</code>、<code>latent_downsample=4</code>、<code>init_gaussian_multiple=1</code>、<code>refine_same_num_points=false</code>、<code>num_refine=0</code>、<code>num_basic_refine_blocks=4</code>、<code>state_channels=512</code>、<code>refine_knn_samples=8</code>、<code>render_error_mv_attn_blocks=1</code>。</p>
+  <p>第二阶段的参数冻结逻辑是：加载初始化检查点后，冻结所有名字中不含 <code>encoder.update</code> 的参数。这意味着图像编码器、深度预测、初始化高斯头全部冻结，只有循环更新模块（<code>update_module</code>、<code>update_head</code>、<code>update_feature</code>、<code>update_rgb_error_proj</code> 等）参与训练。</p>
+</section>
+
+<!-- ===== 13 局限与误解 ===== -->
+<section id="sec-limitations">
+  <h2><span class="no">13</span>局限性与常见误解</h2>
+
+  <h3>作者明确陈述的局限</h3>
+  <ol>
+    <li><strong>固定高斯数量，不做自适应稠密化/修剪：</strong>初始化时 $M$ 已定，循环只改属性。这意味着对几何极复杂或初始覆盖严重不足的区域，无法像 3DGS 那样自动分裂出新高斯来补充细节。</li>
+    <li><strong>收益在约 4 轮后饱和：</strong>从 Table 1 可见，0→4 轮 PSNR 提升 1.49 dB，但 3→4 轮只提升 0.05 dB。继续增加循环步数边际收益极小，反而增加延迟。</li>
+    <li><strong>当前处理固定的静态视图集，不支持流式输入：</strong>模型假设输入视图在开始时全部给定，无法增量地接纳新到达的图像。</li>
+  </ol>
+
+  <h3>独立分析的潜在局限</h3>
+  <ul>
+    <li><strong>反馈依赖输入视图覆盖：</strong>渲染误差只能在输入视角上计算。若初始几何在某些区域严重错误而该区域又缺乏输入视图覆盖，误差信号不足，循环可能无法纠正。</li>
+    <li><strong>深度预测与 kNN 仍是主要计算瓶颈：</strong>128 候选的深度代价体和高分辨率下的 kNN 注意力限制了在超大规模场景上的扩展性。</li>
+    <li><strong>附录部分视图数对比并非严格单变量消融：</strong>不同视图数实验可能伴随分辨率或配置变化，解读时需注意。</li>
+  </ul>
+
+  <h3>常见误解澄清</h3>
+  <div class="two-col">
+    <div class="col-card">
+      <h4>误解："测试时无梯度 = 训练也无梯度"</h4>
+      <p>错误。gradient-free 仅指测试时不做显式梯度优化；训练时仍用反向传播学习更新模块，且 RGB 误差通路并非全局无梯度。</p>
+    </div>
+    <div class="col-card">
+      <h4>误解："每轮都 detach 整张图"</h4>
+      <p>错误。源码只 detach 送入更新模块的初始高斯参数和上一轮参数输入；循环状态不统一 detach，ResNet 特征提取才在 no_grad 下。</p>
+    </div>
+    <div class="col-card">
+      <h4>误解："ReSplat 总是用 16× 更少的高斯"</h4>
+      <p>仅主多视图默认配置（downsample=4, multiple=1）如此。RE10K 两视图脚本用 downsample=4×multiple=16 或 downsample=2×multiple=4，均得到逐像素量级。</p>
+    </div>
+    <div class="col-card">
+      <h4>误解："loss_mse 就是 MSE"</h4>
+      <p>源码中 <code>loss_mse.py</code> 实际调用 <code>F.l1_loss</code>，是加权 L1。命名是历史遗留，复现实验时要按实际行为理解。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 14 源码导读 ===== -->
+<section id="sec-sourceguide">
+  <h2><span class="no">14</span>源码导读与文件对应</h2>
+  <p>官方仓库 <a href="https://github.com/cvg/resplat" target="_blank" rel="noopener">cvg/resplat</a> 的核心文件与本文概念的对应关系如下：</p>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>概念</th><th>源码文件</th><th>关键内容</th></tr></thead>
+      <tbody>
+        <tr><td>整体编码器 + 循环更新</td><td><code>src/model/encoder/encoder_resplat.py</code></td><td>初始化、forward_update、渲染误差、增量施加</td></tr>
+        <tr><td>点 Transformer / 注意力</td><td><code>src/model/encoder/point_transformer/layer.py</code></td><td>KNNAttention, TransformerBlock, MultViewLowresAttn</td></tr>
+        <tr><td>局部 kNN 加速</td><td><code>src/model/encoder/point_transformer/local_knn.py</code></td><td>候选集构造 + 精确 top-k</td></tr>
+        <tr><td>高斯参数化与反投影</td><td><code>src/model/encoder/common/gaussian_adapter.py</code></td><td>尺度/四元数约束、射线反投影</td></tr>
+        <tr><td>协方差数学</td><td><code>src/model/encoder/common/gaussians.py</code></td><td>四元数转旋转、build_covariance</td></tr>
+        <tr><td>冻结特征提取</td><td><code>src/model/encoder/layer.py</code></td><td>ResNet-18 冻结，no_grad 提取</td></tr>
+        <tr><td>可微渲染器</td><td><code>src/model/decoder/gsplat_decoder_splatting_cuda.py</code></td><td>gsplat rasterization 封装</td></tr>
+        <tr><td>损失加权与训练循环</td><td><code>src/model/model_wrapper.py</code></td><td>中间输出指数加权、阶段切换</td></tr>
+        <tr><td>L1 损失（名 mse）</td><td><code>src/loss/loss_mse.py</code></td><td>加权 L1</td></tr>
+        <tr><td>感知损失</td><td><code>src/loss/loss_lpips.py</code></td><td>LPIPS，权重 0.5</td></tr>
+        <tr><td>默认配置</td><td><code>config/model/encoder/resplat.yaml</code></td><td>所有默认超参</td></tr>
+        <tr><td>训练脚本</td><td><code>scripts/re10k_view2_256x256_base_init.sh</code> 等</td><td>实验的精确 override 配置</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="mermaid-frame">
+    <pre class="mermaid">
+flowchart LR
+  subgraph S1["Stage 1: train init only (num_refine=0)"]
+    A[encoder init params] -->|trained| Ckpt[init checkpoint]
+  end
+  subgraph S2["Stage 2: freeze non-update, train update"]
+    Ckpt -->|load| B[Freeze all except encoder.update]
+    B --> D[update_module / update_head / update_feature]
+    D -->|trained| Final[final checkpoint]
+  end
+  Final --> INF[Inference: init once, loop T times, render]
+  classDef s1 fill:#e8f1ec,stroke:#2f6b4f,color:#244f3b
+  classDef s2 fill:#fdf3e7,stroke:#b45309,color:#92400e
+  class A,Ckpt s1
+  class B,D,Final s2
+    </pre>
+    <div class="diagram-actions"><button onclick="window.__lb(this.closest('.mermaid-frame'))">放大</button></div>
+    <div class="fig-cap">图解 3：两阶段训练流程。第一阶段学初始化，第二阶段冻结其余只学循环更新。</div>
+  </div>
+</section>
+
+<!-- ===== 15 结论 ===== -->
+<section id="sec-conclusion">
+  <h2><span class="no">15</span>结论</h2>
+  <p>ReSplat 的核心贡献在于把"迭代修正"从一个外部优化过程变成了网络内部的一个可学习模块。它证明了：给定一个尚可的初始高斯集合，一个共享权重的循环网络仅凭渲染误差反馈，就能在 4 轮以内把质量推到超越逐场景梯度优化的水平，同时保持亚秒级重建速度和 1/16 的高斯数量。</p>
+  <p>从方法论看，ReSplat 代表了前馈重建的一个新方向——不再追求"一次预测完美"，而是接受"先大致对，再反复改"，并让网络学会"怎么改"。循环状态、渲染误差双通道反馈、局部 kNN 与多视图全局注意力的组合，共同支撑了这种学习式迭代。其参数效率（77M 循环 4 次超 559M）也提示：在推理时复用参数，可能比在训练时堆参数更值得探索。</p>
+  <p>未来的自然延伸包括：把自适应稠密化融入循环（让高斯集合也能演化）、支持流式视图输入、以及把这套"渲染误差→参数增量"的循环框架迁移到其他可微渲染表示（如神经辐射场、四面体网格）上。</p>
+</section>
+
+<!-- ===== 参考 ===== -->
+<section id="sec-references">
+  <h2><span class="no">16</span>参考资料</h2>
+  <ol>
+    <li>Xu, H., Barath, D., Geiger, A., Pollefeys, M. <em>ReSplat: Learning Recurrent Gaussian Splatting</em>. arXiv:2510.08575v4, 2026. ECCV 2026 Spotlight. <a href="https://arxiv.org/abs/2510.08575" target="_blank" rel="noopener">arXiv</a></li>
+    <li>官方项目页：<a href="https://haofeixu.github.io/resplat/" target="_blank" rel="noopener">haofeixu.github.io/resplat</a></li>
+    <li>官方代码仓库：<a href="https://github.com/cvg/resplat" target="_blank" rel="noopener">github.com/cvg/resplat</a></li>
+    <li>Kerbl, B. et al. <em>3D Gaussian Splatting for Real-Time Radiance Field Rendering</em>. SIGGRAPH 2023.</li>
+    <li>Yu, K. et al. <em>DepthSplat: Real-Time 3D Gaussian Splatting from Sparse Multi-View Images</em>. 2024.</li>
+    <li>gsplat 项目：<a href="https://github.com/nerfstudio-project/gsplat" target="_blank" rel="noopener">nerfstudio-project/gsplat</a></li>
+  </ol>
+  <p class="tbl-note" style="margin-top:24px;color:var(--muted);font-size:12.5px">本文所有公式、代码片段与实验数值均核对自论文 v4 版本及官方开源仓库（截至 2026-08-26 修订）。实验表格数据出自论文 Table 1、Table 2、Table 6 及正文；耗时与消融细节出自论文附录。代码片段保留原始变量名以便与仓库对照。</p>
+</section>
+
+</div>
+</main>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="window.__lbClose()">&times;</button>
+  <div class="lb-ctrl">
+    <button onclick="window.__lbZoom(1.25)">放大</button>
+    <button onclick="window.__lbZoom(0.8)">缩小</button>
+    <button onclick="window.__lbReset()">重置</button>
+  </div>
+</div>
+
+<script>
+/* ---------- KaTeX 自动渲染 ---------- */
+document.addEventListener("DOMContentLoaded", function(){
+  if (window.renderMathInElement) {
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left: "$$", right: "$$", display: true},
+        {left: "$", right: "$", display: false}
+      ],
+      throwOnError: false
+    });
+  }
+});
+
+/* ---------- TOC 自动生成 + 高亮 ---------- */
+function setupToc(){
+  const nav = document.getElementById("tocNav");
+  const page = document.querySelector(".doc-page");
+  const targets = Array.from(page.querySelectorAll("section[id]")).filter(
+    s => !s.classList.contains("no-toc") && s.querySelector("h2")
+  );
+  const links = targets.map(t => {
+    const a = document.createElement("a");
+    a.href = "#" + t.id;
+    a.dataset.target = t.id;
+    const h2 = t.querySelector("h2");
+    a.textContent = h2.textContent.replace(/^\s*\d+\s*/, "").trim();
+    return a;
+  });
+  nav.replaceChildren(...links);
+
+  // 滚动高亮
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.toggle("active", l.dataset.target === e.target.id));
+      }
+    });
+  }, {rootMargin: "-30% 0px -60% 0px", threshold: 0});
+  targets.forEach(t => obs.observe(t));
+
+  // 进度条
+  const bar = document.getElementById("tocProgress");
+  function onScroll(){
+    const h = document.documentElement;
+    const pct = h.scrollTop / (h.scrollHeight - h.clientHeight);
+    bar.style.width = (pct * 100).toFixed(1) + "%";
+  }
+  window.addEventListener("scroll", onScroll, {passive:true});
+  onScroll();
+}
+
+/* ---------- Mermaid ---------- */
+function setupMermaid(){
+  if (window.mermaid) {
+    mermaid.initialize({startOnLoad:false, theme:"base", securityLevel:"loose",
+      themeVariables:{primaryColor:"#e8f1ec", primaryTextColor:"#244f3b",
+        primaryBorderColor:"#2f6b4f", lineColor:"#7c7d76", fontFamily:"inherit"}});
+    mermaid.run({querySelector:".mermaid"}).then(()=>{
+      setupDiagramZoom();
+    }).catch(()=>{});
+  }
+}
+
+/* ---------- 图解放大 (Lightbox) ---------- */
+function setupDiagramZoom(){
+  // mermaid 渲染后把 svg 转为可点击放大
+  document.querySelectorAll(".mermaid-frame").forEach(frm => {
+    const svg = frm.querySelector("svg");
+    if (!svg || frm.dataset.zoomReady) return;
+    frm.dataset.zoomReady = "1";
+    svg.style.cursor = "zoom-in";
+    svg.style.maxWidth = "100%";
+    svg.addEventListener("click", () => window.__lb(frm));
+  });
+}
+let __lbScale = 1;
+window.__lb = function(frame){
+  const lb = document.getElementById("lightbox");
+  const old = lb.querySelector("svg, img");
+  if (old) old.remove();
+  const svg = frame.querySelector("svg");
+  if (!svg) return;
+  const clone = svg.cloneNode(true);
+  clone.setAttribute("width", "95vw");
+  clone.setAttribute("height", "auto");
+  clone.style.maxHeight = "90vh";
+  lb.appendChild(clone);
+  lb.classList.add("open");
+  __lbScale = 1;
+  clone.style.transform = "scale(1)";
+  lb.querySelector(".lb-ctrl").style.display = "flex";
+};
+window.__lbZoom = function(f){
+  const lb = document.getElementById("lightbox");
+  const el = lb.querySelector("svg, img");
+  if (!el) return;
+  __lbScale *= f;
+  el.style.transform = "scale(" + __lbScale + ")";
+  el.style.transition = "transform .15s";
+};
+window.__lbReset = function(){
+  const lb = document.getElementById("lightbox");
+  const el = lb.querySelector("svg, img");
+  if (el){ __lbScale = 1; el.style.transform = "scale(1)"; }
+};
+window.__lbClose = function(){
+  document.getElementById("lightbox").classList.remove("open");
+};
+document.getElementById("lightbox").addEventListener("click", e=>{
+  if (e.target.id === "lightbox") window.__lbClose();
+});
+
+/* ---------- 代码复制按钮 ---------- */
+function setupCodeCopy(){
+  document.querySelectorAll(".code-wrap .copy-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const pre = btn.closest(".code-wrap").querySelector("pre code")
+                 || btn.closest(".code-wrap").querySelector("pre");
+      const text = pre.innerText;
+      navigator.clipboard.writeText(text).then(()=>{
+        const old = btn.textContent;
+        btn.textContent = "已复制";
+        setTimeout(()=> btn.textContent = old, 1500);
+      }).catch(()=>{ btn.textContent = "复制失败"; });
+    });
+  });
+}
+
+/* ---------- ECharts 图表 ---------- */
+let __chartsReady=false;
+function setupCharts(){
+  if (__chartsReady || !window.echarts) return;
+  __chartsReady=true;
+
+  // 图1: 循环步数 vs PSNR + 耗时
+  const c1 = echarts.init(document.getElementById("chart1"));
+  c1.setOption({
+    tooltip:{trigger:"axis", axisPointer:{type:"cross"}},
+    legend:{data:["PSNR (dB)","重建耗时 (s)"], top:0},
+    grid:{left:50, right:55, top:40, bottom:40},
+    xAxis:{type:"category", data:["0","1","2","3","4"], name:"循环步数", nameLocation:"middle", nameGap:28},
+    yAxis:[
+      {type:"value", name:"PSNR (dB)", min:25, max:28, position:"left"},
+      {type:"value", name:"耗时 (s)", min:0, max:1, position:"right"}
+    ],
+    series:[
+      {name:"PSNR (dB)", type:"bar", data:[26.21,27.15,27.51,27.65,27.70],
+       itemStyle:{color:"#2f6b4f"}, barWidth:"45%", label:{show:true, position:"top", fontSize:10}},
+      {name:"重建耗时 (s)", type:"line", yAxisIndex:1, data:[0.311,0.437,0.563,0.689,0.816],
+       itemStyle:{color:"#b45309"}, lineStyle:{width:3}, symbol:"circle", symbolSize:9}
+    ]
+  });
+
+  // 图2: 参数量 vs PSNR (init vs recurrent)
+  const c2 = echarts.init(document.getElementById("chart2"));
+  c2.setOption({
+    tooltip:{trigger:"item", formatter:p => p.data[2] + "<br/>参数: "+p.data[0]+"M, PSNR: "+p.data[1]+" dB"},
+    legend:{data:["纯初始化","循环更新"], top:0},
+    grid:{left:55, right:30, top:40, bottom:45},
+    xAxis:{type:"value", name:"参数量 (M)", nameLocation:"middle", nameGap:30},
+    yAxis:{type:"value", name:"PSNR (dB)", min:26, max:29.5},
+    series:[
+      {name:"纯初始化", type:"scatter", symbolSize:20,
+       data:[[62,26.77,"Small init"],[209,27.37,"Base init"],[559,27.86,"Large init"]],
+       itemStyle:{color:"#7c9a8a"}},
+      {name:"循环更新", type:"scatter", symbolSize:20,
+       data:[[77,28.17,"Small ×1"],[77,29.07,"Small ×4"]],
+       itemStyle:{color:"#b45309"}}
+    ]
+  });
+
+  // 图3: 消融
+  const c3 = echarts.init(document.getElementById("chart3"));
+  const ablLabels = ["仅初始化","无误差反馈","仅RGB","仅特征","RGB+特征拼","RGB+特征加(本文)","无循环状态","无kNN","无全局"];
+  const ablVals = [26.77,27.19,27.90,28.77,28.93,29.07,27.79,28.58,28.96];
+  const colors = ablVals.map((v,i)=> i===5 ? "#b45309" : "#5a8a70");
+  c3.setOption({
+    tooltip:{trigger:"axis", axisPointer:{type:"shadow"}},
+    grid:{left:50, right:30, top:30, bottom:80},
+    xAxis:{type:"category", data:ablLabels, axisLabel:{rotate:30, fontSize:10}},
+    yAxis:{type:"value", name:"PSNR (dB)", min:26, max:29.5},
+    series:[{type:"bar", data:ablVals.map((v,i)=>({value:v, itemStyle:{color:colors[i]}})),
+             barWidth:"55%", label:{show:true, position:"top", fontSize:9}}]
+  });
+
+  window.addEventListener("resize", ()=>{ c1.resize(); c2.resize(); c3.resize(); });
+}
+
+/* ---------- 启动 ---------- */
+document.addEventListener("DOMContentLoaded", () => {
+  setupToc();
+  setupMermaid();
+  setupCodeCopy();
+  if (document.readyState === "complete" || window.echarts) setupCharts();
+});
+window.addEventListener("load", () => { if (window.echarts) setupCharts(); });
+</script>
+</body>
+</html>

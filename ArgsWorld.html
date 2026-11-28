@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArgsWorld 深度解读 — 统一 3DGS 重建、生成与外推的自回归扩散 Transformer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+:root{
+  --page:#ffffff;
+  --ink:#2f302d;
+  --muted:#6b7280;
+  --faint:#9aa1ad;
+  --line:#e6e8ec;
+  --line-strong:#d4d8df;
+  --soft:#f7f8fa;
+  --soft-2:#f1f4f7;
+  --accent:#2563eb;
+  --teal:#0f766e;
+  --rose:#b83f58;
+  --gold:#b7791f;
+  --code-bg:#0f172a;
+  --code-ink:#e2e8f0;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Noto Serif SC","Source Han Serif SC",serif;
+  color:var(--ink);background:var(--soft-2);line-height:1.9;font-size:17px;
+}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.toc-rail{position:fixed;inset:0 auto 0 0;width:284px;overflow-y:auto;z-index:20;background:var(--page);border-right:1px solid var(--line);padding:28px 20px 40px}
+.toc-brand{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.toc-title{font-size:17px;font-weight:700;line-height:1.45;margin-bottom:16px;color:var(--ink)}
+.toc-nav ul{list-style:none}
+.toc-nav li{margin:2px 0}
+.toc-nav a{display:block;padding:6px 9px;border-radius:8px;color:var(--muted);font-size:13.5px;line-height:1.5}
+.toc-nav a:hover{background:var(--soft);color:var(--ink);text-decoration:none}
+.toc-nav a.active{background:#eef4ff;color:var(--accent);font-weight:600}
+.doc-page{width:calc(100% - 284px);max-width:none;margin-left:284px;padding:56px 56px 80px}
+.doc-inner{max-width:980px;margin:0 auto;background:var(--page);border:1px solid var(--line);border-radius:18px;padding:56px 60px;box-shadow:0 20px 60px rgba(15,23,42,.06)}
+.doc-title h1{font-size:34px;line-height:1.32;margin-bottom:14px;letter-spacing:-.01em}
+.doc-subtitle{font-size:18px;color:var(--muted);line-height:1.7;margin-bottom:22px}
+.doc-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 24px;font-size:14px;color:var(--muted);padding:18px 20px;background:var(--soft);border:1px solid var(--line);border-radius:14px;margin-top:18px}
+.doc-meta b{color:var(--ink);font-weight:600}
+.doc-block{margin-top:42px}
+h2{font-size:26px;line-height:1.35;margin:0 0 16px;color:var(--ink);padding-bottom:10px;border-bottom:2px solid var(--line)}
+h3{font-size:20px;margin:26px 0 10px;color:var(--accent)}
+h4{font-size:17px;margin:18px 0 8px;color:#334155}
+p{margin:13px 0}
+ul,ol{margin:12px 0 12px 24px}
+li{margin:7px 0}
+strong{color:#111827}
+.lede{font-size:18px;color:#334155}
+.doc-callout{margin:22px 0;padding:18px 20px;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a}
+.doc-note{margin:22px 0;padding:16px 18px;border-radius:14px;background:#f8fafc;border:1px dashed var(--line-strong);color:#475569}
+.doc-warn{margin:22px 0;padding:16px 18px;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;color:#9f1239}
+.tag{display:inline-block;font-size:12px;padding:3px 9px;border-radius:999px;margin-right:6px;margin-bottom:4px}
+.tag-blue{background:#dbeafe;color:#1e40af}
+.tag-green{background:#d1fae5;color:#065f46}
+.tag-amber{background:#fef3c7;color:#92400e}
+.tag-rose{background:#ffe4e6;color:#9f1239}
+.doc-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:22px 0}
+.metric{background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:16px}
+.metric .num{font-size:26px;font-weight:700;color:var(--accent)}
+.metric .lbl{font-size:13px;color:var(--muted);margin-top:4px}
+.formula{margin:20px 0;padding:16px 18px;background:var(--soft);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+.code-block{position:relative;margin:22px 0;background:var(--code-bg);border-radius:14px;overflow:hidden;border:1px solid #1e293b}
+.code-label{display:block;padding:10px 14px;background:#111827;color:#cbd5e1;font-size:12.5px;font-family:"SF Mono",Consolas,monospace;border-bottom:1px solid #1e293b}
+.copy-btn{position:absolute;top:9px;right:10px;font-size:12px;padding:5px 10px;border-radius:8px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;cursor:pointer}
+.code-block pre{margin:0;padding:16px 18px;overflow-x:auto;color:var(--code-ink);font-size:13.5px;line-height:1.65;font-family:"SF Mono",Consolas,monospace}
+.code-block code{font-family:inherit;color:inherit}
+.table-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--page)}
+.table-scroll{overflow-x:auto}
+table.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;min-width:640px}
+.doc-data-table th,.doc-data-table td{border-bottom:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+.doc-data-table thead th{background:var(--soft);font-weight:700;color:#334155}
+.doc-data-table tbody tr:last-child td{border-bottom:none}
+.doc-data-table .best{font-weight:700;color:var(--teal)}
+.figure-caption{font-size:13.5px;color:var(--muted);margin-top:10px;line-height:1.7}
+.diagram-frame{background:var(--page);border:1px solid var(--line);border-radius:14px;padding:16px;overflow:auto;cursor:zoom-in}
+.mermaid{font-size:14px}
+.lightbox{display:none;position:fixed;inset:0;background:rgba(15,23,42,.82);z-index:100;align-items:center;justify-content:center;padding:30px}
+.lightbox.show{display:flex}
+.lightbox .box{background:#fff;border-radius:16px;padding:18px;max-width:96vw;max-height:92vh;overflow:auto;position:relative}
+.lightbox .close{position:absolute;top:10px;right:14px;font-size:22px;cursor:pointer;color:#475569;border:none;background:none}
+.back-top{position:fixed;right:22px;bottom:22px;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--accent);cursor:pointer;box-shadow:0 8px 24px rgba(15,23,42,.12);z-index:15}
+.ref-list li{font-size:14px;line-height:1.75}
+@media(max-width:1180px){
+  .toc-rail{display:none}
+  .doc-page{width:100%;margin-left:0;padding:28px}
+  .doc-inner{padding:36px}
+}
+@media(max-width:820px){
+  .doc-page{padding:16px}
+  .doc-inner{padding:24px;border-radius:14px}
+  .doc-title h1{font-size:26px}
+  .doc-meta{grid-template-columns:1fr}
+  .doc-metrics{grid-template-columns:repeat(2,1fr)}
+  h2{font-size:22px}
+}
+@media(max-width:560px){
+  body{font-size:15.5px}
+  .doc-metrics{grid-template-columns:1fr}
+  .formula,.code-block pre{font-size:12.5px}
+  h2{font-size:20px}
+}
+@media print{
+  .toc-rail,.copy-btn,.back-top{display:none!important}
+  body{background:#fff}
+  .doc-page{width:100%;margin:0;padding:0}
+  .doc-inner{border:none;box-shadow:none;padding:0}
+  .doc-block{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<nav data-site-navigation aria-label="论文精读网站导航" style="position:relative;z-index:20;width:max-content;max-width:calc(100% - 24px);margin:10px 12px 0 auto;padding:7px 11px;border:1px solid #e6e8ec;border-radius:9px;background:#fff;color:#6b7280;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:12px;line-height:1.6"><a href="index.html" style="color:#526d8c;text-decoration:none">← 首页</a><span style="margin:0 7px;color:#c4c9d1">/</span><a href="categories/3dgs.html" style="color:#526d8c;text-decoration:none">3D 重建与 3D Gaussian Splatting</a></nav>
+
+<nav class="toc-rail" aria-label="文档目录">
+  <div class="toc-brand">Paper Deep Dive</div>
+  <div class="toc-title">ArgsWorld<br>统一 3DGS 场景建模</div>
+  <div class="toc-nav" id="tocNav"></div>
+</nav>
+
+<main class="doc-page">
+<div class="doc-inner">
+<header class="doc-title" id="top">
+  <h1>ArgsWorld 深度解读</h1>
+  <p class="doc-subtitle">Unifying 3DGS Scene Reconstruction, Generation and Extrapolation with Autoregressive Diffusion Transformer</p>
+  <div class="doc-meta">
+    <div><b>论文：</b><a href="https://arxiv.org/abs/2611.28792" target="_blank" rel="noopener">arXiv:2611.28792v1</a></div>
+    <div><b>提交时间：</b>2026-11-21</div>
+    <div><b>作者：</b>Weiming Chen, Shuaiyan Liu, Xinyu Shao, Zhewen Chen, Tian Guan, Yonghong He, Xitong Ling</div>
+    <div><b>代码：</b><a href="https://github.com/M4A1TasteGood/ArgsWorld" target="_blank" rel="noopener">M4A1TasteGood/ArgsWorld</a>（公开推理流程；训练循环未公开）</div>
+    <div><b>核对 commit：</b><code>5984f2fd67cd21c303121068533bf1b1e1ebb45a</code></div>
+    <div><b>文档类型：</b>学术深度型解析（中文）</div>
+  </div>
+</header>
+
+<section id="summary" class="doc-block">
+  <h2>一句话总结</h2>
+  <p class="lede">ArgsWorld 把多视图 3DGS 重建、单图/文本条件场景生成、以及长轨迹场景外推统一成同一个四步自回归扩散推理流程：历史图像 latent 固定，当前 chunk 的 RGB latent 与跨视图场景特征共同刷新，3DGS 渲染结果再作为下一去噪步的反馈，从而让扩散模型直接生成可渲染、可外推、可继续编辑的 3D Gaussian 世界。</p>
+  <div class="doc-callout">
+    <strong>核心判断：</strong>它的“自回归”并不来自单向 causal attention mask，而来自 chunk 级 rollout、历史状态传递以及每个 denoising step 内对完整前缀场景的重新解码。理解这一点，是避免把 ArgsWorld 误读成普通视频自回归模型的关键。
+  </div>
+</section>
+
+<section id="background" class="doc-block">
+  <h2>研究背景与动机</h2>
+  <p>近三年的 3D 生成研究大致沿着两条路线推进。第一条是可微渲染驱动的表示学习，例如 3D Gaussian Splatting（3DGS）把场景表示为大量带位置、颜色、不透明度、尺度和旋转的高斯椭球，渲染速度快、几何细节足，但传统 3DGS 依赖逐场景优化，难以变成可泛化的生成器。第二条是扩散生成路线，视频或多视图扩散模型可以从图像或文本生成新视角，但直接输出的多帧 RGB 往往缺少统一的底层 3D 表示，长轨迹上容易漂移，也不容易做几何导出、查询视角渲染或继续外推。</p>
+  <p>ArgsWorld 关注的正是这两条路线的交叉点：能不能让一个扩散 Transformer 同时承担“理解输入场景”“生成新场景”和“沿新相机继续扩展场景”三种任务，并且最终产物不是一串彼此松散的图像，而是一个可以反复渲染的 3DGS 世界。论文摘要用三句原文概括了它的目标：“It keeps the historical image latents fixed and refreshes the scene features...”，“Our 3D Self-Forcing Distillation trains the model on its own generated histories...”，以及“Distribution matching supervises direct image latents and latents of Gaussian renderings at both generation and additional cameras.”</p>
+  <p>已有方法的局限可以分成三类。第一，重建模型和生成模型通常分裂：重建倾向于优化一个给定场景，生成倾向于采样一个新场景，二者共享度低。第二，多视图一致性常靠 3D-aware conditioning 或后处理约束实现，但当相机轨迹变长时，仅靠图像 latent 间的直接约束会累积误差。第三，很多 3D-aware 扩散模型在训练时使用真实历史，推理时却使用模型自己生成的历史，这一 train-test mismatch 会导致外推早期小误差在后续 chunk 中不断放大。</p>
+  <p>ArgsWorld 的出发点是把场景表示拆成两类互补变量：一类是 direct RGB latents，负责快速给出外观内容；另一类是 per-view 场景特征，负责被解码成完整 3DGS。模型在每个去噪步都把当前特征和固定历史 RGB 一起送入 Gaussian decoder，重新解码整个已经生成的前缀，再把前缀在当前相机下的渲染结果编码回 latent，反馈到下一步。这样，“图像生成”与“3D 场景更新”在同一 rollout 中反复耦合。</p>
+  <p>因此，本文的贡献不在单一步骤的新奇，而在系统层面的统一：同一个 Wan DiT 骨干、同一套四步 scheduler、同一个 `infer_ar.main` 推理入口，同时服务 reconstruction、generation、extrapolation。官方 README 也明确强调 reconstruction 是 conditioned generation，而不是另一套独立的逐场景优化程序。</p>
+</section>
+
+<section id="preliminaries" class="doc-block">
+  <h2>预备知识：3DGS 与 Flow Matching</h2>
+  <h3>3D Gaussian Splatting 的最小必要知识</h3>
+  <p>3DGS 把场景表示为集合 \(G=\{g_i\}\)，每个高斯通常包含中心 \(xyz\)、不透明度 \(\alpha\)、各向异性尺度 \(s\)、单位四元数旋转 \(q\)，以及球谐系数 \(SH\)。渲染某相机图像时，每个像素沿射线累加多个高斯的贡献，得到颜色与深度。它的优势是可微、可导出、渲染快；难点是如何让生成模型一次性预测出一个彼此一致、可长期外推的高斯集合。</p>
+  <p>ArgsWorld 没有采用“先出图像再离线拟合 3DGS”的两阶段方案，而是让 DiT 直接预测 1024 维场景特征，再由一个 pixel-aligned Gaussian decoder 预测高斯参数。每个 spatial grid location 预测 2 个 Gaussians，因而场景表示与图像 latent grid 严格对齐，便于利用相机射线和 VAE 空间结构。</p>
+  <h3>Flow Matching：从噪声样本预测 clean latent</h3>
+  <p>模型采用 flow matching 形式的扩散过程。给定 clean latent \(z\) 与噪声 \(\epsilon\sim\mathcal N(0,I)\)，在噪声水平 \(\sigma\in[0,1]\) 上构造加噪样本：</p>
+  <div class="formula">$$x_\sigma=(1-\sigma)z+\sigma\epsilon,\qquad \epsilon\sim\mathcal N(0,I)$$</div>
+  <p>训练目标是预测速度场，等价目标常写作 \(\epsilon-z\)。推理时，若模型输出 \(v_\theta\)，则可估计 clean latent：</p>
+  <div class="formula">$$\hat z=x_\sigma-\sigma v_\theta \tag{1}$$</div>
+  <p>这就是论文 Eq. (1)。人话解释是：DiT 不直接输出最终图像，而是输出“当前带噪 latent 应向哪个方向流动”，再用当前噪声水平 \(\sigma\) 换算出对 clean latent 的估计。ArgsWorld 的四步推理只是把这个解噪过程截断成很少的几步，并在步与步之间插入 3DGS 渲染反馈。</p>
+</section>
+
+<section id="overview" class="doc-block">
+  <h2>总体架构：统一三种任务的单一流水线</h2>
+  <p>论文 Figure 1 给出了系统总览：输入可以是多张带位姿参考图、单图或文本；相机轨迹决定要生成哪些视图；模型按 chunk 逐步 rollout；每个 chunk 输出 direct RGB 视频与可渲染 3DGS 世界。为避免冒充原图，下面用讲解性 Mermaid 重绘其推理与状态传递主线。</p>
+  <section class="doc-diagram no-toc" id="fig-arch">
+    <div class="diagram-frame table-scroll mermaid-frame">
+      <pre class="mermaid">flowchart TB
+  A[Reference images / text] --> B[Text encoder: frozen UMT5]
+  A --> C[Per-view Wan VAE encoder]
+  T[Camera trajectory JSON] --> R[Plucker ray maps]
+  H[History: fixed direct RGB latents + refreshed features] --> D[Wan DiT dual-head]
+  C --> D
+  R --> D
+  B --> D
+  D --> E[RGB velocity: 48 ch]
+  D --> F[Scene features: 1024 ch]
+  E --> G[Clean RGB latent estimate]
+  F --> J[Gaussian decoder]
+  G --> J
+  J --> K[Full-prefix 3DGS world]
+  K --> L[Render current cameras]
+  L --> M[VAE encode rendered frames]
+  M --> N[Re-noise to next sigma]
+  N --> D
+  K --> O[PLY / query views / next session]
+      </pre>
+    </div>
+    <p class="figure-caption"><strong>图 1（讲解性重绘）</strong>：依据论文 Figure 1 与官方推理实现重绘的主闭环。注意 3DGS 渲染结果不是只用于最终导出，而是在每个 denoising step 内重新编码并反馈给 DiT。</p>
+  </section>
+  <p>该架构有三个关键设计。第一，逐视图 VAE 编码：ArgsWorld 不把多帧当作普通视频 latent 序列一起编码，而是每个视图独立通过 Wan VAE 得到 48 通道 latent，再拼接成 token 序列。第二，双输出 DiT：同一个 Transformer 同时输出 RGB flow velocity 和 1024 维场景特征。第三，完整前缀重解码：每一步都用历史 latent 加当前 clean estimate 解码整个前缀场景，而不是只对当前 chunk 追加高斯。</p>
+  <div class="doc-metrics">
+    <div class="metric"><div class="num">48</div><div class="lbl">每视图 RGB latent 通道</div></div>
+    <div class="metric"><div class="num">1024</div><div class="lbl">每视图场景特征通道</div></div>
+    <div class="metric"><div class="num">4</div><div class="lbl">公开推理去噪步数</div></div>
+    <div class="metric"><div class="num">24</div><div class="lbl">公开推理默认 chunk 视图数</div></div>
+  </div>
+  <p>在固定 commit <code>5984f2fd67cd21c303121068533bf1b1e1ebb45a</code> 的 <code>ar_core.py</code> 中，这些维度被集中定义为模块常量，如下所示。</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · ar_core.py L23–L31 · 输入输出维度与默认去噪步</span>
+    <pre><code>LATENT_DIM = 48
+FEAT_DIM = 1024
+RAYMAP_DIM = 6
+SPATIAL_DOWN = 16
+PATCH_HW = 2
+OUT_CHANNELS = LATENT_DIM + FEAT_DIM
+# noisy latent | raymap | condition latent | feedback feats | feedback latents
+GEN_IN_CHANNELS = LATENT_DIM + RAYMAP_DIM + LATENT_DIM + FEAT_DIM + LATENT_DIM
+DEFAULT_DENOISING_STEPS = (0, 250, 500, 750)</code></pre>
+  </div>
+  <p>从常量可直接推出输入总通道数为 \(48+6+48+1024+48=1174\)，输出总通道数为 \(48+1024=1072\)。这些数字不是论文中的抽象描述，而是源码可验证的实现约束。</p>
+</section>
+
+<section id="input-representation" class="doc-block">
+  <h2>输入表示：逐视图 VAE latent 与 Plücker ray map</h2>
+  <p>ArgsWorld 以 Wan2.2-TI2V-5B 的视觉 token 化方式为基础，但改成视图独立编码。默认输入分辨率为 \(480\times704\)，经过 VAE 下采样 16 倍后得到 \(30\times44\) latent grid；再做 \(2\times2\) patchification，每个视图得到 \(15\times22=330\) 个 tokens。该设计保留了 Wan 的视觉先验，同时避免把整个轨迹作为一个长视频片段送入 temporal VAE，从而更适合任意相机位姿组合和 session 延续。</p>
+  <p>相机几何通过六通道 Plücker ray map 注入。对射线原点 \(\mathbf o\) 和单位方向 \(\mathbf d\)，表示为：</p>
+  <div class="formula">$$[\mathbf{d};\ \mathbf{o}-(\mathbf{o}^\top\mathbf{d})\mathbf{d}]$$</div>
+  <p>前三维给出方向，后三维给出原点到射线最近点的偏移，这种表示与沿射线的尺度无关，适合归一化后的场景坐标。官方 <code>utils.py</code> 的实现非常直接：</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · utils.py L6–L9 · 六通道 ray map</span>
+    <pre><code>def create_raymaps(cameras, h, w):
+    rays_o, rays_d = create_rays(cameras, h, w)
+    raymaps = torch.cat([rays_d, rays_o - (rays_o * rays_d).sum(dim=-1, keepdim=True) * rays_d], dim=-1)
+    return raymaps</code></pre>
+  </div>
+  <p>这里有两个实现细节值得注意。第一，ray map 是 per-pixel / per-location 的几何条件，而不是仅给模型一个相机参数向量，因此 Transformer 的每个空间 token 都能感知自己对应的射线。第二，ArgsWorld 在推理时会先根据输入相机或第一个 trajectory segment 做坐标归一化；第一个 segment 决定 session 的原点和尺度，后续 segment 必须复用该归一化，才能保证外推时世界坐标连续。</p>
+</section>
+
+<section id="dual-dit" class="doc-block">
+  <h2>双输出 DiT 与历史状态组织</h2>
+  <p>论文方法的主干是一个 30 层、24 头、head dimension 128 的 Wan Diffusion Transformer。文本条件来自冻结的 UMT5 编码器，最大 512 tokens。与标准视频 DiT 不同，ArgsWorld 的最后预测头分成两支：48 通道 RGB flow velocity 与 1024 通道场景特征。前者用于恢复 direct RGB latent，后者用于 Gaussian decoder。</p>
+  <p>历史状态由两部分组成：一是固定的历史 direct clean RGB latents \(H_{b-1}\)，二是不断刷新的历史场景特征。这里的关键不是“历史都冻结”，而是“历史 RGB 固定、历史 feature 可随当前 DiT 调用更新”。源码 <code>_dit</code> 明确展示了这一点：</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · ar_core.py L307–L325 · 历史拼接与双输出 DiT</span>
+    <pre><code>def _dit(self, x, raymaps, cond, prev_feat, prev_lat, t, text_emb, hist_lat=None, hist_feat=None):
+    n_h = 0 if hist_lat is None else hist_lat.shape[2]
+    if n_h > 0:
+        tokens_per_frame = (x.shape[-2] // PATCH_HW) * (x.shape[-1] // PATCH_HW)
+        x = torch.cat([hist_lat, x], 2)
+        cond = torch.cat([hist_lat, cond], 2)
+        prev_feat = torch.cat([hist_feat, prev_feat], 2)
+        prev_lat = torch.cat([hist_lat, prev_lat], 2)
+        timestep = torch.cat([t.new_zeros(n_h * tokens_per_frame),
+                              t.reshape(1).expand((x.shape[2] - n_h) * tokens_per_frame)])[None]
+    else:
+        timestep = t.reshape(1)
+    hidden = torch.cat([x, raymaps, cond, prev_feat, prev_lat], 1)
+    out = self.generator(hidden_states=hidden, timestep=timestep,
+                         encoder_hidden_states=text_emb, return_dict=False)[0]
+    v, feats = out.split([LATENT_DIM, FEAT_DIM], 1)
+    return v[:, :, n_h:].float(), feats</code></pre>
+  </div>
+  <p>这段代码解释了四个容易误读的点。第一，历史 latent 被同时拼到 noisy input \(x\)、condition latent \(cond\) 和 feedback latent \(prev\_lat\) 三条路径上，而不是只作为一种 memory。第二，历史 token 的 timestep 被设为 0，当前 chunk token 才使用当前噪声水平，因此模型把历史视为 clean context。第三，速度输出 \(v\) 只保留当前 chunk，即 <code>v[:, :, n_h:]</code>；但 <code>feats</code> 保留了历史和当前所有视图，这正是“历史 feature 被刷新”的证据。第四，attention 本身仍是双向的，官方实现 <code>models/transformer_wan2.py</code> 中使用 <code>is_causal=False</code>。</p>
+  <p>因此，“Autoregressive” 的因果性来自外层 chunk rollout 和历史状态，而不是 DiT 内部的 causal mask。论文 Table 6 的消融也证明了这一点：把模型改成 causal attention 并冻结历史特征后，generation 和 extrapolation 的 PSNR 分别掉到 8.10 和 8.89，远低于完整模型。这个消融同时改变了 mask 与历史特征更新方式，所以不能把全部下降只归因于 mask。</p>
+</section>
+
+<section id="gaussian-decoder" class="doc-block">
+  <h2>Gaussian Decoder：从特征到完整前缀 3DGS</h2>
+  <p>Gaussian decoder 是连接扩散 latent 与 3DGS 表示的核心模块。它以可训练的 Wan VAE decoder 深拷贝为骨架，但把输出头从 RGB 重建换成 pixel-aligned 3DGS 预测头。这样做的好处是继承 VAE decoder 的空间上采样和视觉归纳偏置，同时把最终输出约束为可渲染高斯参数。</p>
+  <p>官方文件 <code>models/reconstruction_model.py</code> 中，<code>WANDecoderPixelAligned3DGSReconstructionModel</code> 的初始化包含几个关键动作：深拷贝 VAE decoder；增加把 DiT 特征注入 decoder 输入激活的 <code>extra_conv_in</code>；把最终卷积输出置为 Identity；新增 <code>PixelAligned3DGS</code> 头；删除部分 temporal upsample 卷积以适配逐视图处理。源码如下：</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · models/reconstruction_model.py L27–L44 · Gaussian decoder 构造</span>
+    <pre><code>self.decoder = copy.deepcopy(vae_model.decoder).requires_grad_(True)
+self.post_quant_conv = copy.deepcopy(vae_model.post_quant_conv).requires_grad_(True)
+self.extra_conv_in = WanCausalConv3d(feat_dim, self.decoder.conv_in.weight.shape[0], 3, padding=1)
+time_pad = self.extra_conv_in._padding[4]
+self.extra_conv_in.padding = (0, self.extra_conv_in._padding[2], self.extra_conv_in._padding[0])
+self.extra_conv_in._padding = (0, 0, 0, 0, 0, 0)
+self.extra_conv_in.weight = torch.nn.Parameter(self.extra_conv_in.weight[:, :, time_pad:].clone())
+with torch.no_grad():
+    self.extra_conv_in.weight.data.zero_()
+    self.extra_conv_in.bias.data.zero_()
+dims = [self.decoder.dim * u for u in [self.decoder.dim_mult[-1]] + self.decoder.dim_mult[::-1]]
+self.decoder.norm_out = WanRMS_norm(dims[-1], images=False, bias=False)
+self.decoder.conv_out = nn.Identity()
+self.gs_head = PixelAligned3DGS(dims[-1], num_points_per_pixel=2)
+del self.decoder.up_blocks[0].upsampler.time_conv
+del self.decoder.up_blocks[1].upsampler.time_conv</code></pre>
+  </div>
+  <p>每个 grid location 预测 2 个 Gaussians，每个 Gaussian 共 38 个数：中心 3 维、不透明度 1 维、尺度 3 维、单位四元数旋转 4 维、degree-2 球谐 27 维。其中深度由 <code>trunc_exp</code> 保证为正，中心按射线参数化：</p>
+  <div class="formula">$$xyz = rays\_o + depth \cdot rays\_d$$</div>
+  <p>不透明度用 sigmoid，旋转归一化为单位四元数，尺度结合深度和 pixel footprint 调整。RGB 与 depth 渲染使用 FP32，以降低大场景或高反差区域的数值不稳定。</p>
+</section>
+
+<section id="chunk-ar" class="doc-block">
+  <h2>四步 chunk-wise 自回归推理</h2>
+  <p>公开推理使用 <code>FlowMatchEulerDiscreteScheduler(num_train_timesteps=1000, shift=3.0)</code>，默认 denoising indices 为 <code>(0, 250, 500, 750)</code>，对应噪声水平大约为 \((1.0, 0.9, 0.75, 0.5)\)。也就是说，模型只做四次 DiT 调用，却要求每次都能把 3DGS 世界向前推进并保持一致性。这只有在 3D 渲染反馈足够强时才成立。</p>
+  <p>对第 \(b\) 个 chunk、第 \(j\) 个去噪步，论文 Eq. (2) 定义完整前缀场景：</p>
+  <div class="formula">$$G_{b,j}=\mathcal D_{\mathrm{GS}}\left(F_{b,j},\operatorname{sg}(Z_{b,j}),C_{\le b}\right),\qquad Z_{b,j}=[H_{b-1};\hat z_{b,j}] \tag{2}$$</div>
+  <p>其中 \(H_{b-1}\) 是固定历史 direct RGB latents，\(F_{b,j}\) 是被刷新的历史与当前场景特征，\(\operatorname{sg}\) 表示 stop-gradient，\(C_{\le b}\) 是截至当前 chunk 的相机。这个公式强调：每次解码的是完整前缀，而不是只解码当前 chunk。</p>
+  <p>随后，论文 Eq. (3) 把当前场景在当前相机下重新渲染并编码，加噪后送入下一步：</p>
+  <div class="formula">$$x_{b,j+1}=(1-\sigma_{j+1})\bar z(G_{b,j},C_b)+\sigma_{j+1}\epsilon,\qquad \bar z(G,C)=\mathcal E(\mathcal R(G,C)) \tag{3}$$</div>
+  <p>这里 \(\mathcal R\) 是 Gaussian renderer，\(\mathcal E\) 是 VAE encoder。人话解释是：模型先猜当前 clean latent，再解码成 3D 世界，再从 3D 世界重新“拍照”，把照片编码成 latent 并重新加噪，用它替代纯噪声迭代的输入。这就是 3D 一致性反馈。</p>
+  <section class="doc-diagram no-toc" id="fig-rollout">
+    <div class="diagram-frame table-scroll mermaid-frame">
+      <pre class="mermaid">flowchart LR
+  S0[Chunk b start: x at sigma_j] --> D1[DiT call j]
+  D1 --> V[Velocity v]
+  D1 --> F[Features all prefix]
+  V --> Z[Clean estimate z_hat]
+  Z --> G[Decode full prefix 3DGS]
+  F --> G
+  G --> R[Render current cameras]
+  R --> E[VAE encode render]
+  E --> N[Re-noise to sigma_j+1]
+  N --> D2[DiT call j+1]
+  G --> W[Replace world state]
+  W --> Q[Next chunk or export]
+      </pre>
+    </div>
+    <p class="figure-caption"><strong>图 2（讲解性重绘）</strong>：单个 chunk 内四步 rollout 的数据流。每个去噪步都会更新完整前缀世界状态，渲染反馈只影响当前 chunk 的下一次输入。</p>
+  </section>
+  <p>官方 <code>ar_core.py</code> 的 <code>generate_chunk</code> 把上述公式直接实现为循环：</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · ar_core.py L347–L365 · 四步采样与渲染反馈</span>
+    <pre><code>for i in range(self.num_steps):
+    t = self.step_t(i)
+    v, feats = self._dit(x, raymaps, cond, prev_feat, prev_lat, t,
+                         text_emb, hist_lat, hist_feat)
+    x0_2d = x - (t / 1000.0) * v
+    decode_lat = torch.cat([hist_lat, x0_2d], 2) if n_h else x0_2d
+    gs = gaussians_to_global(
+        self.decode_gaussians(feats, decode_lat, local_cams), origin, scale)
+    if i < self.num_steps - 1:
+        prev_lat = self._render_latents_nograd(gs, cams, height, width)
+        prev_feat = feats[:, :, n_h:].float()
+        sigma_next = self.step_t(i + 1) / 1000.0
+        x = (1 - sigma_next) * prev_lat + sigma_next * torch.randn_like(prev_lat)
+
+world.replace_all(gs, ctx_cams, decode_lat[0], feats[0])</code></pre>
+  </div>
+  <p>对照代码可确认几件事：<code>x0_2d = x - (t / 1000.0) * v</code> 对应 Eq. (1) 的 clean latent 估计；<code>decode_lat</code> 总是包含历史加当前；每个非最后一步都会执行 <code>_render_latents_nograd</code> 并重新加噪；循环结束后调用 <code>world.replace_all</code> 替换完整世界。“replace_all” 这个命名本身就否定了“旧高斯冻结、只追加新高斯”的简化理解。</p>
+</section>
+
+<section id="self-forcing" class="doc-block">
+  <h2>3D Self-Forcing Distillation</h2>
+  <p>只靠普通监督训练会遇到一个典型问题：训练时模型看到真实历史，推理时却看到自己生成的历史。为缩小这一差距，论文提出 3D Self-Forcing Distillation：student DiT 与 Gaussian decoder 从 FlashWorld few-step checkpoint 初始化；teacher 与在线 critic 从 3D-adapted diffusion checkpoint 初始化；训练数据来自模型自己生成的 history，而不是始终依赖真实历史。</p>
+  <p>训练时先无梯度完成若干 chunk 的四步 rollout，再随机选择一个所有 chunk 共享的 replay step \(k\)，带梯度重放该步。论文附录给出采样方式：</p>
+  <div class="formula">$$B\sim\operatorname{Unif}\{2,\ldots,5\},\qquad k\sim\operatorname{Unif}\{1,\ldots,4\}$$</div>
+  <p>其中 \(B\) 是训练 chunk 数，\(k\) 是重放的 denoising step。训练 chunk 为 8 views，而公开推理默认 chunk size 为 24；二者不能混淆。前 100 global steps 只更新 critic，之后每 4 steps 更新一次 student；评估使用 4200 global steps checkpoint。</p>
+  <p>分布匹配损失有三个分支。论文 Eq. (4) 定义三类 latent：</p>
+  <div class="formula">$$z_{\mathrm{rgb}}=[\hat z_{1,k};\ldots;\hat z_{B,k}],\quad z_{\mathrm{in}}=\bar z(G_{B,k},C_{\le B}),\quad z_{\mathrm{nov}}=\bar z(G_{B,k},C_{\mathrm{nov}}) \tag{4}$$</div>
+  <p>\(z_{\mathrm{rgb}}\) 是 student 的 direct RGB latent；\(z_{\mathrm{in}}\) 是当前生成相机下 Gaussian 渲染再编码的 latent；\(z_{\mathrm{nov}}\) 是额外新视角下渲染再编码的 latent。三路 DMD 梯度统一写作论文 Eq. (5)：</p>
+  <div class="formula">$$[\nabla_z\mathcal L_{\mathrm{DMD}}]_i=-\frac{2}{Nw}(\hat z_{\mathrm{real},i}-\hat z_{\mathrm{fake},i}) \tag{5}$$</div>
+  <p>其中 normalizer 下限为 \(\delta=10^{-6}\)。此外还有 consistency loss，论文 Eq. (6) 要求输入相机下的渲染 latent 与历史加当前 direct latent 一致：</p>
+  <div class="formula">$$\mathcal L_{\mathrm{cons}}=\operatorname{MSE}\left(z_{\mathrm{in}},[H_{B-1};\hat z_{B,k}]\right) \tag{6}$$</div>
+  <p>这套训练目标的意义在于：direct RGB 分支保证内容生成质量，rendered input 分支保证生成视角下 3D 渲染与直接预测一致，novel view 分支惩罚多视角不一致。Table 6 显示，去掉 rendering DMD 后，generation PSNR 从 11.61 降到 10.82，extrapolation PSNR 从 11.83 降到 10.68，说明 3D 渲染监督不是装饰，而是少步长外推稳定的主要来源。</p>
+  <div class="doc-warn">
+    <strong>开源边界：</strong>固定 commit 公开了完整推理、session 延续、查询视图渲染与导出，但没有公开可执行训练入口，也没有公开完整的 3D Self-Forcing Distillation / DMD / teacher-critic 训练循环。因此本节公式与训练流程来自论文正文及附录，是“论文描述”，不能等同于当前仓库中的可运行训练代码。
+  </div>
+  <div class="doc-note">
+    <strong>讲解性伪代码边界：</strong>下面伪代码依据论文附录 B 与正文描述整理，用于帮助理解 self-forcing rollout，不是官方训练源码。若未来官方公开训练仓库，应以实际实现为准。
+  </div>
+  <div class="code-block">
+    <span class="code-label">讲解性伪代码 · 依据论文 3D Self-Forcing 描述整理，非官方源码</span>
+    <pre><code># 1) 无梯度生成历史
+with torch.no_grad():
+    histories = student.rollout_chunks(num_chunks=B-1)
+
+# 2) 采样共享 replay step
+k = randint(1, 4)
+
+# 3) 带梯度重放最后一个 chunk 的第 k 步
+z_rgb = student.replay_step(histories, step=k)
+G = decode_gaussians(student.features, concat(histories, z_rgb))
+z_in  = encode(render(G, cameras_in))
+z_nov = encode(render(G, cameras_novel))
+
+# 4) teacher 与 critic 提供 real/fake 分布匹配信号
+loss_dmd = dmd_loss([z_rgb, z_in, z_nov], teacher, critic)
+loss_cons = mse(z_in, concat(histories, z_rgb))
+(loss_dmd + loss_cons).backward()</code></pre>
+  </div>
+</section>
+
+<section id="tasks-cli" class="doc-block">
+  <h2>三种任务如何进入同一推理入口</h2>
+  <p>官方 <code>infer.py</code> 提供 reconstruction、generation、extrapolation 三种 CLI 模式，但它们最终都转发到同一个 <code>infer_ar.main</code>。这一点正是“统一任务建模”的工程证明。<code>infer.py</code> 中的核心校验如下：</p>
+  <div class="code-block">
+    <span class="code-label">官方源码 · infer.py · 三种模式的输入约束（固定 commit）</span>
+    <pre><code>CHUNK_SIZE = 24
+
+if args.mode == 'reconstruction' and len(args.images or embedded) < 2:
+    raise ValueError('Reconstruction requires at least two reference images of the same scene')
+if args.mode == 'generation' and (len(trajectories) != 1 or len(data[0]['cameras']) > CHUNK_SIZE):
+    raise ValueError('Generation uses one trajectory with at most 24 cameras (one chunk)')
+if args.mode == 'extrapolation' and sum(len(d['cameras']) for d in data) <= CHUNK_SIZE:
+    raise ValueError('Extrapolation requires more than 24 cameras')
+if args.reference_indices and not (args.images or embedded):
+    raise ValueError('Reference indices require reference images')</code></pre>
+  </div>
+  <p>三种模式的官方命令如下。Reconstruction 至少需要两张同场景参考图，<code>--reference_indices</code> 对应首个 trajectory segment 中的零基相机槽位：</p>
+  <div class="code-block">
+    <span class="code-label">官方 README · reconstruction 示例</span>
+    <pre><code>python infer.py --mode reconstruction \
+  --model_id weights/Wan2.2-TI2V-5B-Diffusers \
+  --ckpt weights/argsworld.ckpt \
+  --input_dir examples --output_dir outputs/reconstruction \
+  --images images/0000.png images/0003.png --reference_indices 0 3</code></pre>
+  </div>
+  <p>Generation 支持单图、多图或无参考图，只允许一个 trajectory segment，且不超过 24 cameras：</p>
+  <div class="code-block">
+    <span class="code-label">官方 README · generation 示例</span>
+    <pre><code>python infer.py --mode generation \
+  --model_id weights/Wan2.2-TI2V-5B-Diffusers \
+  --ckpt weights/argsworld.ckpt \
+  --input_dir examples --output_dir outputs/generation \
+  --trajectory trajectory.json --images reference.png</code></pre>
+  </div>
+  <p>Extrapolation 可以传入多个 trajectory JSON，每个 JSON 开启一个新 segment；第一个 segment 决定 session 坐标归一化，后续 segment 复用该尺度：</p>
+  <div class="code-block">
+    <span class="code-label">官方 README · extrapolation 示例</span>
+    <pre><code>python infer.py --mode extrapolation \
+  --model_id weights/Wan2.2-TI2V-5B-Diffusers \
+  --ckpt weights/argsworld.ckpt \
+  --input_dir examples --output_dir outputs/extrapolation \
+  --trajectory trajectory.json trajectory_extend.json --images reference.png</code></pre>
+  </div>
+  <p>输出方面，<code>final_world.mp4</code> 是 Gaussian 渲染视频，<code>direct_rgb.mp4</code> 是 direct RGB predictions 经 VAE 解码得到的视频，二者不能混为一谈；还会导出 <code>world.ply</code>、<code>session_cameras.pt</code>，若使用参考图则输出 <code>reference_views.jpg</code>。视频默认 8 fps。</p>
+</section>
+
+<section id="experiments" class="doc-block">
+  <h2>实验结果：统一模型的收益与代价</h2>
+  <p>论文 Table 1 在 DL3DV-200 上做多视图重建评估，比较 4-view 与 8-view 设置。下面只摘录关键对比行，并明确标注为“关键行摘录”，不冒充完整原表。</p>
+  <section class="doc-table no-toc" id="table-1">
+    <div class="table-frame table-scroll">
+      <table class="doc-data-table">
+        <thead><tr><th>Method</th><th>4-view PSNR</th><th>SSIM</th><th>LPIPS</th><th>8-view PSNR</th><th>SSIM</th><th>LPIPS</th></tr></thead>
+        <tbody>
+          <tr><td>ArgsWorld</td><td class="best">20.68</td><td class="best">0.657</td><td class="best">0.121</td><td>21.31</td><td>0.694</td><td class="best">0.117</td></tr>
+          <tr><td>PixWorld</td><td>19.85</td><td>0.610</td><td>0.151</td><td class="best">22.53</td><td class="best">0.708</td><td>0.121</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figure-caption"><strong>表 1（关键行摘录，源自论文 Table 1）</strong>：DL3DV-200 多视图重建。ArgsWorld 在两种设置下 LPIPS 最低，4-view PSNR/SSIM 最高；但 8-view PSNR/SSIM 并不是最高，PixWorld 更高。这说明 ArgsWorld 的优势更偏向感知质量和少参考图场景，而非所有指标全面领先。</p>
+  </section>
+  <p>论文 Table 2 与 Table 3 分别评估单图 8-view generation 与单图 16-view extrapolation。如下所示：</p>
+  <section class="doc-table no-toc" id="table-2">
+    <div class="table-frame table-scroll">
+      <table class="doc-data-table">
+        <thead><tr><th>Task</th><th>Method</th><th>PSNR</th><th>SSIM</th><th>LPIPS</th><th>Time(s)</th></tr></thead>
+        <tbody>
+          <tr><td>8-view generation</td><td>FlashWorld</td><td>11.3820</td><td>0.3041</td><td class="best">0.5834</td><td>2.55</td></tr>
+          <tr><td>8-view generation</td><td>PixWorld</td><td>11.4295</td><td>0.2957</td><td>0.6504</td><td class="best">1.37</td></tr>
+          <tr><td>8-view generation</td><td>ArgsWorld</td><td class="best">11.6104</td><td class="best">0.3054</td><td>0.5939</td><td>2.28</td></tr>
+          <tr><td>16-view extrapolation</td><td>FlashWorld</td><td>11.7511</td><td>0.3077</td><td class="best">0.5620</td><td class="best">4.96</td></tr>
+          <tr><td>16-view extrapolation</td><td>PixWorld</td><td>11.7496</td><td>0.3095</td><td>0.6428</td><td>3.04</td></tr>
+          <tr><td>16-view extrapolation</td><td>ArgsWorld</td><td class="best">11.8344</td><td class="best">0.3140</td><td>0.5910</td><td>6.91</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figure-caption"><strong>表 2（整理自论文 Table 2 与 Table 3）</strong>：单图生成与外推。ArgsWorld 在 PSNR/SSIM 上最高，但 LPIPS 并非最低；外推耗时高于 FlashWorld 和 PixWorld，反映完整前缀重解码与 3D 渲染反馈的计算代价。</p>
+  </section>
+  <p>主观与无参考指标方面，Table 4 的 T3Bench-200 与 Table 5 的 WorldScore 显示 ArgsWorld 整体较强，但并非每个子项都领先。如下摘录：</p>
+  <section class="doc-table no-toc" id="table-4">
+    <div class="table-frame table-scroll">
+      <table class="doc-data-table">
+        <thead><tr><th>Benchmark</th><th>Method</th><th>代表性指标</th><th>数值</th><th>解读</th></tr></thead>
+        <tbody>
+          <tr><td>T3Bench-200</td><td>ArgsWorld</td><td>Q-Align IQA / CLIPScore</td><td class="best">4.44 / 33.10</td><td>整体图像质量与文本对齐最高或并列最高</td></tr>
+          <tr><td>T3Bench-200</td><td>FlashWorld</td><td>Q-Align IQA / CLIPScore</td><td>4.42 / 32.53</td><td>非常接近，说明主干基础能力强</td></tr>
+          <tr><td>WorldScore</td><td>ArgsWorld</td><td>Average</td><td class="best">72.08</td><td>总分最高，Content 与 Subjective 优势明显</td></tr>
+          <tr><td>WorldScore</td><td>PixWorld</td><td>Average</td><td>71.70</td><td>Camera、3D Consistency、Photometric 更高</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figure-caption"><strong>表 3（整理自论文 Table 4 与 Table 5）</strong>：无参考与主观指标。ArgsWorld 赢在总体平均和内容/主观感受，但 WorldScore 的 3D Consistency 与 Photometric Consistency 不如 PixWorld，提示其优势不是“几何最稳”，而是统一生成体验更均衡。</p>
+  </section>
+  <p>论文 Figure 4 展示 2/4 参考图下的重建定性对比，Figure 5 展示 16-view 外推的多视角一致性，Figure 6/7 进一步展示文本条件生成与失败/边界案例。引用这些图时必须注意协议差异：Figure 4 的 2/4 参考图定性设置不能直接等同于 Table 1 的 4/8 参考图定量设置；Figure 5 的 16-view 展示也不能与 Table 2 的 8-view generation 数值混用。</p>
+</section>
+
+<section id="ablation" class="doc-block">
+  <h2>消融实验：哪些设计真正关键</h2>
+  <p>论文 Table 6 给出两项关键消融：一是去掉 rendering DMD，只保留 direct RGB DMD；二是改用 causal attention。结果如下：</p>
+  <section class="doc-table no-toc" id="table-6">
+    <div class="table-frame table-scroll">
+      <table class="doc-data-table">
+        <thead><tr><th>Task</th><th>Variant</th><th>PSNR</th><th>SSIM</th><th>LPIPS</th></tr></thead>
+        <tbody>
+          <tr><td>Generation</td><td>ArgsWorld</td><td class="best">11.6104</td><td>0.3054</td><td class="best">0.5939</td></tr>
+          <tr><td>Generation</td><td>Direct RGB DMD only</td><td>10.8163</td><td class="best">0.3152</td><td>0.6383</td></tr>
+          <tr><td>Generation</td><td>Causal attention</td><td>8.0975</td><td>0.1377</td><td>0.6538</td></tr>
+          <tr><td>Extrapolation</td><td>ArgsWorld</td><td class="best">11.8344</td><td class="best">0.3140</td><td class="best">0.5910</td></tr>
+          <tr><td>Extrapolation</td><td>Direct RGB DMD only</td><td>10.6788</td><td>0.3121</td><td>0.6484</td></tr>
+          <tr><td>Extrapolation</td><td>Causal attention</td><td>8.8900</td><td>0.1773</td><td>0.6485</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="figure-caption"><strong>表 4（源自论文 Table 6）</strong>：消融实验。rendering DMD 去除后，Generation PSNR 下降约 0.79 dB，Extrapolation 下降约 1.16 dB；causal 变体性能崩塌。注意 Generation 中 Direct RGB DMD only 的 SSIM 略高于完整模型，说明完整模型在某些像素统计上并非单调最优，它主要优化的是 3D 渲染与长程一致性。</p>
+  </section>
+  <p>这组消融支持本文的核心论点：ArgsWorld 的能力来自“扩散解噪 + 3D 渲染反馈 + 非因果全前缀注意力”的联合，而不是单一模块。把 3D 渲染监督去掉，模型仍能生成图像，但更像普通多视图扩散；把 attention 改成 causal 并冻结历史特征，模型失去根据当前观察重写全局场景特征的能力，长程一致性迅速恶化。</p>
+</section>
+
+<section id="limitations" class="doc-block">
+  <h2>局限与公平比较边界</h2>
+  <p>需要先说明一个事实边界：论文 v1 没有设置独立的 Limitations / Failure Cases / Future Work 小节。因此下面的局限性不是“作者明确自述清单”，而是基于论文实验、架构和公开代码状态做出的独立分析。写作时把它称为作者声明会不准确。</p>
+  <p>第一，单图生成与外推任务中，ArgsWorld 的 LPIPS 并非最佳。Table 2/3 显示 FlashWorld 在单图任务 LPIPS 更低，说明 ArgsWorld 为了 3D 一致性和可渲染性，在局部感知相似度上付出了代价。若应用更看重单张新视角的纹理逼真度，而不是可导出几何或超长轨迹，FlashWorld 仍有吸引力。</p>
+  <p>第二，外推速度存在额外开销。Table 3 中 16-view extrapolation 耗时 6.91 秒，高于 FlashWorld 的 4.96 秒和 PixWorld 的 3.04 秒。原因是每个 denoising step 都要重新解码完整前缀并执行 3D 渲染、VAE 编码和再加噪。轨迹越长，完整前缀越大，计算与显存压力也会增长。公开推理默认把 chunk size 设为 24，也部分反映了对计算成本的工程折中。</p>
+  <p>第三，WorldScore 的 3D Consistency 与 Photometric Consistency 并非最佳。PixWorld 在这些几何/光度一致性子项上更高，说明 ArgsWorld 的统一建模并不自动等价于“几何最稳定”。它更像是在内容生成、主观质量和可外推性之间取得平衡，而不是在每个几何指标上领先。</p>
+  <p>第四，复现边界明确。当前固定 commit 公开了完整推理、session continuation、query view 渲染与导出，但没有公开可执行训练入口，也没有完整的 3D Self-Forcing Distillation、DMD 与 teacher/critic 训练循环。因此研究者可以复现推理结果，却无法仅靠当前仓库完整复现论文训练曲线。此外，论文中的不同方法存在评测分支差异：ArgsWorld、FlashWorld、PixWorld 评 Gaussian renders，而 Geometry Forcing / Gen3C / Gen3R 评 direct RGB predictions；跨表解读时必须先确认评测对象，否则会把表示差异误判成方法差异。</p>
+</section>
+
+<section id="reproduction" class="doc-block">
+  <h2>复现指南与源码文件地图</h2>
+  <p>官方 README 明确环境要求为 Linux、Python 3.11 或 3.12、支持 BF16 的 NVIDIA GPU、CUDA 版 PyTorch/torchvision。依赖安装方式为：</p>
+  <div class="code-block">
+    <span class="code-label">官方 README · 依赖安装</span>
+    <pre><code>python -m pip install -r requirements.txt</code></pre>
+  </div>
+  <p>其中 <code>requirements.txt</code> 包含关键版本 <code>diffusers==0.36.0</code> 与 <code>gsplat==1.5.2</code>。运行前需要准备 Wan2.2-TI2V-5B-Diffusers 权重目录与 ArgsWorld checkpoint；checkpoint 可以是单个 <code>argsworld.ckpt</code>，也可以是包含 <code>model.ckpt</code> 的目录。官方权重文件约 20.94 GB。</p>
+  <p>理解代码时，可以按下面的调用链阅读：</p>
+  <div class="code-block">
+    <span class="code-label">源码地图 · 官方推理调用链（固定 commit）</span>
+    <pre><code>infer.py / build_inference_args
+  -> infer_ar.main
+    -> load_argsworld_weights
+    -> encode_texts
+    -> build_transformer / build_vae / build_recon_decoder / build_timesteps
+    -> LatentCodec
+    -> ARFlashWorld
+    -> ARWorldSession.extend
+      -> ARFlashWorld.rollout
+        -> ARFlashWorld.generate_chunk
+          -> ARFlashWorld._dit
+            -> WanTransformer3DModel.forward
+          -> self.decode_gaussians
+            -> WANDecoderPixelAligned3DGSReconstructionModel.forward
+              -> PixelAligned3DGS.forward
+          -> self._render_latents_nograd / gaussian_render
+          -> ARGaussianWorld.replace_all
+    -> render_frames / direct_video_frames / export_ply / export_spz</code></pre>
+  </div>
+  <p>建议优先阅读四个文件：<code>infer.py</code> 看任务入口与参数约束；<code>infer_ar.py</code> 看 session、相机、权重加载与主流程；<code>ar_core.py</code> 看自回归核心与四步 rollout；<code>models/reconstruction_model.py</code> 看 Gaussian decoder。测试文件 <code>tests/test_inference.py</code> 也很有价值，它显式验证四步 schedule、历史 timestep 为 0、feature 刷新、完整场景更新与 session 恢复等行为，相当于提供了一份可执行的实现契约。</p>
+</section>
+
+<section id="conclusion" class="doc-block">
+  <h2>结论</h2>
+  <p>ArgsWorld 的价值在于把“生成图像序列”升级为“生成并持续维护一个可渲染 3D 世界”。它没有发明全新的扩散理论，而是通过逐视图 VAE、六通道 Plücker ray map、双输出 Wan DiT、完整前缀 Gaussian 解码、四步渲染反馈和 3D Self-Forcing Distillation，把 3DGS 表示嵌入自回归扩散 rollout。结果是 reconstruction、generation、extrapolation 三种任务共享同一模型与同一推理入口，且产物可直接导出、查询和继续扩展。</p>
+  <p>从研究角度看，ArgsWorld 最值得后续工作继承的是“每次都重新解释完整前缀”的思想：历史不是被冻结的视频帧，而是被固定的 direct RGB context 加上可被当前观察刷新的场景特征。这为长轨迹 3D 生成提供了一种比单纯 causal attention 更稳定的状态组织方式。从工程角度看，当前仓库已经给出完整推理实现，但训练闭环尚未公开；这意味着它是一个优秀的推理框架与研究基线，却还不是一个可以从零完整复现训练的开放训练仓库。</p>
+</section>
+
+<section id="references" class="doc-block">
+  <h2>参考资料</h2>
+  <ol class="ref-list">
+    <li>Chen W., Liu S., Shao X., Chen Z., Guan T., He Y., Ling X. <em>ArgsWorld: Unifying 3DGS Scene Reconstruction, Generation and Extrapolation with Autoregressive Diffusion Transformer</em>. arXiv:2611.28792v1, 2026.</li>
+    <li>官方代码仓库：<a href="https://github.com/M4A1TasteGood/ArgsWorld" target="_blank" rel="noopener">https://github.com/M4A1TasteGood/ArgsWorld</a>，核对 commit <code>5984f2fd67cd21c303121068533bf1b1e1ebb45a</code>。</li>
+    <li>官方 README 与推理脚本：<code>README.md</code>、<code>infer.py</code>、<code>infer_ar.py</code>、<code>ar_core.py</code>、<code>models/reconstruction_model.py</code>、<code>utils.py</code>。</li>
+    <li>参考背景：3D Gaussian Splatting；Wan2.2-TI2V-5B Diffusion Transformer；Flow Matching / Distribution Matching Distillation。</li>
+  </ol>
+</section>
+</div>
+</main>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="放大图表">
+  <div class="box">
+    <button class="close" id="lightboxClose" aria-label="关闭">×</button>
+    <div id="lightboxBody"></div>
+  </div>
+</div>
+<button class="back-top" id="backTop" aria-label="返回顶部">↑</button>
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var toc = document.getElementById('tocNav');
+  var headings = document.querySelectorAll('.doc-block[id] > h2');
+  var ul = document.createElement('ul');
+  headings.forEach(function(h){
+    var section = h.parentElement;
+    var li = document.createElement('li');
+    var a = document.createElement('a');
+    a.href = '#' + section.id;
+    a.textContent = h.textContent;
+    li.appendChild(a);
+    ul.appendChild(li);
+  });
+  toc.appendChild(ul);
+
+  var links = toc.querySelectorAll('a');
+  function setActive(){
+    var scrollPos = window.scrollY + 120;
+    var current = headings[0] ? headings[0].parentElement.id : '';
+    headings.forEach(function(h){
+      var top = h.parentElement.offsetTop;
+      if(top <= scrollPos) current = h.parentElement.id;
+    });
+    links.forEach(function(a){
+      a.classList.toggle('active', a.getAttribute('href') === '#' + current);
+    });
+  }
+  window.addEventListener('scroll', setActive, {passive:true});
+  setActive();
+
+  document.querySelectorAll('.code-block').forEach(function(block){
+    var pre = block.querySelector('pre');
+    if(!pre) return;
+    var btn = document.createElement('button');
+    btn.className = 'copy-btn';
+    btn.type = 'button';
+    btn.textContent = '复制';
+    btn.addEventListener('click', function(){
+      var text = pre.innerText;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){
+          btn.textContent = '已复制';
+          setTimeout(function(){ btn.textContent = '复制'; }, 1500);
+        });
+      } else {
+        var range = document.createRange();
+        range.selectNode(pre);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(range);
+        document.execCommand('copy');
+        btn.textContent = '已复制';
+        setTimeout(function(){ btn.textContent = '复制'; }, 1500);
+      }
+    });
+    block.appendChild(btn);
+  });
+
+  var lightbox = document.getElementById('lightbox');
+  var body = document.getElementById('lightboxBody');
+  var closeBtn = document.getElementById('lightboxClose');
+  document.querySelectorAll('.mermaid-frame').forEach(function(frame){
+    frame.addEventListener('click', function(){
+      body.innerHTML = frame.innerHTML;
+      lightbox.classList.add('show');
+    });
+  });
+  function hideLightbox(){ lightbox.classList.remove('show'); body.innerHTML=''; }
+  closeBtn.addEventListener('click', hideLightbox);
+  lightbox.addEventListener('click', function(e){ if(e.target === lightbox) hideLightbox(); });
+
+  var backTop = document.getElementById('backTop');
+  backTop.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); });
+
+  if(window.renderMathInElement){
+    renderMathInElement(document.body, {
+      delimiters: [
+        {left:'$$', right:'$$', display:true},
+        {left:'$', right:'$', display:false}
+      ],
+      ignoredTags: ['script','noscript','style','textarea','pre','code']
+    });
+  }
+  if(window.mermaid){
+    mermaid.initialize({startOnLoad:true, theme:'default', securityLevel:'loose'});
+  }
+});
+</script>
+</body>
+</html>

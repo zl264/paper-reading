@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PRoPE（Projective Positional Encoding）学术深度解析：从多视图相机条件化、投影几何与相对编码推导，到官方 PyTorch 实现、WorldCrafter 适配和完整实验结果。">
+  <title>PRoPE 深度解析：把完整相机视锥写入 Transformer 注意力</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <style>
+    :root {
+      --page: #ffffff;
+      --ink: #2f302d;
+      --muted: #6b7280;
+      --faint: #9aa1ad;
+      --line: #e6e8ec;
+      --line-strong: #d4d8df;
+      --soft: #f7f8fa;
+      --soft-2: #f1f4f7;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+      --teal: #0f766e;
+      --teal-soft: #f0fdfa;
+      --rose: #b83f58;
+      --rose-soft: #fff1f2;
+      --gold: #b7791f;
+      --gold-soft: #fffbeb;
+      --code: #172033;
+      --rail: 284px;
+      --content: 940px;
+      --radius: 12px;
+      --shadow: 0 18px 50px rgba(30, 41, 59, .12);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.88;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #171916; font-weight: 700; }
+    ::selection { background: #dbeafe; }
+    .toc-rail {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: var(--rail);
+      overflow-y: auto;
+      border-right: 1px solid #e3e4ec;
+      background: rgba(255,255,255,.98);
+      padding: 30px 22px 40px;
+      z-index: 20;
+      scrollbar-width: thin;
+    }
+    .toc-brand { padding: 0 10px 24px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+    .toc-brand .eyebrow { font-size: 11px; letter-spacing: .16em; color: var(--accent); font-weight: 800; }
+    .toc-brand h2 { font-size: 20px; line-height: 1.4; margin: 7px 0 6px; }
+    .toc-brand p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .toc-list { display: grid; gap: 3px; }
+    .toc-list a {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      padding: 8px 10px;
+      border-left: 2px solid transparent;
+      border-radius: 0 7px 7px 0;
+      transition: .18s ease;
+    }
+    .toc-list a:hover { color: var(--accent); background: var(--soft); text-decoration: none; }
+    .toc-list a.active { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); font-weight: 650; }
+    .toc-index { display: inline-block; min-width: 25px; color: var(--faint); font-variant-numeric: tabular-nums; }
+    .doc-page { width: calc(100% - var(--rail)); margin-left: var(--rail); padding: 56px 56px 90px; }
+    .doc-page > * { max-width: var(--content); margin-left: auto; margin-right: auto; }
+    .doc-title { padding: 24px 0 42px; border-bottom: 1px solid var(--line); margin-bottom: 42px; }
+    .doc-kicker { color: var(--accent); font-size: 12px; letter-spacing: .16em; text-transform: uppercase; font-weight: 800; }
+    .doc-title h1 { font-size: clamp(34px, 4vw, 54px); line-height: 1.16; letter-spacing: -.035em; margin: 16px 0 18px; max-width: 870px; }
+    .doc-subtitle { color: var(--muted); font-size: 19px; line-height: 1.75; max-width: 820px; margin: 0 0 24px; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    .badge { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--soft); border-radius: 999px; padding: 4px 11px; color: var(--muted); font-size: 12px; }
+    .badge.primary { color: var(--accent); background: var(--accent-soft); border-color: #bfdbfe; }
+    .doc-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; margin-top: 24px; color: var(--muted); font-size: 13px; }
+    .doc-meta b { color: var(--ink); font-weight: 650; }
+    .doc-block { padding: 18px 0 30px; margin-bottom: 28px; border-bottom: 1px solid var(--line); }
+    .doc-block h2 { font-size: 29px; line-height: 1.35; letter-spacing: -.02em; margin: 0 0 25px; padding-top: 8px; }
+    .doc-block h2 .section-no { color: var(--accent); font-size: 13px; letter-spacing: .1em; display: block; margin-bottom: 8px; }
+    .doc-block h3 { font-size: 21px; line-height: 1.45; margin: 36px 0 14px; }
+    .doc-block h4 { font-size: 17px; margin: 26px 0 10px; }
+    .doc-block p { margin: 12px 0 18px; }
+    .doc-block ul, .doc-block ol { padding-left: 23px; margin: 12px 0 22px; }
+    .doc-block li { margin: 7px 0; }
+    .doc-block li::marker { color: var(--accent); }
+    .lead { font-size: 18px; line-height: 1.9; color: #40443f; }
+    .muted { color: var(--muted); }
+    .small { font-size: 13px; }
+    .term { color: var(--teal); font-weight: 650; }
+    .doc-callout, .doc-note {
+      margin: 24px 0;
+      padding: 19px 22px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--soft);
+    }
+    .doc-callout { border-left: 4px solid var(--accent); background: var(--accent-soft); }
+    .doc-callout.teal { border-left-color: var(--teal); background: var(--teal-soft); }
+    .doc-callout.warning { border-left-color: var(--gold); background: var(--gold-soft); }
+    .doc-callout.rose { border-left-color: var(--rose); background: var(--rose-soft); }
+    .doc-callout > :last-child, .doc-note > :last-child { margin-bottom: 0; }
+    .callout-title { display: block; font-weight: 750; margin-bottom: 6px; color: #1f2937; }
+    .doc-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 25px 0; }
+    .metric { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; background: #fff; }
+    .metric-value { display: block; color: var(--accent); font-size: 27px; line-height: 1.2; font-weight: 760; letter-spacing: -.03em; }
+    .metric-label { display: block; color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.55; }
+    .math-scroll { position: relative; overflow-x: auto; margin: 24px 0; padding: 18px 54px 18px 20px; border: 1px solid var(--line); border-radius: 10px; background: #fcfcfd; }
+    .math { min-width: max-content; text-align: center; }
+    .math .katex-display { margin: 0; }
+    .equation-number { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--faint); font-size: 12px; }
+    .table-scroll { width: 100%; overflow-x: auto; margin: 22px 0 12px; border: 1px solid var(--line); border-radius: 10px; }
+    .doc-data-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.55; font-variant-numeric: tabular-nums; }
+    .doc-data-table th { background: var(--soft-2); color: #374151; text-align: left; font-weight: 700; white-space: nowrap; }
+    .doc-data-table th, .doc-data-table td { padding: 11px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .doc-data-table tr:last-child td { border-bottom: 0; }
+    .doc-data-table tbody tr:hover { background: #fafbfc; }
+    .doc-data-table .best { color: var(--accent); font-weight: 800; background: var(--accent-soft); }
+    .doc-data-table .worse { color: var(--rose); font-weight: 700; }
+    .doc-data-table .num { text-align: right; white-space: nowrap; }
+    .table-caption, .figure-caption { color: var(--muted); font-size: 12px; line-height: 1.65; margin: 9px 0 22px; }
+    .code-block { position: relative; margin: 18px 0 26px; border-radius: 11px; overflow: hidden; background: var(--code); box-shadow: 0 5px 18px rgba(15, 23, 42, .08); }
+    .code-label { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 43px; padding: 8px 12px 8px 17px; background: #202b40; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    .code-label > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { flex: 0 0 auto; border: 1px solid rgba(255,255,255,.16); border-radius: 6px; background: rgba(255,255,255,.06); color: #dbeafe; padding: 3px 9px; cursor: pointer; font-size: 11px; }
+    .copy-code:hover { background: rgba(255,255,255,.13); }
+    pre { margin: 0; }
+    .code-block pre { overflow-x: auto; padding: 20px; color: #dbe4f2; font: 13px/1.75 "Cascadia Code", "SFMono-Regular", Consolas, monospace; tab-size: 4; }
+    .code-block code { font-family: inherit; }
+    .file-ref { display: inline-flex; align-items: center; margin: 3px 0; color: var(--accent); font: 12px/1.5 "Cascadia Code", Consolas, monospace; }
+    code.inline, .doc-block p code, .doc-block li code { background: var(--soft-2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; color: #9f1239; font: .88em/1.5 "Cascadia Code", Consolas, monospace; }
+    .algorithm { counter-reset: step; margin: 24px 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+    .algorithm li { counter-increment: step; position: relative; margin: 0; padding: 16px 18px 16px 59px; border-bottom: 1px solid var(--line); }
+    .algorithm li:last-child { border-bottom: 0; }
+    .algorithm li::before { content: counter(step); position: absolute; left: 17px; top: 17px; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 800; }
+    .checklist { list-style: none; padding: 0 !important; }
+    .checklist li { position: relative; padding-left: 27px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 800; }
+    .doc-diagram { margin: 30px auto 38px; }
+    .mermaid-frame { position: relative; border: 1px solid var(--line); border-radius: var(--radius); background: #fbfcfe; padding: 22px; overflow: auto; }
+    .mermaid { display: flex; justify-content: center; min-width: 580px; margin: 0; }
+    .diagram-enlarge { position: absolute; top: 10px; right: 10px; z-index: 2; border: 1px solid var(--line-strong); border-radius: 6px; background: rgba(255,255,255,.94); color: var(--muted); cursor: pointer; padding: 4px 9px; font-size: 11px; }
+    .diagram-enlarge:hover { color: var(--accent); border-color: var(--accent); }
+    .diagram-lightbox { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(15,23,42,.78); padding: 40px; cursor: zoom-out; }
+    .diagram-lightbox.open { display: flex; align-items: center; justify-content: center; }
+    .lightbox-inner { width: min(1400px, 96vw); max-height: 90vh; overflow: auto; background: #fff; border-radius: 14px; padding: 34px; box-shadow: var(--shadow); cursor: default; }
+    .lightbox-close { position: fixed; top: 18px; right: 22px; border: 0; border-radius: 50%; width: 38px; height: 38px; background: #fff; color: #111827; font-size: 23px; cursor: pointer; }
+    .two-col { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; margin: 22px 0; }
+    .concept-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 19px; background: #fff; }
+    .concept-card h4 { margin: 0 0 8px; }
+    .concept-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .doc-sources { padding-top: 15px; }
+    .doc-sources h2 { font-size: 28px; }
+    .doc-sources ol { padding-left: 23px; }
+    .doc-sources li { margin: 13px 0; overflow-wrap: anywhere; }
+    .source-type { display: inline-block; margin-right: 7px; padding: 1px 7px; border-radius: 4px; background: var(--soft-2); color: var(--muted); font-size: 11px; }
+    .back-top { display: inline-block; margin-top: 25px; font-size: 13px; }
+    @media (max-width: 1180px) {
+      :root { --rail: 236px; }
+      .doc-page { padding: 42px 34px 70px; }
+      .toc-rail { padding-left: 14px; padding-right: 14px; }
+    }
+    @media (max-width: 820px) {
+      .toc-rail { position: static; width: 100%; max-height: none; border-right: 0; border-bottom: 1px solid var(--line); padding: 20px; }
+      .toc-brand { padding-bottom: 14px; margin-bottom: 10px; }
+      .toc-list { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .doc-page { width: 100%; margin: 0; padding: 28px 22px 60px; }
+      .doc-title { padding-top: 10px; }
+      .doc-title h1 { font-size: 38px; }
+      .doc-metrics { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      body { font-size: 15px; }
+      .toc-list { grid-template-columns: 1fr; }
+      .toc-list a { padding: 6px 9px; }
+      .doc-page { padding-left: 16px; padding-right: 16px; }
+      .doc-title h1 { font-size: 32px; }
+      .doc-subtitle { font-size: 16px; }
+      .doc-meta { grid-template-columns: 1fr; }
+      .doc-block h2 { font-size: 25px; }
+      .doc-block h3 { font-size: 19px; }
+      .math-scroll { padding-left: 10px; padding-right: 42px; }
+      .mermaid-frame { padding: 12px; }
+      .diagram-lightbox { padding: 14px; }
+      .lightbox-inner { padding: 18px; }
+    }
+    @media print {
+      @page { margin: 18mm 15mm; }
+      body { font-size: 10.5pt; color: #000; }
+      .toc-rail, .copy-code, .diagram-enlarge, .diagram-lightbox, .back-top { display: none !important; }
+      .doc-page { width: 100%; margin: 0; padding: 0; }
+      .doc-page > * { max-width: none; }
+      .doc-title h1 { font-size: 28pt; }
+      .doc-block { break-inside: auto; border-bottom: 0; }
+      .code-block, .table-scroll, .mermaid-frame, .doc-callout, .math-scroll { break-inside: avoid; box-shadow: none; }
+      .code-block { background: #f5f5f5; border: 1px solid #ddd; }
+      .code-block pre { color: #111; white-space: pre-wrap; }
+      .code-label { background: #eee; color: #333; }
+      a { color: #000; text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+<nav data-site-navigation aria-label="论文精读网站导航" style="position:relative;z-index:20;width:max-content;max-width:calc(100% - 24px);margin:10px 12px 0 auto;padding:7px 11px;border:1px solid #e6e8ec;border-radius:9px;background:#fff;color:#6b7280;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Microsoft YaHei',sans-serif;font-size:12px;line-height:1.6"><a href="../index.html" style="color:#526d8c;text-decoration:none">← 首页</a><span style="margin:0 7px;color:#c4c9d1">/</span><a href="../categories/camera-pose.html" style="color:#526d8c;text-decoration:none">相机位姿可控视频生成</a></nav>
+
+  <nav class="toc-rail" aria-label="文档目录">
+    <div class="toc-brand">
+      <div class="eyebrow">PAPER DEEP DIVE</div>
+      <h2>PRoPE</h2>
+      <p>Projective Positional Encoding<br>原理 · 推导 · 代码 · 实验</p>
+    </div>
+    <div class="toc-list" id="toc-list"></div>
+  </nav>
+
+  <main class="doc-page">
+    <header class="doc-title" id="top">
+      <div class="doc-kicker">Cameras as Relative Positional Encoding</div>
+      <h1>PRoPE：把完整相机视锥写入 Transformer 注意力</h1>
+      <p class="doc-subtitle">从针孔相机与射线几何出发，逐步推导相对投影编码、Q/K/V/O 块对角变换，并对照官方 PyTorch 源码、WorldCrafter 本地适配与论文全部关键实验。</p>
+      <div class="badges">
+        <span class="badge primary">NeurIPS 2025</span>
+        <span class="badge">arXiv: 2507.10496</span>
+        <span class="badge">多视图 Transformer</span>
+        <span class="badge">相机位姿编码</span>
+        <span class="badge">无新增可学习参数</span>
+      </div>
+      <div class="doc-meta">
+        <div><b>论文：</b>Cameras as Relative Positional Encoding</div>
+        <div><b>方法：</b>PRoPE / Projective Positional Encoding</div>
+        <div><b>作者：</b>Ruilong Li, Brent Yi, Junchen Liu, Hang Gao, Yi Ma, Angjoo Kanazawa</div>
+        <div><b>机构：</b>UC Berkeley · NVIDIA · HKU</div>
+        <div><b>代码：</b>官方 JAX / PyTorch 单文件实现</div>
+        <div><b>文档定位：</b>学术深度型 · 公式与源码双重解读</div>
+      </div>
+    </header>
+
+    <section class="doc-block" id="overview">
+      <h2><span class="section-no">01 / OVERVIEW</span>核心结论：相机不是附加标签，而是注意力的几何坐标系</h2>
+      <p class="lead">PRoPE 的核心思想可以压缩成一句话：<strong>把每张图像对应的完整相机投影矩阵，以“相对投影关系”的形式注入注意力，使不同视图中的 patch token 能在统一的几何规则下交互。</strong>它不是简单把相机参数拼到图像特征后面，也不要求为每一对 token 显式构造一个巨大的几何张量。</p>
+      <p>在自然语言中，token 的“位置”通常是一维序列下标；在多视图视觉中，一个 patch 的位置却同时取决于它在图像中的二维坐标、拍摄它的相机内参、相机在世界中的外参，以及它与其他视图之间的空间关系。论文图 1 正是通过这一类比提出问题：既然语言 Transformer 需要位置编码，多视图 Transformer 就需要一种能够描述观察视角的“相机位置编码”。</p>
+      <p>已有的 raymap 方法可以提供像素射线，却依赖任意选定的全局坐标系；CaPE 与 GTA 引入相对外参，具有全局坐标不变性，却不能完整描述焦距、主点和视锥。PRoPE 将内参的齐次提升与外参的刚体变换合成为一个可逆的 \(4\times4\) 投影矩阵，再通过注意力前后的线性变换，让 \(P_iP_j^{-1}\) 自然出现在 token \(i\) 与 token \(j\) 的相互作用中。</p>
+      <div class="doc-callout">
+        <span class="callout-title">一句话理解 PRoPE 的归纳偏置</span>
+        对查询 token 而言，另一个视图的特征不应只在“原始相机坐标”中被读取，而应先被逆向投影到一个可比较的表示，再经过当前查询相机的投影规则参与打分与聚合。几何因此进入注意力算子本身，而不是停留在输入 embedding 的外围。
+      </div>
+      <div class="doc-metrics">
+        <div class="metric"><span class="metric-value">4 × 4</span><span class="metric-label">可逆齐次投影矩阵，同时容纳内参与外参</span></div>
+        <div class="metric"><span class="metric-value">Q/K/V/O</span><span class="metric-label">四个位置均被几何变换，注意力主体仍可使用 fused SDPA</span></div>
+        <div class="metric"><span class="metric-value">0</span><span class="metric-label">新增可学习参数；但并非零计算、零显存开销</span></div>
+      </div>
+      <h3>本文阅读路线</h3>
+      <ol>
+        <li>先建立内参、外参、齐次投影与像素射线的共同符号体系。</li>
+        <li>比较 Naive/Plücker raymap、CaPE、GTA、CamRay 与 PRoPE 的信息容量。</li>
+        <li>从 \(P_iP_j^{-1}\) 推导 Q/K/V/O 的变换及块对角通道分配。</li>
+        <li>逐段阅读官方 <code>prope/torch.py</code>，并区分 WorldCrafter 的本地扩展。</li>
+        <li>核对 NVS、深度估计、空间认知、OOD、scaling、CAT3D 与消融实验。</li>
+      </ol>
+    </section>
+
+    <section class="doc-diagram no-toc" id="diagram-overview">
+      <div class="mermaid-frame">
+        <button class="diagram-enlarge" type="button">放大图表</button>
+        <pre class="mermaid">
+flowchart LR
+  A["多视图图像 Iᵢ"] --> E["Patch embedding"]
+  B["内参 Kᵢ"] --> P["归一化并齐次提升"]
+  C["外参 Tᵢ camera-from-world"] --> P
+  P --> D["构造 P、P 转置、P 逆"]
+  E --> Q["Q / K / V"]
+  D --> Q
+  Q --> S["几何变换后的 fused attention"]
+  S --> O["输出逆几何变换"]
+  O --> R["具备相对相机几何的视觉表示"]
+        </pre>
+      </div>
+      <p class="figure-caption">图 A：PRoPE 的整体数据路径。相机矩阵不直接进入注意力 pairwise bias，而是作为注意力前后的特征变换。</p>
+    </section>
+
+    <section class="doc-block" id="background">
+      <h2><span class="section-no">02 / MOTIVATION</span>研究背景：多视图 token 为什么必须绑定视角？</h2>
+      <p>单图视觉 Transformer 通常将图像切分成规则 patch，并借助二维位置编码保留空间布局。然而，多视图任务接收的不是一张孤立图像，而是一组带有拍摄关系的观测。可将其写为 \(\{(\mathbf I_i,\mathbf K_i,\mathbf T_i^{cw})\}_{i=1}^{N}\)，其中 \(\mathbf I_i\) 是第 \(i\) 张图像，\(\mathbf K_i\) 是内参，\(\mathbf T_i^{cw}\) 是从世界坐标到相机坐标的外参。</p>
+      <p>如果直接把所有 patch 拼接后送入普通自注意力，注意力权重只由视觉内容与二维 patch 位置决定。两个外观相似、图像坐标相同的 patch，可能来自相邻相机，也可能来自方向完全相反的相机；对网络而言，仅看 RGB token 很难区分这两种情况。新视图合成、立体匹配和多视图推理都需要知道：<strong>某个 token 从哪里观察世界，以及另一个 token 应如何被变换到它的观察框架中。</strong></p>
+      <h3>理想相机编码需要满足什么条件？</h3>
+      <p>论文对编码方式的讨论实际上包含四个彼此牵制的目标。第一，它应包含足够完整的相机信息，不能只描述平移和旋转而忽略焦距变化。第二，它应尽可能相对化，避免网络记住没有意义的世界坐标原点。第三，它要容易嵌入标准 Transformer，而不是要求重写所有注意力 kernel。第四，它应能同时影响特征匹配和特征聚合；只改变注意力分数，未必足以让 value 的几何含义保持一致。</p>
+      <div class="two-col">
+        <div class="concept-card"><h4>输入端编码</h4><p>把射线、位姿或相机向量加到 patch embedding。实现直接，但几何主要作为额外特征存在，后续注意力仍按普通内容相似度交互。</p></div>
+        <div class="concept-card"><h4>算子内相对编码</h4><p>让查询与键的内积、值聚合乃至输出都依赖相机关系。PRoPE 属于此类，更接近 RoPE 对序列位置的建模方式。</p></div>
+      </div>
+      <p>PRoPE 的关键贡献不是“首次使用相机参数”，而是发现<strong>投影矩阵的组合规则与注意力的线性代数结构可以精准对接</strong>。它将“完整相机视锥”与“相对位姿不变性”这两个此前难以兼得的目标，放进同一个可逆矩阵框架。</p>
+      <h3>三个任务，同一种几何机制</h3>
+      <p>论文没有将方法局限于单一生成模型，而是在新视图合成、立体深度估计与空间认知任务上验证，并进一步考察模型规模增长、输入视图数量变化以及 CAT3D 中的集成效果。这样的实验设计意在证明：PRoPE 是一种通用的多视图 Transformer 编码，而不是某个特定解码器的技巧。</p>
+    </section>
+
+    <section class="doc-block" id="geometry">
+      <h2><span class="section-no">03 / GEOMETRY</span>几何预备知识：从世界点到像素，再到可逆投影</h2>
+      <h3>3.1 内参：相机坐标如何变成像素坐标</h3>
+      <p>针孔相机的内参矩阵写为下式。\(f_x,f_y\) 是以像素为单位的焦距，\((c_x,c_y)\) 是主点，\(s\) 是轴间 skew。多数现代数据集将 skew 视为零，官方 PRoPE 的解析内参求逆也采用这一假设。</p>
+      <div class="math-scroll"><div class="math">$$\mathbf K_i=\begin{bmatrix}f_x&amp;s&amp;c_x\\0&amp;f_y&amp;c_y\\0&amp;0&amp;1\end{bmatrix},\qquad \tilde{\mathbf x}_{img}\sim \mathbf K_i\begin{bmatrix}X_c\\Y_c\\Z_c\end{bmatrix}.$$</div><span class="equation-number">(1)</span></div>
+      <p>这里的 \(\sim\) 表示齐次坐标意义下相差一个非零尺度。将三维点映射到图像时，最后还要除以第三个齐次分量。因此普通的 \(3\times4\) 相机投影包含透视除法，不能直接当作可逆四维线性变换使用。</p>
+      <h3>3.2 外参：严格区分 world-to-camera 与 camera-to-world</h3>
+      <p>本文沿用官方代码的约定：<code>viewmats</code> 是 <strong>camera &lt;- world</strong>，即世界到相机的 \(\mathbf T_i^{cw}\in SE(3)\)。若世界点与相机点都使用四维齐次坐标，则：</p>
+      <div class="math-scroll"><div class="math">$$\mathbf T_i^{cw}=\begin{bmatrix}\mathbf R_i^{cw}&amp;\mathbf t_i^{cw}\\\mathbf 0^\top&amp;1\end{bmatrix},\qquad \mathbf x_i^c=\mathbf T_i^{cw}\mathbf x^w.$$</div><span class="equation-number">(2)</span></div>
+      <p>相机中心并不是 \(\mathbf t_i^{cw}\)，而是世界坐标下的 \(\mathbf o_i=-(\mathbf R_i^{cw})^\top\mathbf t_i^{cw}\)。这是工程接入中最常见的方向错误之一：如果上游框架保存的是 camera-to-world，就必须先求逆，不能仅更换变量名。</p>
+      <h3>3.3 普通投影与齐次提升</h3>
+      <p>常规 \(3\times4\) 投影矩阵为 \(\mathbf P_i=[\mathbf K_i\;\mathbf0]\mathbf T_i^{cw}\)。它把四维世界点压成三维图像齐次坐标，维度上便不可逆。PRoPE 的关键处理是将 \(3\times3\) 内参嵌入四维单位矩阵：</p>
+      <div class="math-scroll"><div class="math">$$\widetilde{\mathbf P}_i=\underbrace{\begin{bmatrix}\mathbf K_i&amp;\mathbf0\\\mathbf0^\top&amp;1\end{bmatrix}}_{\operatorname{lift}(\mathbf K_i)}\mathbf T_i^{cw}\in\mathbb R^{4\times4}.$$</div><span class="equation-number">(3)</span></div>
+      <p>这一矩阵不再立即执行“三维到二维”的降维，而是保留第四维，使内参和外参都能作为可逆线性映射参与特征变换。只要焦距非零且外参合法，\(\operatorname{lift}(\mathbf K_i)\) 与 \(\mathbf T_i^{cw}\) 都可逆，因此 \(\widetilde{\mathbf P}_i\) 可逆。后文在不引起歧义时，将 \(\widetilde{\mathbf P}_i\) 简记为 \(\mathbf P_i\)。</p>
+      <div class="doc-callout teal">
+        <span class="callout-title">为什么“可逆”如此重要？</span>
+        相对编码需要同时构造 \(P_i^\top\)、\(P_j^{-1}\) 与输出端的 \(P_i\)。若直接使用不可逆的 \(3\times4\) 投影，就无法形成闭合的相对变换链。齐次提升不是代码上的小技巧，而是整个方法成立的代数前提。
+      </div>
+      <h3>3.4 从像素恢复世界射线</h3>
+      <p>对像素 \((u,v)\)，先以 \(\mathbf K_i^{-1}[u,v,1]^\top\) 得到相机坐标中的方向，再左乘 \((\mathbf R_i^{cw})^\top\) 转为世界方向。射线由世界原点和世界方向共同确定：</p>
+      <div class="math-scroll"><div class="math">$$\mathbf d_i^{u,v}\propto(\mathbf R_i^{cw})^\top\mathbf K_i^{-1}[u,v,1]^\top,\qquad \mathbf o_i=-(\mathbf R_i^{cw})^\top\mathbf t_i^{cw}.$$</div><span class="equation-number">(4)</span></div>
+      <p>比例符号表示射线的方向可乘任意非零正尺度而不改变几何意义。Naive 与 Plücker raymap 都建立在这条射线上，而 CamRay 则保留相机局部方向。PRoPE 选择不逐像素显式构造射线，而是用产生整个射线族的投影矩阵来描述相机。</p>
+    </section>
+
+    <section class="doc-block" id="encodings">
+      <h2><span class="section-no">04 / COMPARISON</span>已有编码：射线、相对位姿与完整视锥之间的取舍</h2>
+      <h3>4.1 Naive raymap 与 Plücker raymap</h3>
+      <p>Naive raymap 通常将 \([\mathbf o_i;\mathbf d_i^{u,v}]\) 作为每个像素的几何特征；Plücker 表示则使用 \([\mathbf o_i\times\mathbf d_i^{u,v};\mathbf d_i^{u,v}]\)。叉积项是射线关于原点的矩，方向与矩共同给出一条三维直线的 Plücker 坐标。二者都与像素对齐，并能表达完整相机几何，因此在空间认知等任务中仍然很有价值。</p>
+      <p>问题在于，它们把世界原点、坐标轴方向和全局尺度选择直接写进特征。若把整个场景与所有相机一起做刚体坐标变换，实际图像与相对拍摄关系没有改变，raymap 数值却会变化。网络因而需要额外学习“哪些坐标变化不影响任务”。</p>
+      <h3>4.2 CaPE 与 GTA：相对外参解决了什么，又遗漏了什么？</h3>
+      <p>CaPE 和 GTA 通过 \(\mathbf T_i^{cw}(\mathbf T_j^{cw})^{-1}\) 建立视图 \(j\) 到视图 \(i\) 的相对关系。全局坐标变换会在矩阵乘积中抵消，因此这类方法天然具有全局刚体坐标不变性。区别在于，CaPE 主要变换 Q/K，而 GTA 还将相对几何扩展到 V 和注意力输出 O。</p>
+      <p>然而 \(SE(3)\) 外参只描述相机支架如何运动，不描述镜头如何成像。两个相机可以拥有完全相同的旋转和平移，却因焦距、视场角或主点不同而产生不同图像。对这些情况，\(T_iT_j^{-1}\) 仍然只是同一个相对位姿，无法表达完整 frustum。</p>
+      <h3>4.3 CamRay：相机局部射线是补充，而非相对外参的替代品</h3>
+      <p>CamRay 使用相机局部坐标下的像素方向：</p>
+      <div class="math-scroll"><div class="math">$$\mathbf M_{i,\mathrm{CamRay}}^{u,v}=\mathbf R_i^{cw}\mathbf d_i^{u,v}\propto\mathbf K_i^{-1}[u,v,1]^\top.$$</div><span class="equation-number">(5)</span></div>
+      <p>这个表示直接告诉 token“像素在自己相机的哪个方向”，对局部视锥非常敏感，却不单独提供完整的跨视图相对关系。论文表 3 显示，将 CamRay 与 GTA 或 PRoPE 组合通常更好：前者补充局部射线信息，后者提供视图间几何。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>编码方式</th><th>主要几何对象</th><th>含内参 / 完整视锥</th><th>全局刚体坐标不变</th><th>进入 V/O</th><th>典型局限</th></tr></thead>
+          <tbody>
+            <tr><td>Naive raymap</td><td>世界原点 + 世界射线方向</td><td>是，由射线间接表达</td><td>否</td><td>作为输入特征间接影响</td><td>依赖任意世界坐标</td></tr>
+            <tr><td>Plücker raymap</td><td>射线矩 + 方向</td><td>是</td><td>否</td><td>作为输入特征间接影响</td><td>依赖世界原点与坐标系</td></tr>
+            <tr><td>CaPE</td><td>相对 \(SE(3)\) 外参</td><td>否</td><td>是</td><td>否，重点在 Q/K</td><td>忽略焦距和主点变化</td></tr>
+            <tr><td>GTA</td><td>相对 \(SE(3)\) 外参</td><td>否</td><td>是</td><td>是</td><td>无法区分同位姿不同内参</td></tr>
+            <tr><td>CamRay</td><td>相机局部射线</td><td>局部内参方向</td><td>对全局旋转不直接编码</td><td>取决于外围模型</td><td>需与跨视图关系互补</td></tr>
+            <tr><td><strong>PRoPE</strong></td><td>相对可逆投影 \(P_iP_j^{-1}\)</td><td><strong>是</strong></td><td><strong>是</strong></td><td><strong>是</strong></td><td>针孔模型、数值条件与附加计算</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">表 A：概念性对比。这里的“含内参”指是否能把内参差异纳入跨视图几何关系，而非仅仅知道某张图的二维 patch 坐标。</p>
+    </section>
+
+    <section class="doc-block" id="method">
+      <h2><span class="section-no">05 / DERIVATION</span>PRoPE 核心推导：相对投影关系如何出现？</h2>
+      <h3>5.1 一个 \(4\times4\) 矩阵同时描述内参与外参</h3>
+      <p>对视图 \(i\)，令 \(\mathbf L_i=\operatorname{lift}(\mathbf K_i)\)，则 \(\mathbf P_i=\mathbf L_i\mathbf T_i\)。它的逆可按相反顺序写成 \(\mathbf P_i^{-1}=\mathbf T_i^{-1}\mathbf L_i^{-1}\)：先撤销内参映射，再从相机坐标回到世界坐标。代码没有调用通用矩阵求逆，而是分别利用刚体变换与无 skew 内参的结构解析计算。</p>
+      <h3>5.2 视图 \(j\) 到视图 \(i\) 的完整投影关系</h3>
+      <p>将查询视图 \(i\) 的投影与键/值视图 \(j\) 的逆投影组合，得到 PRoPE 最重要的矩阵：</p>
+      <div class="math-scroll"><div class="math">$$\boxed{\mathbf P_i\mathbf P_j^{-1}=\mathbf L_i\,\mathbf T_i\mathbf T_j^{-1}\,\mathbf L_j^{-1}}.$$</div><span class="equation-number">(6)</span></div>
+      <p>按矩阵作用顺序从右向左阅读：首先以 \(\mathbf L_j^{-1}\) 撤销视图 \(j\) 的内参；接着以 \(\mathbf T_j^{-1}\) 从相机 \(j\) 回到世界，再以 \(\mathbf T_i\) 进入相机 \(i\)；最后以 \(\mathbf L_i\) 施加视图 \(i\) 的成像规则。中间恰好出现 GTA 所使用的相对外参 \(\mathbf T_i\mathbf T_j^{-1}\)，两侧则补上 GTA 缺失的内参因子。</p>
+      <div class="doc-callout">
+        <span class="callout-title">直观解释</span>
+        GTA 回答“相机 j 的坐标轴如何运动到相机 i”；PRoPE 回答“相机 j 的成像坐标如何经过三维相对运动，再由相机 i 的镜头重新成像”。后者因此能感知 zoom、FOV 与主点变化。
+      </div>
+      <h3>5.3 不显式构造 pairwise 几何张量</h3>
+      <p>一种直接做法是为所有 token 对 \((i,j)\) 计算 \(\mathbf P_i\mathbf P_j^{-1}\)，再将其编码为 attention bias。但这会产生随 token 数平方增长的相机关系张量。PRoPE 采取另一种方式：在注意力之前分别处理每个 token 的 Q/K/V，使矩阵乘积在内积时自然形成。</p>
+      <p>因此，对 \(C\) 个相机只需准备 \(C\) 份 \(P,P^\top,P^{-1}\)，再把每份矩阵应用到该相机对应的 patch token 上。相对几何存在于<strong>代数组合结果</strong>中，而不是存在于一个显式的 \(T\times T\times16\) 张量中。</p>
+    </section>
+
+    <section class="doc-diagram no-toc" id="diagram-relative">
+      <div class="mermaid-frame">
+        <button class="diagram-enlarge" type="button">放大图表</button>
+        <pre class="mermaid">
+flowchart LR
+  J["视图 j 的成像坐标"] --> A["Lⱼ⁻¹：撤销内参"]
+  A --> B["Tⱼ⁻¹：相机 j → 世界"]
+  B --> C["Tᵢ：世界 → 相机 i"]
+  C --> D["Lᵢ：施加视图 i 内参"]
+  D --> I["视图 i 的成像坐标"]
+  W["全局坐标变换 G"] -. "在 TᵢG·G⁻¹Tⱼ⁻¹ 中抵消" .-> C
+        </pre>
+      </div>
+      <p class="figure-caption">图 B：\(P_iP_j^{-1}\) 的从右向左作用链。相对外参位于中央，两侧的内参因子使完整视锥进入关系表示。</p>
+    </section>
+
+    <section class="doc-block" id="attention">
+      <h2><span class="section-no">06 / ATTENTION</span>完整结构：Q/K/V/O 如何共同实现相对投影编码？</h2>
+      <h3>6.1 先只看投影部分</h3>
+      <p>暂时忽略二维 RoPE，并假设每个特征向量都由若干四维块组成。PRoPE 对查询、键、值分别施加：</p>
+      <div class="math-scroll"><div class="math">$$\bar{\mathbf q}_i=\mathbf P_i^\top\mathbf q_i,\qquad \bar{\mathbf k}_j=\mathbf P_j^{-1}\mathbf k_j,\qquad \bar{\mathbf v}_j=\mathbf P_j^{-1}\mathbf v_j.$$</div><span class="equation-number">(7)</span></div>
+      <p>将它们代入注意力内积，转置与逆矩阵的组合自动给出相对投影：</p>
+      <div class="math-scroll"><div class="math">$$\bar{\mathbf q}_i^\top\bar{\mathbf k}_j=(\mathbf P_i^\top\mathbf q_i)^\top(\mathbf P_j^{-1}\mathbf k_j)=\mathbf q_i^\top\mathbf P_i\mathbf P_j^{-1}\mathbf k_j.$$</div><span class="equation-number">(8)</span></div>
+      <p>这里 Q 使用 \(P_i^\top\) 而不是 \(P_i\)，正是为了在内积展开时通过 \((P_i^\top q_i)^\top=q_i^\top P_i\) 得到正确顺序。注意力权重仍由 \(\alpha_{ij}=\operatorname{softmax}_j(\bar q_i^\top\bar k_j/\sqrt{d_h})\) 计算，因此可以直接使用 PyTorch 的 scaled dot-product attention。</p>
+      <h3>6.2 为什么 V 与 O 也必须变换？</h3>
+      <p>如果只变换 Q/K，几何会影响“选择谁”，但被选择的 value 仍留在各自原始表示中。PRoPE 进一步令 \(\bar v_j=P_j^{-1}v_j\)，并在聚合后左乘查询相机的 \(P_i\)：</p>
+      <div class="math-scroll"><div class="math">$$\bar{\mathbf o}_i=\mathbf P_i\sum_j\alpha_{ij}\mathbf P_j^{-1}\mathbf v_j.$$</div><span class="equation-number">(9)</span></div>
+      <p>这样，来自不同相机的 value 先经各自逆投影进入可组合形式，加权和后再回到查询视图的几何表示。Q/K 的几何匹配与 V/O 的几何聚合由此保持一致。需要注意的是，由于 \(\alpha_{ij}\) 同时依赖内容与其他通道的位置编码，不能把整个输出简单理解成一次纯粹的坐标变换；准确说法是<strong>投影结构约束了值聚合的代数路径</strong>。</p>
+      <h3>6.3 与二维 RoPE 组成块对角变换</h3>
+      <p>相机矩阵只说明视图间关系，并不能取代图像内部 patch 的行列位置。官方实现把每个 attention head 的 \(d_h\) 个通道分为三个连续区段：</p>
+      <div class="math-scroll"><div class="math">$$\mathbf D_t^{\mathrm{PRoPE}}=\begin{bmatrix}\mathbf D_t^{\mathrm{Proj}}&amp;\mathbf0&amp;\mathbf0\\\mathbf0&amp;\mathbf D_t^{\mathrm{RoPE},x}&amp;\mathbf0\\\mathbf0&amp;\mathbf0&amp;\mathbf D_t^{\mathrm{RoPE},y}\end{bmatrix},\qquad \mathbf D_t^{\mathrm{Proj}}=\mathbf I_{d_h/8}\otimes\widetilde{\mathbf P}_{i(t)}.$$</div><span class="equation-number">(10)</span></div>
+      <p>其中 \(i(t)\) 是 token \(t\) 所属相机，\(\otimes\) 是 Kronecker 积，对应代码里的“重复平铺多个 \(4\times4\) 块”。投影区占 \(d_h/2\)，x-RoPE 与 y-RoPE 各占 \(d_h/4\)。三段的变换规则如下：</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>通道区段</th><th>宽度</th><th>Q 变换</th><th>K / V 变换</th><th>O 变换</th></tr></thead>
+          <tbody>
+            <tr><td>投影几何</td><td>\(d_h/2\)，平铺 \(d_h/8\) 个 \(P\)</td><td>\(P_i^\top\)</td><td>\(P_j^{-1}\)</td><td>\(P_i\)</td></tr>
+            <tr><td>x 方向 RoPE</td><td>\(d_h/4\)</td><td>正向旋转</td><td>正向旋转</td><td>逆向旋转</td></tr>
+            <tr><td>y 方向 RoPE</td><td>\(d_h/4\)</td><td>正向旋转</td><td>正向旋转</td><td>逆向旋转</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>6.4 一个具体的通道例子</h3>
+      <p>官方测试使用 <code>head_dim=16</code>。此时前 8 个通道被 reshape 为两个四维块，分别与同一个相机投影矩阵作用；第 9–12 个通道用于 x 坐标的两组二维旋转；最后 4 个通道用于 y 坐标的两组二维旋转。若 <code>head_dim=64</code>，则有 32 个投影通道、16 个 x-RoPE 通道和 16 个 y-RoPE 通道。</p>
+      <div class="doc-callout warning">
+        <span class="callout-title">head_dim 的实际约束比单个 assert 更严格</span>
+        源码显式检查了 <code>head_dim % 4 == 0</code>，但投影区还要求 <code>(head_dim // 2) % 4 == 0</code>，RoPE 区段也要求通道数为偶数。综合起来，实际应选择 8 的倍数，例如 16、64、128；仅能被 4 整除并不够。
+      </div>
+      <h3>6.5 Split RoPE 而非 interleaved RoPE</h3>
+      <p>官方实现明确采用 split ordering：一个 RoPE 区段的前半部分是 \(x_{in}\)，后半部分是 \(y_{in}\)，而不是把相邻两个通道依次配对。其正向公式为 \([\cos\theta\,x+\sin\theta\,y,\;-\sin\theta\,x+\cos\theta\,y]\)，逆向公式交换相应符号。接入其他 RoPE 实现时若混用两种通道排列，数值上仍可运行，却会改变频率与通道的对应关系。</p>
+    </section>
+
+    <section class="doc-block" id="properties">
+      <h2><span class="section-no">07 / PROPERTIES</span>数学性质与计算边界</h2>
+      <h3>7.1 全局坐标不变性</h3>
+      <p>设所有世界到相机外参共同右乘一个全局刚体变换 \(\mathbf G\)，即 \(\mathbf T_i'=\mathbf T_i\mathbf G\)，内参保持不变。相对投影中的 \(\mathbf G\) 与其逆严格抵消：</p>
+      <div class="math-scroll"><div class="math">$$(\mathbf T_i\mathbf G)(\mathbf T_j\mathbf G)^{-1}=\mathbf T_i\mathbf G\mathbf G^{-1}\mathbf T_j^{-1}=\mathbf T_i\mathbf T_j^{-1}.$$</div><span class="equation-number">(11)</span></div>
+      <p>所以 \(\mathbf P_i'\mathbf P_j'^{-1}=\mathbf P_i\mathbf P_j^{-1}\)。该性质针对全局刚体坐标重参数化，不应被扩大解释为对任意尺度归一化、错误标定或非刚体形变都自动鲁棒。</p>
+      <h3>7.2 退化为 GTA / CaPE 类编码</h3>
+      <p>当内参提升矩阵为单位阵时，\(P_i=T_i\)，PRoPE 的投影项立即变成 \(T_iT_j^{-1}\)，即 GTA/CaPE 类相对 \(SE(3)\) 编码。官方函数中传入 <code>Ks=None</code> 会直接选择 GTA 分支，这是最明确的代码级退化路径。</p>
+      <p>需要区分“数学上严格退化”与“实验中内参不具区分度”。固定内参并不总意味着 \(L_iT_iT_j^{-1}L_j^{-1}=T_iT_j^{-1}\)，因为非单位内参与刚体矩阵通常不交换。Objaverse 固定内参实验中 GTA 与 PRoPE 数值完全一致，更适合解释为该受控设置下额外内参信息未带来可观察差异，而不是据此推出所有固定内参任务都等价。</p>
+      <h3>7.3 同相机注意力退化为 RoPE</h3>
+      <p>当查询和键/值来自同一相机时，投影内积满足 \(P_iP_i^{-1}=I\)。同视图 self-attention 的投影项不再引入跨相机差异，保留下来的主要是 patch 的二维 RoPE。论文在 UniMatch 中同时改造跨视图注意力与同视图自注意力，后者正利用了这一自然退化性质。</p>
+      <h3>7.4 复杂度：不改变注意力的主导阶，但绝非免费</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>部分</th><th>额外参数</th><th>主要计算</th><th>随 token 数 T 的增长</th></tr></thead>
+          <tbody>
+            <tr><td>相机矩阵准备</td><td>0</td><td>每个相机的 \(4\times4\) 组合、解析求逆</td><td>随相机数 C 线性</td></tr>
+            <tr><td>Q/K/V/O 投影变换</td><td>0</td><td>若干四维块矩阵乘法</td><td>约 \(O(Td_h)\)</td></tr>
+            <tr><td>x/y RoPE</td><td>0</td><td>逐通道三角系数乘法与加法</td><td>\(O(Td_h)\)</td></tr>
+            <tr><td>SDPA 主体</td><td>0</td><td>标准 QK 内积、softmax、V 聚合</td><td>计算主导项仍为 \(O(T^2d_h)\)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>PRoPE 的重要工程优点是变换后仍可调用 <code>torch.nn.functional.scaled_dot_product_attention</code>，因而能够复用 PyTorch 所选择的融合或高效注意力后端。它也没有构造显式 token-pair 投影张量。不过，额外的 reshape、einsum、split/cat 和 RoPE 运算都有真实成本；官方测试中的 benchmark 默认被跳过，本文不声称任何未实测的速度提升或开销比例。</p>
+    </section>
+
+    <section class="doc-block" id="api">
+      <h2><span class="section-no">08 / OFFICIAL API</span>官方 PyTorch 接口：形状、顺序与最小调用</h2>
+      <p>官方仓库将核心算法集中在 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">prope/torch.py</span>。函数式入口 <code>prope_dot_product_attention</code> 的设计目标，是让原本调用 SDPA 的模型能以较小改动接入 PRoPE。</p>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：prope/torch.py:182–235</span>
+      <div class="code-block">
+        <div class="code-label"><span>函数式 API 与注意力主体（官方节选）</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>def prope_dot_product_attention(
+    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, *,
+    viewmats: torch.Tensor,
+    Ks: Optional[torch.Tensor],
+    patches_x: int, patches_y: int,
+    image_width: int, image_height: int,
+    coeffs_x: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    coeffs_y: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+    **kwargs,
+) -&gt; torch.Tensor:
+    apply_fn_q, apply_fn_kv, apply_fn_o = _prepare_apply_fns(...)
+    out = F.scaled_dot_product_attention(
+        query=apply_fn_q(q),
+        key=apply_fn_kv(k),
+        value=apply_fn_kv(v),
+        **kwargs,
+    )
+    return apply_fn_o(out)</code></pre>
+      </div>
+      <h3>8.1 输入数据契约</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>参数</th><th>形状 / 类型</th><th>含义与约束</th></tr></thead>
+          <tbody>
+            <tr><td><code>q, k, v</code></td><td>\((B,H,T,d_h)\)</td><td>函数式接口断言三者形状完全一致，主要面向 self-attention</td></tr>
+            <tr><td><code>viewmats</code></td><td>\((B,C,4,4)\)</td><td>camera &lt;- world 外参；每个 batch 有 C 个相机</td></tr>
+            <tr><td><code>Ks</code></td><td>\((B,C,3,3)\) 或 <code>None</code></td><td>针孔内参；<code>None</code> 明确走 GTA 公式</td></tr>
+            <tr><td><code>patches_x/y</code></td><td>整数 \(P_x,P_y\)</td><td>每张图 patch 网格的宽和高</td></tr>
+            <tr><td><code>image_width/height</code></td><td>整数</td><td>用于归一化焦距和主点，不等同于 patch 数</td></tr>
+            <tr><td><code>coeffs_x/y</code></td><td>可选 cos/sin 对</td><td>允许复用预计算 RoPE 系数；缺省时内部生成</td></tr>
+            <tr><td><code>**kwargs</code></td><td>SDPA 参数</td><td>原样传给 <code>F.scaled_dot_product_attention</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>序列长度必须满足 \(T=C P_xP_y\)。虽然官方 docstring 在 reshape 描述上略含歧义，但结合 x/y 系数的 tile/repeat 与投影 reshape，可以确定实际 token 排列为<strong>相机 → y → x，且 x 变化最快</strong>：</p>
+      <div class="math-scroll"><div class="math">$$t(c,y,x)=cP_yP_x+yP_x+x.$$</div><span class="equation-number">(12)</span></div>
+      <p>也就是说，同一相机的所有 patch 连续排列；在每个相机内部按行展开。只要 patch embedding 的 flatten 顺序与此不一致，投影矩阵就会应用到错误相机，RoPE 的 x/y 坐标也会错位。</p>
+      <h3>8.2 最小调用模板</h3>
+      <div class="code-block">
+        <div class="code-label"><span>self-attention 接入模板</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>from prope.torch import prope_dot_product_attention
+
+# q, k, v: [batch, heads, cameras * patches_y * patches_x, head_dim]
+# viewmats: camera-from-world, [batch, cameras, 4, 4]
+# Ks: [batch, cameras, 3, 3]
+out = prope_dot_product_attention(
+    q, k, v,
+    viewmats=viewmats,
+    Ks=Ks,
+    patches_x=patches_x,
+    patches_y=patches_y,
+    image_width=image_width,
+    image_height=image_height,
+    # 其余关键字参数传给 PyTorch SDPA。
+)</code></pre>
+      </div>
+      <p>如果上游已经有标准注意力，概念上的替换就是 <code>SDPA(q,k,v) → PRoPE(q,k,v,cameras)</code>。但真正需要核查的不是函数名，而是外参方向、token 顺序、内参分辨率与 head_dim。它们任一项出错，都可能得到一个“能运行但几何错误”的模型。</p>
+    </section>
+
+    <section class="doc-block" id="code-projection">
+      <h2><span class="section-no">09 / CODE I</span>源码精读一：内参归一化与三种矩阵</h2>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：prope/torch.py:257–307</span>
+      <h3>9.1 为什么先归一化内参？</h3>
+      <p>不同数据集的图像分辨率和焦距量级可能相差很大。官方代码将 \(f_x,c_x\) 除以图像宽度，将 \(f_y,c_y\) 除以图像高度，并把归一化主点减去 \(0.5\)，使坐标中心移至零附近：</p>
+      <div class="math-scroll"><div class="math">$$\widehat f_x=\frac{f_x}{W},\quad \widehat f_y=\frac{f_y}{H},\quad \widehat c_x=\frac{c_x}{W}-\frac12,\quad \widehat c_y=\frac{c_y}{H}-\frac12.$$</div><span class="equation-number">(13)</span></div>
+      <div class="code-block">
+        <div class="code-label"><span>内参归一化与 P / Pᵀ / P⁻¹（官方代码）</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>Ks_norm = torch.zeros_like(Ks)
+Ks_norm[..., 0, 0] = Ks[..., 0, 0] / image_width
+Ks_norm[..., 1, 1] = Ks[..., 1, 1] / image_height
+Ks_norm[..., 0, 2] = Ks[..., 0, 2] / image_width - 0.5
+Ks_norm[..., 1, 2] = Ks[..., 1, 2] / image_height - 0.5
+Ks_norm[..., 2, 2] = 1.0
+
+P = torch.einsum("...ij,...jk-&gt;...ik", _lift_K(Ks_norm), viewmats)
+P_T = P.transpose(-1, -2)
+P_inv = torch.einsum(
+    "...ij,...jk-&gt;...ik",
+    _invert_SE3(viewmats),
+    _lift_K(_invert_K(Ks_norm)),
+)</code></pre>
+      </div>
+      <p><code>Ks_norm</code> 从全零矩阵创建，只写入 \(f_x,f_y,c_x,c_y\) 和右下角 1，因此 skew 等未显式复制的项保持为零。这与后面的无 skew 解析求逆一致，但也说明官方路径不是面向任意完整 \(3\times3\) 内参矩阵的通用实现。</p>
+      <h3>9.2 结构化解剖求逆</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：prope/torch.py:429–458</span>
+      <div class="code-block">
+        <div class="code-label"><span>SE(3) 逆、K 的齐次提升与无 skew 求逆</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>def _invert_SE3(transforms):
+    Rinv = transforms[..., :3, :3].transpose(-1, -2)
+    out = torch.zeros_like(transforms)
+    out[..., :3, :3] = Rinv
+    out[..., :3, 3] = -torch.einsum(
+        "...ij,...j-&gt;...i", Rinv, transforms[..., :3, 3]
+    )
+    out[..., 3, 3] = 1.0
+    return out
+
+def _invert_K(Ks):
+    # 官方 docstring：Assumes no skew.
+    out = torch.zeros_like(Ks)
+    out[..., 0, 0] = 1.0 / Ks[..., 0, 0]
+    out[..., 1, 1] = 1.0 / Ks[..., 1, 1]
+    out[..., 0, 2] = -Ks[..., 0, 2] / Ks[..., 0, 0]
+    out[..., 1, 2] = -Ks[..., 1, 2] / Ks[..., 1, 1]
+    out[..., 2, 2] = 1.0
+    return out</code></pre>
+      </div>
+      <p>刚体逆使用 \(R^{-1}=R^\top\) 与 \(t^{-1}=-R^\top t\)，内参逆直接写出对角与主点项。相比通用 <code>torch.linalg.inv</code>，这种做法更简单、维度固定，也避免了对每个相机做通用 LU 求解；但它依赖输入确实是合法刚体矩阵和无 skew 针孔内参。</p>
+      <h3>9.3 Ks=None 就是官方 GTA 路径</h3>
+      <p>在内参缺失时，源码直接令 <code>P=viewmats</code>、<code>P_inv=_invert_SE3(viewmats)</code>。因此不需要伪造单位内参矩阵来“模拟 GTA”；<code>None</code> 是官方明确支持的开关，也便于做完全对应的消融。</p>
+    </section>
+
+    <section class="doc-block" id="code-transform">
+      <h2><span class="section-no">10 / CODE II</span>源码精读二：块对角特征变换与二维 RoPE</h2>
+      <h3>10.1 三组 transform 的构造</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：prope/torch.py:309–350</span>
+      <div class="code-block">
+        <div class="code-label"><span>Q / KV / O 的连续通道分段（官方代码）</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>transforms_q = [
+    (partial(_apply_tiled_projmat, matrix=P_T), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y), head_dim // 4),
+]
+transforms_kv = [
+    (partial(_apply_tiled_projmat, matrix=P_inv), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y), head_dim // 4),
+]
+transforms_o = [
+    (partial(_apply_tiled_projmat, matrix=P), head_dim // 2),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_x, inverse=True), head_dim // 4),
+    (partial(_rope_apply_coeffs, coeffs=coeffs_y, inverse=True), head_dim // 4),
+]</code></pre>
+      </div>
+      <p><code>_apply_block_diagonal</code> 并不真的构造一个巨大的 \(d_h\times d_h\) 矩阵。它用 <code>torch.split</code> 按宽度切分最后一维，分别调用函数，再 <code>torch.cat</code> 回原形状。这正是“块对角”在高效代码中的实现方式：数学上可写成大矩阵，工程上只计算非零块。</p>
+      <h3>10.2 每个相机独立平铺投影矩阵</h3>
+      <div class="code-block">
+        <div class="code-label"><span>_apply_tiled_projmat：einsum 下标逐维解释</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>return torch.einsum(
+    "bcij,bncpkj-&gt;bncpki",
+    matrix,
+    feats.reshape(
+        (batch, num_heads, cameras, -1, feat_dim // D, D)
+    ),
+).reshape(feats.shape)</code></pre>
+      </div>
+      <p>这里 <code>b</code>=batch，<code>c</code>=camera，<code>n</code>=head，<code>p</code>=该相机内的 patch，<code>k</code>=四维块的副本编号，<code>i,j</code>=矩阵行列。矩阵只含 <code>b,c</code>，所以同一相机的所有 head、patch 和四维块共享该相机矩阵；不同相机则使用各自的 <code>c</code> 切片。</p>
+      <h3>10.3 RoPE 系数与 token 顺序</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">x/y 坐标生成：prope/torch.py:287–307</span>
+      <div class="code-block">
+        <div class="code-label"><span>x/y 位置序列与频率系数（官方逻辑）</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code># x: 每一行都重复 0, 1, ..., patches_x-1
+positions_x = torch.tile(
+    torch.arange(patches_x, device=device),
+    (patches_y * cameras,),
+)
+# y: 同一行保持相同 y，逐行递增，再复制到各相机
+positions_y = torch.tile(
+    torch.repeat_interleave(
+        torch.arange(patches_y, device=device), patches_x
+    ),
+    (cameras,),
+)
+
+num_freqs = feat_dim // 2
+freqs = freq_scale * freq_base ** (
+    -torch.arange(num_freqs, device=positions.device)[None, None, None, :]
+    / num_freqs
+)
+angles = positions[None, None, :, None] * freqs
+return torch.cos(angles), torch.sin(angles)</code></pre>
+      </div>
+      <p>默认 <code>freq_base=100.0</code>、<code>freq_scale=1.0</code>。若某个 RoPE 区段宽度为 \(d_r\)，就有 \(d_r/2\) 个频率，cos/sin 形状为 \((1,1,T,d_r/2)\)，batch 与 head 维通过广播共享。</p>
+      <h3>10.4 Split 旋转的正向与逆向</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：prope/torch.py:377–426</span>
+      <div class="code-block">
+        <div class="code-label"><span>Split RoPE 与块对角调度（官方代码）</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>x_in = feats[..., : feats.shape[-1] // 2]
+y_in = feats[..., feats.shape[-1] // 2 :]
+return torch.cat(
+    (
+        [cos * x_in + sin * y_in, -sin * x_in + cos * y_in]
+        if not inverse
+        else [cos * x_in - sin * y_in, sin * x_in + cos * y_in]
+    ),
+    dim=-1,
+)
+
+# _apply_block_diagonal 的核心：
+x_blocks = torch.split(feats, block_sizes, dim=-1)
+out = torch.cat(
+    [f(x_block) for f, x_block in zip(funcs, x_blocks)], dim=-1
+)</code></pre>
+      </div>
+      <p>注意正向公式采用本文前面给出的符号约定，旋转方向必须与官方 cos/sin 生成方式一起理解；不要脱离代码将它与另一种 RoPE 符号约定逐项比较。关键性质是 Q/K/V 使用同一方向，O 使用逆方向，从而与投影部分形成一致的“编码—注意力—解码”路径。</p>
+    </section>
+
+    <section class="doc-diagram no-toc" id="diagram-code">
+      <div class="mermaid-frame">
+        <button class="diagram-enlarge" type="button">放大图表</button>
+        <pre class="mermaid">
+flowchart TB
+  Q["Q"] --> QP["前 1/2：Pᵀ 投影"] --> QR["后两段：x/y 正向 RoPE"] --> QO["变换后的 Q"]
+  K["K"] --> KP["前 1/2：P⁻¹ 投影"] --> KR["后两段：x/y 正向 RoPE"] --> KO["变换后的 K"]
+  V["V"] --> VP["前 1/2：P⁻¹ 投影"] --> VR["后两段：x/y 正向 RoPE"] --> VO["变换后的 V"]
+  QO --> A["F.scaled_dot_product_attention"]
+  KO --> A
+  VO --> A
+  A --> O["前 1/2：P 投影；后两段：逆向 RoPE"]
+        </pre>
+      </div>
+      <p class="figure-caption">图 C：官方实现的执行顺序。几何编码发生在 SDPA 外部，因此注意力 kernel 本身无需修改。</p>
+    </section>
+
+    <section class="doc-block" id="module">
+      <h2><span class="section-no">11 / MODULE & CROSS</span>Module 缓存、自注意力与跨注意力</h2>
+      <h3>11.1 为什么还需要 Module 封装？</h3>
+      <p>函数式接口每次都要准备投影和 RoPE apply function。官方 <code>PropeDotProductAttention</code> 将相机配置固定下来，预计算并缓存 <code>coeffs_x_0/1</code>、<code>coeffs_y_0/1</code> 以及三个 apply function，随后可分别调用 <code>_apply_to_q</code>、<code>_apply_to_kv</code>、<code>_apply_to_o</code>。</p>
+      <p>RoPE 系数以 <code>persistent=False</code> 的 buffer 形式保存，意味着它们可随模块移动到相应设备，却不应成为新 checkpoint 的持久状态。模块的 <code>load_state_dict</code> 还处理旧 checkpoint 中可能遗留的系数键，避免非持久缓存造成加载不匹配。这部分属于工程兼容性，不改变 PRoPE 数学。</p>
+      <h3>11.2 自注意力</h3>
+      <p>自注意力中 Q/K/V 的序列和相机集合相同，因此同一个模块即可完成：</p>
+      <div class="code-block">
+        <div class="code-label"><span>Module 自注意力的概念流程</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>q = attn._apply_to_q(q)
+k = attn._apply_to_kv(k)
+v = attn._apply_to_kv(v)
+out = F.scaled_dot_product_attention(q, k, v, **kwargs)
+out = attn._apply_to_o(out)</code></pre>
+      </div>
+      <h3>11.3 跨注意力：源视图与目标视图不能混用配置</h3>
+      <p>跨注意力中 Q 来自 source token，K/V 来自 target token，两者可能具有不同相机数、patch 网格和图像尺寸。官方函数式 API 的等形状断言并不覆盖这一般情形，应使用两个 Module 的分阶段方法：source 模块处理 Q 和 O，target 模块处理 K/V。</p>
+      <div class="code-block">
+        <div class="code-label"><span>官方跨注意力模式</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>q_src = attn_src._apply_to_q(q_src)
+k_tgt = attn_tgt._apply_to_kv(k_tgt)
+v_tgt = attn_tgt._apply_to_kv(v_tgt)
+o_src = F.scaled_dot_product_attention(q_src, k_tgt, v_tgt, **kwargs)
+o_src = attn_src._apply_to_o(o_src)</code></pre>
+      </div>
+      <p>这里 <code>attn_src</code> 与 <code>attn_tgt</code> 必须分别根据自己的 <code>viewmats/Ks</code> 和 patch 配置准备变换。最终输出位于 source 查询的表示空间，所以 O 必须由 source 模块处理，而不是 target 模块。</p>
+      <h3>11.4 官方测试能说明什么？</h3>
+      <p><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">tests/test_prope_torch.py</span> 默认以 <code>torch.float64</code> 检查函数式 API 与 Module API 的一致性，示例配置包含 3 个相机、8×8 patch、4 个 head 和 <code>head_dim=16</code>。这能验证实现路径一致，但不等于证明任意 dtype、任意形状或任意 fused 后端都已覆盖。性能 benchmark 测试带有 skip 标记，不能从仓库测试中直接引用本地速度结论。</p>
+    </section>
+
+    <section class="doc-block" id="worldcrafter">
+      <h2><span class="section-no">12 / LOCAL ADAPTATION</span>WorldCrafter 本地适配：哪些不是官方 PRoPE 原生功能？</h2>
+      <p>本地 <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">WorldCrafter/worldcrafter/ucpe/prope.py</span> 保留了官方算法主体，同时围绕生成框架的输入形式做了扩展。阅读时必须将“论文与官方 API 已支持”和“项目工程适配”分开，避免把后者误写成论文原贡献。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>差异点</th><th>官方实现</th><th>WorldCrafter 本地版本</th><th>意义</th></tr></thead>
+          <tbody>
+            <tr><td>RoPE 预计算开关</td><td>模块固定预计算路径</td><td>构造器增加 <code>precompute_coeffs=True</code></td><td>允许外部控制系数缓存</td></tr>
+            <tr><td>外部系数</td><td>函数可接 coefficients</td><td>缓存 apply function 时也接受外部 <code>coeffs_x/y</code></td><td>与上游位置生成流程协作</td></tr>
+            <tr><td>dtype</td><td><code>_lift_K</code> 仅指定 device；cos/sin 不显式 cast</td><td>新增 dtype 参数并转换 cos/sin，<code>_lift_K</code> 使用 <code>Ks.dtype</code></td><td>减少混合精度中的类型不一致</td></tr>
+            <tr><td>序列长度断言</td><td>Q/KV/O 方法断言固定 self-attention 长度</td><td>移除这些固定长度断言</td><td>适配更灵活的 staged / cross attention</td></tr>
+            <tr><td>投影粒度</td><td>每相机一个 \(4\times4\) 矩阵</td><td>额外支持每 token / ray 一个矩阵</td><td><strong>本地 per-ray 扩展</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <h3>12.1 Per-ray 投影分支</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">源码定位：WorldCrafter prope.py:341–367</span>
+      <div class="code-block">
+        <div class="code-label"><span>WorldCrafter 扩展：按 ray 或按 camera 选择 einsum</span><button class="copy-code" type="button">复制代码</button></div>
+        <pre><code>def _apply_tiled_projmat(feats, matrix):
+    batch, num_heads, seqlen, feat_dim = feats.shape
+    D = matrix.shape[-1]
+    assert feat_dim % D == 0
+
+    if matrix.shape[1] == seqlen:
+        # 本地扩展：matrix 为 [B, seqlen, D, D]
+        feats_ = feats.view(
+            batch, num_heads, seqlen, feat_dim // D, D
+        )
+        out = torch.einsum("btij,bntpj-&gt;bntpi", matrix, feats_)
+        return out.reshape(feats.shape)
+
+    # 官方路径：matrix 为 [B, cameras, D, D]
+    cameras = matrix.shape[1]
+    return torch.einsum(
+        "bcij,bncpkj-&gt;bncpki",
+        matrix,
+        feats.reshape(
+            batch, num_heads, cameras, -1, feat_dim // D, D
+        ),
+    ).reshape(feats.shape)</code></pre>
+      </div>
+      <p>per-ray 分支的 <code>t</code> 直接索引 token，因此每条射线可以使用不同矩阵；官方分支的 <code>c</code> 只索引相机。前者能表达更细粒度的局部投影，例如处理非全局针孔模型时的局部近似，但其矩阵准备成本、存储成本和上游语义都由 WorldCrafter 自己负责。</p>
+      <h3>12.2 dtype 与接口放宽</h3>
+      <span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">WorldCrafter prope.py:370–392</span>
+      <p>本地 RoPE 预计算返回 <code>torch.cos(angles).to(dtype), torch.sin(angles).to(dtype)</code>，<code>_lift_K</code> 创建输出时也显式使用 <code>dtype=Ks.dtype</code>。这些修改对混合精度流水线很实用，但并不自动解决长焦距导致的病态矩阵；dtype 一致性和数值稳定性是两个不同问题。</p>
+      <div class="doc-callout rose">
+        <span class="callout-title">边界声明</span>
+        “Per-ray projection” 是 WorldCrafter 本地适配，不是官方论文函数 API 的原生能力。本文所有官方实验结果均属于论文模型，不能直接当作对本地扩展的独立验证。
+      </div>
+    </section>
+
+    <section class="doc-block" id="nvs">
+      <h2><span class="section-no">13 / NVS RESULTS</span>新视图合成：内参变化是 PRoPE 优势的关键试验场</h2>
+      <p>论文在 RealEstate10K 与 Objaverse 上控制模型容量和训练设置，对多种相机条件化方式进行比较。受控模型约 25M 参数，共享代码、超参数和训练步数；主要训练分辨率为 256×256。指标为 PSNR↑、LPIPS↓、SSIM↑。以下表格严格保留论文各表的设置，不把不同表中的基线混合排名。</p>
+      <h3>13.1 表 1：固定内参</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th rowspan="2">编码</th><th colspan="3">RealEstate10K</th><th colspan="3">Objaverse</th></tr><tr><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th></tr></thead>
+          <tbody>
+            <tr><td>Plücker</td><td>20.48</td><td>0.209</td><td>0.622</td><td>21.44</td><td>0.159</td><td>0.851</td></tr>
+            <tr><td>Naive</td><td>20.54</td><td>0.210</td><td>0.623</td><td>21.59</td><td>0.153</td><td>0.856</td></tr>
+            <tr><td>CaPE</td><td>21.11</td><td>0.234</td><td>0.656</td><td>19.68</td><td>0.220</td><td>0.827</td></tr>
+            <tr><td>GTA</td><td>22.51</td><td>0.164</td><td>0.707</td><td class="best">23.70</td><td class="best">0.104</td><td class="best">0.879</td></tr>
+            <tr><td>PRoPE</td><td class="best">22.80</td><td class="best">0.146</td><td class="best">0.725</td><td class="best">23.70</td><td class="best">0.104</td><td class="best">0.879</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 1，固定内参 NVS。PRoPE 在 RealEstate10K 三项指标最佳；在 Objaverse 上与 GTA 完全一致，而非所有固定内参场景都必然大幅领先。</p>
+      <p>RealEstate10K 上，PRoPE 相比 GTA 的 PSNR 从 22.51 提升到 22.80，LPIPS 从 0.164 降至 0.146，说明完整投影关系不仅在分数上有效，也改善了感知质量。Objaverse 的完全一致结果则提醒我们：方法提供的几何容量只有在任务变化需要时才会转化为收益。</p>
+      <h3>13.2 表 2：训练与测试中引入内参变化</h3>
+      <p>RealEstate10K 对每张图像独立采样 \([1,3]\) 范围内的 zoom；Objaverse 从 35°–50° 均匀采样 FOV。这样，同一位姿不再意味着同一成像关系，纯外参编码的缺陷被直接暴露。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th rowspan="2">编码</th><th colspan="3">RealEstate10K · varying intrinsics</th><th colspan="3">Objaverse · varying intrinsics</th></tr><tr><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th></tr></thead>
+          <tbody>
+            <tr><td>Plücker</td><td>19.89</td><td>0.327</td><td>0.608</td><td>21.43</td><td>0.177</td><td>0.852</td></tr>
+            <tr><td>Naive</td><td>20.56</td><td>0.301</td><td>0.629</td><td>21.00</td><td>0.191</td><td>0.845</td></tr>
+            <tr><td>CaPE</td><td>15.94</td><td>0.497</td><td>0.699</td><td>16.78</td><td>0.322</td><td>0.760</td></tr>
+            <tr><td>GTA</td><td>15.77</td><td>0.512</td><td>0.641</td><td>18.00</td><td>0.257</td><td>0.775</td></tr>
+            <tr><td>PRoPE</td><td class="best">21.42</td><td class="best">0.247</td><td class="best">0.678</td><td class="best">22.98</td><td class="best">0.138</td><td class="best">0.871</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 2，变化内参 NVS。CaPE/GTA 在 RealEstate10K 上显著退化，而 PRoPE 保持最佳综合结果，直接支持“完整视锥关系”的设计动机。</p>
+      <p>这一结果是论文最有辨识度的证据之一：GTA 在固定内参 RealEstate10K 上达到 22.51 PSNR，加入 zoom 变化后却降到 15.77；PRoPE 在变化内参下仍有 21.42。换言之，问题不只是模型容量或训练难度，而是相对外参表示遗漏了会随样本变化的关键变量。</p>
+      <h3>13.3 表 3：与 CamRay 的混合条件化</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th rowspan="2">编码</th><th colspan="3">RealEstate10K</th><th colspan="3">Objaverse</th></tr><tr><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th></tr></thead>
+          <tbody>
+            <tr><td>GTA</td><td>15.77</td><td>0.512</td><td>0.641</td><td>16.98</td><td>0.261</td><td>0.762</td></tr>
+            <tr><td>GTA + CamRay</td><td>21.41</td><td>0.238</td><td>0.673</td><td>22.69</td><td>0.123</td><td>0.869</td></tr>
+            <tr><td>PRoPE</td><td>21.42</td><td>0.247</td><td>0.678</td><td>22.82</td><td>0.119</td><td>0.872</td></tr>
+            <tr><td>PRoPE + CamRay</td><td class="best">21.78</td><td class="best">0.211</td><td class="best">0.692</td><td class="best">22.98</td><td class="best">0.114</td><td class="best">0.874</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 3，变化内参下的混合条件化。注意 Objaverse 的 GTA=16.98、PRoPE=22.82 与表 2 不完全相同，属于不同受控表格设置，不应交叉拼接成一条“提升量”。</p>
+      <p>PRoPE+CamRay 在两个数据集上均取得该表最佳结果，说明相对投影与局部射线不是冗余信息。GTA+CamRay 也大幅缩小差距，进一步证明：当纯相对位姿缺少内参时，输入端局部射线可以补回大量视锥信息；PRoPE 则提供了另一条把内参直接放进注意力几何的路径。</p>
+    </section>
+
+    <section class="doc-block" id="generalization">
+      <h2><span class="section-no">14 / GENERALIZATION & ABLATION</span>泛化、视图数量与模块消融</h2>
+      <h3>14.1 焦距倍率变化下的 OOD 新视图合成</h3>
+      <p>附录进一步以焦距倍率 \(1\times/3\times/5\times/7\times\) 检查分布外泛化。下表为 RealEstate10K 的 PSNR，越高越好。PRoPE 与 PRoPE+CamRay 在高倍率下仍保持较强表现，而纯 GTA 明显落后。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>方法</th><th>1×</th><th>3×</th><th>5×</th><th>7×</th></tr></thead>
+          <tbody>
+            <tr><td>Plücker</td><td>19.89</td><td>21.03</td><td>20.75</td><td>20.32</td></tr>
+            <tr><td>GTA</td><td>15.77</td><td>18.14</td><td>18.12</td><td>18.29</td></tr>
+            <tr><td>GTA + CamRay</td><td>21.41</td><td>22.70</td><td>22.35</td><td>21.77</td></tr>
+            <tr><td>PRoPE</td><td>21.42</td><td>22.95</td><td>22.75</td><td>22.40</td></tr>
+            <tr><td>PRoPE + CamRay</td><td class="best">21.86</td><td class="best">23.06</td><td class="best">22.83</td><td class="best">22.40</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">附录 OOD NVS PSNR。7× 时 PRoPE 与 PRoPE+CamRay 同为 22.40，不应写成后者在每个倍率都严格领先。</p>
+      <h3>14.2 输入视图数量泛化</h3>
+      <p>训练使用两个输入视图，测试则改变为 2、4、8 或 16 个视图。该实验考察的不是简单“见过更多相机”，而是编码能否在 token 数和相机集合变化时维持有效的相对关系。PRoPE 的每相机矩阵与固定 head 通道结构不依赖把相机数量学习成固定 embedding，因此天然适合这种评估方式。</p>
+      <h3>14.3 投影与 RoPE 是否都需要？</h3>
+      <p>附录表 A.1 在 RealEstate10K 的 PRoPE+CamRay 设置下分别移除 \(D^{Proj}\) 或 \(D^{RoPE}\)。当一个模块被移除时，另一个模块接收全部特征通道，因此这是带通道重分配的受控消融，而不是简单把一段特征置零。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>变体</th><th>PSNR↑</th><th>LPIPS↓</th><th>SSIM↑</th><th>解释</th></tr></thead>
+          <tbody>
+            <tr><td>移除 \(D^{Proj}\)</td><td>16.04</td><td>0.505</td><td>0.509</td><td>只剩位置/局部射线信息，跨视图完整投影缺失</td></tr>
+            <tr><td>移除 \(D^{RoPE}\)</td><td>21.39</td><td>0.238</td><td>0.673</td><td>投影关系仍在，但二维 patch 位置编码缺失</td></tr>
+            <tr><td>完整 PRoPE + CamRay</td><td class="best">21.78</td><td class="best">0.211</td><td class="best">0.692</td><td>跨相机几何与图内二维位置共同作用</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>投影项被移除后的性能崩落最明显，说明在变化内参设置中，跨视图几何是主要瓶颈；但 RoPE 也不是可有可无，完整模型相对“移除 RoPE”仍提升 0.39 PSNR，并改善 LPIPS 与 SSIM。块对角设计因此不是任意拼接，而是将两种不可互相替代的位置概念分别建模。</p>
+    </section>
+
+    <section class="doc-block" id="more-experiments">
+      <h2><span class="section-no">15 / BEYOND NVS</span>深度估计、空间认知、规模扩展与 CAT3D</h2>
+      <h3>15.1 UniMatch 立体深度估计</h3>
+      <p>论文将 Q/K/V/O 几何变换注入 UniMatch 的跨视图注意力和同视图自注意力，评估 Abs Rel、Sq Rel、RMSE 与 RMSE log，四项均为越低越好。结果总体改善，但 RGBD 的 Sq Rel 是一个必须保留的反例。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>数据集</th><th>模型</th><th>Abs Rel↓</th><th>Sq Rel↓</th><th>RMSE↓</th><th>RMSE log↓</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="2">RGBD</td><td>UniMatch</td><td>0.123</td><td>0.175</td><td>0.678</td><td>0.203</td></tr>
+            <tr><td>+ PRoPE</td><td class="best">0.105</td><td class="worse">0.203</td><td class="best">0.573</td><td class="best">0.181</td></tr>
+            <tr><td rowspan="2">SUN3D</td><td>UniMatch</td><td>0.131</td><td>0.098</td><td>0.397</td><td>0.169</td></tr>
+            <tr><td>+ PRoPE</td><td class="best">0.117</td><td class="best">0.075</td><td class="best">0.343</td><td class="best">0.152</td></tr>
+            <tr><td rowspan="2">Scenes11</td><td>UniMatch</td><td>0.065</td><td>0.085</td><td>0.575</td><td>0.126</td></tr>
+            <tr><td>+ PRoPE</td><td class="best">0.049</td><td class="best">0.063</td><td class="best">0.474</td><td class="best">0.104</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 4。RGBD 上 Sq Rel 从 0.175 变为 0.203，属于变差；论文指出 RGBD 深度和位姿的不完善使该指标可靠性较弱，但这不等于可以忽略该数值。</p>
+      <h3>15.2 空间认知：随视图数增加而保持推理能力</h3>
+      <p>空间认知实验以 5、9、17 个视图测试准确率。Plücker 基线从 9 视图到 17 视图出现下降，而 PRoPE 组合持续提升；PRoPE+CamRay 在所有视图数下最佳。</p>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>方法</th><th>5 视图准确率</th><th>9 视图准确率</th><th>17 视图准确率</th></tr></thead>
+          <tbody>
+            <tr><td>Plücker</td><td>69.1%</td><td>76.9%</td><td>74.6%</td></tr>
+            <tr><td>PRoPE + Plücker</td><td>81.1%</td><td>90.5%</td><td>91.8%</td></tr>
+            <tr><td>PRoPE + CamRay</td><td class="best">86.1%</td><td class="best">93.0%</td><td class="best">94.3%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 5。相对投影编码并未排斥输入端射线特征；二者组合反而形成更强的空间推理表示。</p>
+      <h3>15.3 LVSM scaling：收益能否随训练规模保留？</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>训练资源尺度</th><th>编码</th><th>PSNR↑</th><th>SSIM↑</th><th>LPIPS↓</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="2">1× compute</td><td>Plücker</td><td>20.48</td><td>0.622</td><td>0.209</td></tr>
+            <tr><td>PRoPE</td><td class="best">22.80</td><td class="best">0.725</td><td class="best">0.146</td></tr>
+            <tr><td rowspan="2">100× compute</td><td>Plücker</td><td>25.64</td><td>0.809</td><td>0.084</td></tr>
+            <tr><td>PRoPE</td><td class="best">26.56</td><td class="best">0.832</td><td class="best">0.071</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-caption">论文表 6，RealEstate10K LVSM scaling。100× 指训练资源/计算尺度，不是推理延迟为 100 倍，也不是本文实测速度。</p>
+      <p>附录给出的配置显示，小模型使用 6 个 Transformer block、MLP 通道从 3072 减至 1024、2 张 GPU 和总 batch size 4；scaling 设置使用 12 个 block、MLP 3072、8 张 GPU 和总 batch size 64。PRoPE 在两种规模下都优于 Plücker，说明其收益没有被单纯扩大模型与训练完全抹平。</p>
+      <h3>15.4 CAT3D 集成：多数指标改善，也有轻微例外</h3>
+      <div class="table-scroll">
+        <table class="doc-data-table">
+          <thead><tr><th>输入视图</th><th>模型</th><th>PSNR↑</th><th>SSIM↑</th><th>LPIPS↓</th></tr></thead>
+          <tbody>
+            <tr><td rowspan="2">3</td><td>CAT3D</td><td>16.62</td><td>0.377</td><td>0.515</td></tr><tr><td>+ PRoPE</td><td class="best">16.93</td><td class="best">0.382</td><td class="best">0.505</td></tr>
+            <tr><td rowspan="2">6</td><td>CAT3D</td><td>17.72</td><td>0.425</td><td>0.482</td></tr><tr><td>+ PRoPE</td><td class="best">18.01</td><td class="best">0.443</td><td class="best">0.479</td></tr>
+            <tr><td rowspan="2">9</td><td>CAT3D</td><td>18.67</td><td>0.460</td><td class="best">0.460</td></tr><tr><td>+ PRoPE</td><td class="best">18.98</td><td class="best">0.474</td><td class="worse">0.461</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>3、6、9 视图下 PSNR 和 SSIM 都提高；LPIPS 在 3、6 视图改善，但 9 视图从 0.460 变为 0.461，轻微恶化 0.001。该幅度很小，却足以说明“全面提升所有指标”不是严谨表述。附录的 UniMatch OOD 还使用较少资源（2 GPU × 50k steps，约主设置八分之一），不应与主表训练配置混为一谈。</p>
+    </section>
+
+    <section class="doc-block" id="limitations">
+      <h2><span class="section-no">16 / LIMITATIONS</span>局限性、风险与工程落地清单</h2>
+      <h3>16.1 作者明确讨论的三项局限</h3>
+      <ol>
+        <li><strong>长焦距与数值稳定性。</strong>长焦距配置可能使投影矩阵条件数变差，带来数值不稳定。归一化内参有助于控制尺度，却不保证任意焦距组合都良态；低精度训练尤其需要检查。</li>
+        <li><strong>主要针对针孔相机。</strong>径向/切向畸变使单一全局投影矩阵无法精确描述所有像素。作者指出，对畸变相机可能需要按 patch 构造局部投影近似。</li>
+        <li><strong>多频率编码不直观。</strong>投影矩阵乘法通常不可交换，不能像 RoPE 的多个二维旋转那样直接构造直观的多频相机参数编码。PRoPE 因而将投影与 RoPE 分块，而不是试图把投影矩阵简单频率化。</li>
+      </ol>
+      <h3>16.2 独立工程判断</h3>
+      <p>除作者陈述外，从官方代码还可以得到几项落地边界。首先，<code>_invert_K</code> 明确假设无 skew，归一化代码也没有保留 skew。其次，方法假定相机参数已知；它不会自动修正标定误差、SLAM 位姿噪声或时间戳不同步。再次，“不增加可学习参数”只描述参数数量，Q/K/V/O 的额外线性变换仍可能带来吞吐与显存带宽成本。</p>
+      <p>最后，PRoPE 的数学不变性不等于训练结果对任意坐标操作完全不变。如果图像预处理改变了 crop、resize 或主点，却没有同步更新 K，输入给 PRoPE 的矩阵就已经不再对应实际图像。类似地，将 camera-to-world 误当 world-to-camera 时，矩阵仍可逆、形状仍正确，错误却不会由 assert 捕获。</p>
+      <div class="doc-callout warning">
+        <span class="callout-title">一个容易被忽略的前提</span>
+        PRoPE 编码的是“你提供的相机模型”，不是“真实世界的相机模型”。图像增强、resize、crop、归一化和位姿估计必须先保证几何一致，编码器才能发挥理论优势。
+      </div>
+      <h3>16.3 接入前检查清单</h3>
+      <ul class="checklist">
+        <li>确认 <code>viewmats</code> 是 camera-from-world；若上游为 camera-to-world，先整体求逆。</li>
+        <li>确认 token 顺序为 camera → y → x，且 x fastest；检查 patchify/flatten 是否完全一致。</li>
+        <li>确认 \(T=C P_xP_y\)，Q/K/V 的 head_dim 采用 8 的倍数。</li>
+        <li>图像 resize/crop 后同步更新焦距与主点；<code>image_width/height</code> 使用与 K 对应的图像尺寸。</li>
+        <li>检查焦距非零、外参旋转合法，并在目标训练 dtype 下监测 NaN、Inf 与矩阵条件。</li>
+        <li>若有 skew 或镜头畸变，不要直接假设官方无 skew 针孔路径仍然准确。</li>
+        <li>跨注意力分别构造 source 与 target 模块，Q/O 用 source，K/V 用 target。</li>
+        <li>需要 fused SDPA 时保留“先变换 Q/K/V、后调用 SDPA、再变换 O”的顺序。</li>
+        <li>区分官方 per-camera 与 WorldCrafter per-ray 分支，核对矩阵第二维究竟是 C 还是 T。</li>
+        <li>在目标任务上实测速度、显存和精度，不把“无参数”误读为“无开销”。</li>
+      </ul>
+      <h3>16.4 何时优先考虑 PRoPE？</h3>
+      <p>当任务包含多视图 token 交互、相机参数可信、内参可能变化，并且模型已经或计划使用标准 SDPA 时，PRoPE 是非常有针对性的选择。若相机完全未知，首先要解决的是位姿与内参估计；若视图高度畸变，可能需要局部投影或其他相机模型；若只是单图任务，PRoPE 的跨视图投影优势通常没有发挥空间。</p>
+    </section>
+
+    <section class="doc-block" id="conclusion">
+      <h2><span class="section-no">17 / CONCLUSION</span>总结：PRoPE 的真正创新在哪里？</h2>
+      <p>PRoPE 把多视图 Transformer 的相机条件化从“附加特征”推进到“相对算子结构”。通过一个可逆的齐次投影矩阵，它同时保留内参和外参；通过 \(P_i^\top q_i\)、\(P_j^{-1}k_j\)、\(P_j^{-1}v_j\) 与输出端 \(P_i\)，相对投影 \(P_iP_j^{-1}\) 无需显式 pairwise 张量便进入注意力；通过投影与 x/y RoPE 的块对角分配，它同时建模跨视图几何和图内二维位置。</p>
+      <p>从理论上看，它兼具全局刚体坐标不变性、向 GTA 的明确退化路径和同相机下向 RoPE 的自然退化。从工程上看，它不需要新增可学习参数，也不必修改标准注意力 kernel。从实验上看，变化内参 NVS 是最有力的证据，空间认知、深度估计和 scaling 结果进一步支持其通用性；但 Objaverse 固定内参的持平、RGBD Sq Rel 的恶化以及 CAT3D 九视图 LPIPS 的轻微回退，都要求我们避免“所有场景一律更好”的过度结论。</p>
+      <p>因此，对 PRoPE 最准确的评价不是“一种更强的相机向量”，而是：<strong>一种将投影相机几何与注意力线性代数对齐的相对位置编码框架。</strong>它的价值来自几何结构、可逆代数与可实现性三者的结合。</p>
+      <div class="doc-callout teal">
+        <span class="callout-title">最终记忆公式</span>
+        \(\bar q_i=P_i^\top q_i,\ \bar k_j=P_j^{-1}k_j,\ \bar v_j=P_j^{-1}v_j,\ \bar o_i=P_i\sum_j\alpha_{ij}\bar v_j\)。由此得到 \(q_i^\top P_iP_j^{-1}k_j\)，其中 \(P_iP_j^{-1}=L_iT_iT_j^{-1}L_j^{-1}\)。
+      </div>
+      <a class="back-top" href="#top">↑ 返回文档顶部</a>
+    </section>
+
+    <section class="doc-sources no-toc" id="references">
+      <h2>参考资料与可核验来源</h2>
+      <ol>
+        <li><span class="source-type">论文</span>Ruilong Li et al. <a href="https://arxiv.org/abs/2507.10496" target="_blank" rel="noopener">Cameras as Relative Positional Encoding</a>. arXiv:2507.10496，正文、附录与结论中的公式和实验表。</li>
+        <li><span class="source-type">主页</span><a href="https://www.liruilong.cn/prope/" target="_blank" rel="noopener">PRoPE Project Page</a>，方法概览与论文入口。</li>
+        <li><span class="source-type">代码</span><a href="https://github.com/liruilong940607/prope" target="_blank" rel="noopener">liruilong940607/prope</a>，官方 JAX / PyTorch 实现；README 标注 NeurIPS 2025。</li>
+        <li><span class="source-type">本地源码</span><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">ProPE/prope/torch.py</span>，本文第 8–11 节代码解读的直接依据。</li>
+        <li><span class="source-type">本地测试</span><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">ProPE/tests/test_prope_torch.py</span>，函数式与 Module API 一致性测试。</li>
+        <li><span class="source-type">本地适配</span><span class="local-source-ref" style="color:#6b7280;overflow-wrap:anywhere" title="本机源码路径，公开页面不提供文件下载">WorldCrafter/worldcrafter/ucpe/prope.py</span>，per-ray、dtype 与接口扩展依据。</li>
+        <li><span class="source-type">说明</span>本文所有实验数值均转录自所核验论文正文或附录；未运行官方 NVS 训练，也未将默认跳过的 benchmark 当作实测性能结论。</li>
+      </ol>
+    </section>
+  </main>
+
+  <div class="diagram-lightbox" id="diagram-lightbox" role="dialog" aria-modal="true" aria-label="放大图表">
+    <button class="lightbox-close" type="button" aria-label="关闭">×</button>
+    <div class="lightbox-inner"></div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '\\(', right: '\\)', display: false}
+          ],
+          ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+          throwOnError: false
+        });
+      }
+
+      if (window.mermaid) {
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'loose',
+          theme: 'neutral',
+          flowchart: { htmlLabels: true, useMaxWidth: false, curve: 'basis' }
+        });
+        mermaid.run({ querySelector: '.mermaid' }).catch(function (error) {
+          console.error('Mermaid render failed:', error);
+        });
+      }
+
+      const sections = Array.from(document.querySelectorAll('section.doc-block[id]')).filter(function (section) {
+        return !section.classList.contains('no-toc') && section.querySelector('h2');
+      });
+      const toc = document.getElementById('toc-list');
+      sections.forEach(function (section, index) {
+        const title = section.querySelector('h2').cloneNode(true);
+        const number = title.querySelector('.section-no');
+        if (number) number.remove();
+        const link = document.createElement('a');
+        link.href = '#' + section.id;
+        link.dataset.target = section.id;
+        link.innerHTML = '<span class="toc-index">' + String(index + 1).padStart(2, '0') + '</span>' + title.textContent.trim();
+        toc.appendChild(link);
+      });
+      const tocLinks = Array.from(toc.querySelectorAll('a'));
+      const observer = new IntersectionObserver(function (entries) {
+        const visible = entries.filter(function (entry) { return entry.isIntersecting; })
+          .sort(function (a, b) { return a.boundingClientRect.top - b.boundingClientRect.top; });
+        if (!visible.length) return;
+        tocLinks.forEach(function (link) {
+          link.classList.toggle('active', link.dataset.target === visible[0].target.id);
+        });
+      }, { rootMargin: '-8% 0px -72% 0px', threshold: [0, 0.1] });
+      sections.forEach(function (section) { observer.observe(section); });
+
+      document.querySelectorAll('.copy-code').forEach(function (button) {
+        button.addEventListener('click', async function () {
+          const block = button.closest('.code-block');
+          const code = block.querySelector('code').innerText;
+          let copied = false;
+          if (navigator.clipboard && window.isSecureContext) {
+            try {
+              await navigator.clipboard.writeText(code);
+              copied = true;
+            } catch (error) {
+              copied = false;
+            }
+          }
+          if (!copied) {
+            const textarea = document.createElement('textarea');
+            textarea.value = code;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+              copied = document.execCommand('copy');
+            } catch (error) {
+              copied = false;
+            }
+            textarea.remove();
+          }
+          button.textContent = copied ? '已复制' : '复制失败';
+          setTimeout(function () { button.textContent = '复制代码'; }, 1600);
+        });
+      });
+
+      const lightbox = document.getElementById('diagram-lightbox');
+      const lightboxContent = lightbox.querySelector('.lightbox-inner');
+      document.querySelectorAll('.diagram-enlarge').forEach(function (button) {
+        button.addEventListener('click', function () {
+          const diagram = button.parentElement.querySelector('.mermaid');
+          lightboxContent.innerHTML = '';
+          lightboxContent.appendChild(diagram.cloneNode(true));
+          lightbox.classList.add('open');
+          document.body.style.overflow = 'hidden';
+        });
+      });
+      function closeLightbox() {
+        lightbox.classList.remove('open');
+        lightboxContent.innerHTML = '';
+        document.body.style.overflow = '';
+      }
+      lightbox.querySelector('.lightbox-close').addEventListener('click', closeLightbox);
+      lightbox.addEventListener('click', function (event) {
+        if (event.target === lightbox) closeLightbox();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && lightbox.classList.contains('open')) closeLightbox();
+      });
+    });
+  </script>
+</body>
+</html>
