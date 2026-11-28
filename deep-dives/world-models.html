@@ -1,0 +1,936 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="World Models：潜空间世界模型：原理、详细结构、训练推理与代码精读。"><title>World Models：潜空间世界模型｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="world-models 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>World Models：在压缩的梦境中学习控制</h1>
+  <p class="doc-subtitle">David Ha、Jürgen Schmidhuber，2018 · VAE 视觉、MDN-RNN 记忆、线性控制器与 CMA-ES 的完整拆解</p>
+  <p class="reading-note">阅读本文需要基本的变分推断、LSTM 和强化学习知识。正文以 arXiv:1803.10122v4 为依据，并逐文件核对 hardmaru/WorldModelsExperiments 的公开实现；论文中的设置与该仓库的默认脚本不完全相同，文中分别标明。本文只进行静态源码阅读，没有执行训练或推理。</p>
+</header>
+<nav aria-label="页面导航"><a href="../index.html">← 论文精读首页</a> · <a href="../categories/world-models.html">所属分类：视频世界模型与长时生成</a></nav>
+
+<section class="doc-block" id="problem-and-boundary">
+  <h2>1. 它解决的不是“预测漂亮图片”，而是把大模型与小控制器解耦</h2>
+  <p>World Models 研究的是从像素观测学习控制的经典难题。环境在时刻 <em>t</em> 给出图像 <em>o<sub>t</sub></em>，智能体产生动作 <em>a<sub>t</sub></em>，环境再返回下一观测和奖励。若把卷积网络、循环记忆与策略全部放进一个端到端强化学习目标，价值或奖励信号必须同时负责表示学习和信用分配；论文选择把这两项工作分开：用无监督重建与预测训练较大的世界模型，再只在紧凑的策略参数上最大化累计奖励。</p>
+  <p>整个智能体被拆成 V、M、C 三部分。<strong>V（Vision）</strong>是卷积 VAE，把一帧图像压缩为连续向量 <em>z<sub>t</sub></em>；<strong>M（Memory）</strong>是带混合密度输出层的 LSTM，根据当前潜向量、动作和过去状态预测下一潜向量的分布；<strong>C（Controller）</strong>直接以 <em>[z<sub>t</sub>, h<sub>t</sub>]</em> 为输入输出动作。V 提供“现在看见什么”，M 的隐藏状态提供“历史以及接下来可能发生什么”，C 只负责把这些特征映射为控制量。这里的 M 不是显式地图或三维场景表示，也不是通用的视频生成器。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>模块</th><th>输入</th><th>输出</th><th>监督信号</th></tr></thead><tbody>
+  <tr><td>V：ConvVAE</td><td>64×64×3 RGB 帧</td><td>μ、log σ²、采样 z；解码重建帧</td><td>像素 L2 重建与 KL</td></tr>
+  <tr><td>M：MDN-RNN</td><td>z<sub>t</sub>、a<sub>t</sub>、h<sub>t</sub></td><td>下一 z 的混合高斯参数；Doom 还预测 done</td><td>下一真实 z 的负对数似然；终止交叉熵</td></tr>
+  <tr><td>C：线性策略</td><td>[z<sub>t</sub>, h<sub>t</sub>]</td><td>转向、油门、刹车等动作</td><td>环境累计奖励，由黑盒优化使用</td></tr>
+  </tbody></table></div>
+  <p>它与 model-free RL 的差别不只是“多了一个预测网络”：V 和 M 的训练<strong>不读取任务奖励</strong>，只有 C 的适应度使用奖励。它与普通动作条件视频预测的差别在于最终目标是把 M 当成可替代的潜空间环境，在其中训练策略并迁回真实环境。CarRacing 的主要实验仍让 C 在真实环境上进化；真正完全在梦中训练、再迁回真实环境的是 VizDoom Take Cover 实验。这两个实验不能混为一条训练管线。</p>
+  <div class="doc-note"><p><strong>关键时序：</strong>先用当前观测得到 z<sub>t</sub>，控制器用 z<sub>t</sub> 与已有 h<sub>t</sub> 选 a<sub>t</sub>，随后 M 消费 [z<sub>t</sub>, a<sub>t</sub>] 更新到 h<sub>t+1</sub>。不能把“由当前输入产生的下一状态”又当成当前动作所需的旧状态，否则训练与推理会错位。</p></div>
+</section>
+
+<section class="doc-block" id="vae-vision">
+  <h2>2. V：卷积 VAE 如何压缩帧，以及 KL 在这里为何有用</h2>
+  <p>原始帧先缩放到 64×64，每个 RGB 通道归一化到 [0,1]。编码器依次使用 32、64、128、256 通道的卷积，卷积核为 4、步长为 2，激活为 ReLU，空间尺寸由 64 依次降为 32、16、8、4。代码随后将特征展平为 2×2×256；这一点依赖框架的卷积尺寸与 padding 行为，不宜在现代重实现中只按公式想当然地省略检查。展平特征分别经过全连接层得到 μ 与 log σ²，重参数化采样 <em>z=μ+σ⊙ε</em>，其中 <em>ε∼N(0,I)</em>。CarRacing 的 z 为 32 维，Doom 为 64 维。</p>
+  <div class="math-scroll"><div class="math">q<sub>φ</sub>(z|x)=N(μ<sub>φ</sub>(x), diag(σ²<sub>φ</sub>(x)))，z=μ+exp(½ log σ²)⊙ε<span class="equation-number">(1)</span></div></div>
+  <p>解码器先把 z 映射到 1024 个数并重排，再通过四层转置卷积恢复到 64×64×3，输出使用 sigmoid。优化目标由逐帧重建误差与标准正态先验的 KL 散度组成。对 mini-batch 中每帧求和空间与通道，再对 batch 求均值：</p>
+  <div class="math-scroll"><div class="math">L<sub>V</sub>(x)=||x−x̂||²₂ + max[−½∑<sub>j</sub>(1+log σ²<sub>j</sub>−μ²<sub>j</sub>−σ²<sub>j</sub>), δN<sub>z</sub>]<span class="equation-number">(2)</span></div></div>
+  <p>论文正文将其概括为 L2 加 KL；公开源码进一步使用 <code>kl_tolerance=0.5</code>，即 KL 在低于 0.5N<sub>z</sub> 时被截断。这是实现中的容差项，不应改写成论文没有给出的通用 β-VAE 权重。VAE 的高斯先验不仅用于生成样本，也使潜空间更连续；当 M 生成的 z 与真实编码略有偏差时，解码器更有可能仍产生合理图像。代价是压缩与任务无关：论文观察到 Doom 中墙面砖纹可能被保留，而赛车路面的任务相关细节反而丢失。</p>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/vae/vae.py#L34-L87">官方源码节选 · carracing/vae/vae.py</a></span><pre><code># 固定提交 fd982b9；省略了会话与参数序列化代码
+self.x = tf.placeholder(tf.float32, shape=[None, 64, 64, 3])
+h = tf.layers.conv2d(self.x, 32, 4, strides=2, activation=tf.nn.relu)
+h = tf.layers.conv2d(h, 64, 4, strides=2, activation=tf.nn.relu)
+h = tf.layers.conv2d(h, 128, 4, strides=2, activation=tf.nn.relu)
+h = tf.layers.conv2d(h, 256, 4, strides=2, activation=tf.nn.relu)
+h = tf.reshape(h, [-1, 2 * 2 * 256])
+self.mu = tf.layers.dense(h, self.z_size, name="enc_fc_mu")
+self.logvar = tf.layers.dense(h, self.z_size, name="enc_fc_log_var")
+self.sigma = tf.exp(self.logvar / 2.0)
+self.epsilon = tf.random_normal([self.batch_size, self.z_size])
+self.z = self.mu + self.sigma * self.epsilon
+# 每帧像素平方和，再对 batch 求均值；KL 带容差下限
+self.r_loss = tf.reduce_mean(tf.reduce_sum(
+    tf.square(self.x - self.y), reduction_indices=[1, 2, 3]))
+self.kl_loss = -0.5 * tf.reduce_sum(
+    1 + self.logvar - tf.square(self.mu) - tf.exp(self.logvar),
+    reduction_indices=1)
+self.kl_loss = tf.maximum(self.kl_loss, self.kl_tolerance * self.z_size)
+self.loss = self.r_loss + tf.reduce_mean(self.kl_loss)</code></pre></div>
+  <p>训练数据来自随机策略与环境交互，而不是人工挑选的“好看帧”。论文 CarRacing 流程为 10,000 条随机 rollout，VAE 将图像压缩到 R³²；附录写 VAE 对收集数据训练 1 epoch，而固定版本仓库的 <code>carracing/vae_train.py</code> 明确设置 <code>NUM_EPOCH=10</code>、batch size 100、学习率 10⁻⁴。复现时应把这两处都记录下来，不应声称二者相同。</p>
+</section>
+
+<section class="doc-block" id="mdn-rnn-memory">
+  <h2>3. M：MDN-RNN 预测的是条件分布，不是一个均值向量</h2>
+  <p>单帧 VAE 不知道车辆运动方向、火球是否即将出现，也不知道同一当前帧之后是否会发生离散事件。M 用 LSTM 汇总历史，并在每个时间步输出下一潜向量的混合高斯密度。设混合数为 K，潜向量维度为 N<sub>z</sub>，第 k 个分量的权重、均值和对数标准差分别为 π<sub>t,k</sub>、μ<sub>t,k</sub>、s<sub>t,k</sub>：</p>
+  <div class="math-scroll"><div class="math">p(z<sub>t+1</sub>|a<sub>t</sub>,z<sub>t</sub>,h<sub>t</sub>)=∑<sub>k=1…K</sub>π<sub>t,k</sub>∏<sub>j=1…Nz</sub>N(z<sub>t+1,j</sub>;μ<sub>t,k,j</sub>,exp(2s<sub>t,k,j</sub>))<span class="equation-number">(3)</span></div></div>
+  <p>这里采用分量内各维独立的<strong>对角</strong>高斯，没有预测不同 z 维度之间的相关系数 ρ。CarRacing 使用 K=5、LSTM 隐藏宽度 256、z 维度 32，因此每个样本的 MDN 输出是 5×32×3=480 个数；Doom 的 LSTM 宽度为 512，z 为 64 维，另有终止预测。混合模型可以表示“怪物发射火球”和“不发射”这类离散模式，而单高斯往往把多个未来平均成一个不真实的折中。</p>
+  <p>训练输入和标签是错位一步的序列：输入为 [z<sub>t</sub>,a<sub>t</sub>]，标签为 z<sub>t+1</sub>。这属于 teacher forcing，因为历史 z 来自真实观测的 VAE 编码，而不是模型自己前一步生成的 z。每个 batch 构造时从已存储的 μ、log σ² 重新采样 z，避免 M 死记某一次 VAE 采样。其损失是观测标签在预测混合密度下的负对数似然：</p>
+  <div class="math-scroll"><div class="math">L<sub>M</sub>=−E[∑<sub>j</sub> log ∑<sub>k</sub> π<sub>t,k,j</sub> N(z<sub>t+1,j</sub>;μ<sub>t,k,j</sub>,σ²<sub>t,k,j</sub>)]<span class="equation-number">(4)</span></div></div>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/rnn/rnn.py#L120-L160">官方源码节选 · carracing/rnn/rnn.py</a></span><pre><code>NOUT = OUTWIDTH * KMIX * 3
+output, last_state = tf.nn.dynamic_rnn(
+    cell, self.input_x, initial_state=self.initial_state,
+    time_major=False, swap_memory=True, dtype=tf.float32, scope="RNN")
+output = tf.nn.xw_plus_b(tf.reshape(output, [-1, hps.rnn_size]),
+                         output_w, output_b)
+output = tf.reshape(output, [-1, KMIX * 3])
+logmix, mean, logstd = tf.split(output, 3, 1)
+# 权重 logits 用 logsumexp 归一化；均值与 logstd 不直接激活
+logmix = logmix - tf.reduce_logsumexp(logmix, 1, keepdims=True)
+def tf_lognormal(y, mean, logstd):
+    return (-0.5 * ((y - mean) / tf.exp(logstd)) ** 2
+            - logstd - np.log(np.sqrt(2.0 * np.pi)))
+v = logmix + tf_lognormal(flat_target_data, mean, logstd)
+nll = -tf.reduce_mean(tf.reduce_logsumexp(v, 1, keepdims=True))</code></pre></div>
+  <p>这一实现的张量重排值得细看：先将 LSTM 输出从 [B,T,H] 展平，再形成 [B×T×N<sub>z</sub>,K×3]，最后把目标展平为每个潜维度一行。因此公式中的 π 可理解为每个维度各自的混合权重，由相应输出头产生，而不是只给整条轨迹一个共享混合系数。使用 <code>reduce_logsumexp</code> 而不是先 exp 再求和，是为了避免极小概率下溢和极大概率上溢。现代复现必须对“每个 z 维度的 K 组参数”与“每个时间步的 K 个多元高斯”这两种布局作明确选择；本仓库是前者。</p>
+</section>
+
+<section class="doc-block" id="controller-and-cmaes">
+  <h2>4. C 与 CMA-ES：867 个参数为何足以驾驶</h2>
+  <p>论文将控制器刻意设计为线性映射。CarRacing 的 C 接收 32 维 z 与 256 维 LSTM 输出 h，拼接后为 288 维，映射到转向、油门和刹车三个动作，权重与偏置合计 288×3+3=867。Doom 同时使用 LSTM 的 c 与 h，因此输入是 64+512+512=1088，输出一个连续标量，论文表中控制器参数数为 1088（该表未计偏置；源码相应 Doom 控制器以无偏置形式实现）。</p>
+  <div class="math-scroll"><div class="math">a<sub>t</sub>=W<sub>c</sub>[z<sub>t</sub>;h<sub>t</sub>]+b<sub>c</sub>，θ<sub>C</sub>←argmax<sub>θ</sub> E<sub>ξ</sub>[∑<sub>t</sub>r<sub>t</sub>]<span class="equation-number">(5)</span></div></div>
+  <p>小搜索空间让 CMA-ES 可以直接优化控制器，不需要对奖励或环境求梯度，也不要求 V、M 的预测图可微地传回 C。CMA-ES 用多层高斯搜索分布产生候选参数，根据累计奖励排序，更新均值、步长与协方差。协方差使搜索方向能随参数之间的相关性调整，但它并非“免费训练大网络”：论文指出其适合最多几千个参数的解空间，而不应拿它直接进化数百万参数的 VAE。</p>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/model.py#L98-L118">官方源码节选 · carracing/model.py</a></span><pre><code>def get_action(self, z):
+    # CarRacing 的 EXP_MODE=MODE_ZH，特征是 [z, state.h]
+    h = rnn_output(self.state, z, EXP_MODE)
+    action = np.tanh(np.dot(h, self.weight) + self.bias)
+    action[1] = (action[1] + 1.0) / 2.0  # 油门映射到 [0,1]
+    action[2] = clip(action[2])          # 刹车裁剪到 [0,1]
+    # 用当前 z 和实际输出的动作推进 M，供下一步控制
+    self.state = rnn_next_state(self.rnn, z, action, self.state)
+    return action</code></pre></div>
+  <p>转向保留 tanh 后的 [-1,1]，油门由 [-1,1] 线性映射到 [0,1]，刹车再截断到 [0,1]。如果重实现改用 Gym 新版本或不同环境包装，动作语义、预处理、帧跳过和 episode 终止条件都应单独验证，因为这些东西会改变 C 的适应度，而非无关紧要的工程细节。</p>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/es.py#L86-L132">官方源码节选 · carracing/es.py</a></span><pre><code>class CMAES:
+    def __init__(self, num_params, sigma_init=0.10,
+                 popsize=255, weight_decay=0.01):
+        self.solutions = None
+        self.weight_decay = weight_decay
+        import cma
+        self.es = cma.CMAEvolutionStrategy(
+            num_params * [0], sigma_init, {'popsize': popsize})
+    def ask(self):
+        self.solutions = np.array(self.es.ask())
+        return self.solutions
+    def tell(self, reward_table_result):
+        # cma 最小化，而环境奖励需要最大化
+        reward_table = -np.array(reward_table_result)
+        if self.weight_decay &gt; 0:
+            l2_decay = -self.weight_decay * np.mean(
+                self.solutions ** 2, axis=1)
+            reward_table += l2_decay
+        self.es.tell(self.solutions, reward_table.tolist())</code></pre></div>
+  <p>论文实验采用 population 64，每个候选在 16 个不同初始随机种子上运行，适应度为 16 次累计奖励的均值；每 25 代用 1024 次 rollout 评估当前最佳候选。仓库 <code>train.py</code> 命令行默认值对应 CMA、每 trial 16 episodes、64 workers，但源码顶部还存在供其他实验使用的旧全局默认值，真正生效的是 <code>main(args)</code> 对全局变量的覆盖。阅读此仓库不能只看文件顶部常量。</p>
+</section>
+
+<section class="doc-block" id="real-rollout">
+  <h2>5. 从真实环境 rollout 到下一动作：张量和状态怎样流动</h2>
+  <p>一次真实 CarRacing episode 开始时，控制器参数固定，V 和 M 的预训练参数也固定，只把 LSTM 的 h、c 清零。环境重置后，每帧执行“编码—选动作—环境前进一步—记忆前进一步”。M 无需将混合分布采样成下一帧才能给 C 提供特征；在真实环境控制中，C 读取的是 M 的隐藏状态，环境自己给出下一真实观测。这一点能避免把梦境采样逻辑错误地套进真实推理。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="World Models 的视觉、记忆与控制器"><rect x="15" y="35" width="185" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="107.5" y="67" text-anchor="middle" class="svg-title">环境观测 o_t</text><text x="107.5" y="92" text-anchor="middle" class="svg-small">原始图像帧</text><rect x="280" y="35" width="180" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="370.0" y="67" text-anchor="middle" class="svg-title">VAE 编码</text><text x="370.0" y="92" text-anchor="middle" class="svg-small">视觉 latent z_t</text><rect x="535" y="35" width="205" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="637.5" y="67" text-anchor="middle" class="svg-title">MDN-RNN 记忆</text><text x="637.5" y="92" text-anchor="middle" class="svg-small">预测 p(z_{t+1}|a_t)</text><rect x="820" y="35" width="235" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="937.5" y="67" text-anchor="middle" class="svg-title">控制器 C</text><text x="937.5" y="92" text-anchor="middle" class="svg-small">根据 z_t、h_t 选 a_t</text><path d="M200 73 H280" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M460 73 H535" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M740 73 H820" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M937 111 V240 H102 V111" fill="none" stroke="#788493" stroke-width="1.6"/><text x="540" y="264" text-anchor="middle" class="svg-small">动作作用环境；模型也可在梦中 rollout 训练控制器</text></svg></div><p class="figure-caption"><strong>图 1：V、M、C 三者分工，而非单网络端到端完成所有任务。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/model.py#L171-L216">官方源码节选 · carracing/model.py（压缩重复记录代码）</a></span><pre><code>for episode in range(num_episode):
+    model.reset()                 # LSTM state 清零
+    obs = model.env.reset()
+    total_reward = 0.0
+    for t in range(max_episode_length):
+        z, mu, logvar = model.encode_obs(obs)  # uint8 -&gt; float/255 -&gt; z
+        action = model.get_action(z)           # [z,h] -&gt; a，并更新 M state
+        obs, reward, done, info = model.env.step(action)
+        total_reward += reward
+        if done:
+            break
+    # 原实现最后还编码一次终止后的 obs，供记录数组对齐使用</code></pre></div>
+  <p>VAE 编码并非恒取 μ：公开 <code>encode_obs</code> 用 μ+exp(logvar/2)ε 采样。控制器的输入维度为 288，M 的在线输入为 [z,a]，形状 35。训练 M 时先通过 <code>series.py</code> 将所有观测变成 μ/logvar，再在 <code>rnn_train.py</code> 中每个 batch 重新采样；输入 <code>raw_z[:,:-1]</code> 与动作[:-1] 拼接，输出是 <code>raw_z[:,1:]</code>。固定版本 CarRacing 的 <code>rnn_train.py</code> 默认 num_steps 4000、batch 100、序列长度 999，而论文附录写 MDN-RNN 训练 20 epochs，两者也是需要分别记录的设置。</p>
+  <div class="doc-warning"><strong>复现边界：</strong>上述链接均固定到已核实的提交 fd982b9691a941b52c6addbde29bc801ca6202c8，节选经排版和省略号整理。本文未运行旧版 TensorFlow 模型，也未核验论文分数能否在当前操作系统和依赖版本复现。</div>
+</section>
+
+<section class="doc-block" id="dream-rollout">
+  <h2>6. 梦境 rollout：从分布采样、解码到策略迁移</h2>
+  <p>梦境环境不再需要真实环境每一步渲染图像。先从保存的初始帧 μ、logvar 中抽一个 z，随后每一步将当前 z、用户或控制器选择的 a 与 M 的隐藏状态送入 MDN-RNN。对每个潜维度，先根据温度调整混合 logits 并抽分量 k，再在选中的高斯中采样。温度 τ 同时进入混合权重和分量内高斯噪声：</p>
+  <div class="math-scroll"><div class="math">π′<sub>k,j</sub>=softmax(log π<sub>k,j</sub>/τ)，k<sub>j</sub>∼Categorical(π′<sub>:,j</sub>)，z′<sub>j</sub>=μ<sub>kj,j</sub>+σ<sub>kj,j</sub>√τ ε<sub>j</sub><span class="equation-number">(6)</span></div></div>
+  <p>τ→0 时混合选择更尖锐且噪声变小，梦境接近确定性；τ 增大则未来更随机。源码 CarRacing 的 <code>dream_env.py</code> 默认 τ=0.7，Doom 的 <code>doomrnn.py</code> 默认 <code>TEMPERATURE=1.25</code>，而论文 Doom 主实验报告 τ=1.15。数值差异说明“照搬当前脚本”与“复现论文表格”是两种不同目标。</p>
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/dream_env.py#L70-L118">官方源码节选 · carracing/dream_env.py</a></span><pre><code>input_x = np.concatenate(
+    (prev_z, action.reshape(1, 1, 3)), axis=2)
+feed = {s_model.input_x: input_x,
+        s_model.initial_state: self.agent.state}
+[logmix, mean, logstd, self.agent.state] = sess.run(
+    [s_model.out_logmix, s_model.out_mean,
+     s_model.out_logstd, s_model.final_state], feed)
+logmix2 = logmix / self.temperature
+logmix2 -= logmix2.max()
+logmix2 = np.exp(logmix2)
+logmix2 /= logmix2.sum(axis=1).reshape(OUTWIDTH, 1)
+for j in range(OUTWIDTH):
+    k = get_pi_idx(self.np_random.rand(), logmix2[j])
+    chosen_mean[j] = mean[j][k]
+    chosen_logstd[j] = logstd[j][k]
+next_z = (chosen_mean + np.exp(chosen_logstd)
+          * self.np_random.randn(OUTWIDTH) * np.sqrt(self.temperature))</code></pre></div>
+  <p>VAE decoder 只在需要可视化梦境时使用，将 z 解码为图像；C 的训练完全可在潜空间进行。CarRacing 的梦境接口把 reward 固定为 0，主要用于可视化，不是一个可直接替代真实奖励训练的完整环境。Doom 则预测 restart/done：输出头额外提供一个 logit，训练用 sigmoid 交叉熵，终止正样本权重为 10，潜向量 NLL 与终止损失相加；推理时 logit&gt;0 即判终止，每存活一步 reward=1，最长 2100 步。由于死亡在单帧上是稀有事件，论文选择阈值判定而非伯努利采样，以降低不稳定。</p>
+  <p>策略迁移时，真实 Doom 重新用 V 编码观测，并把真实观测对应的 z 与 M 的状态输入同一个 C。论文结果中 τ=1.15 的梦境策略在真实环境 100 次测试得到约 1092±556 的生存步数，高于梦中约 918±546；较高方差和不同温度结果必须一起读。τ=0.1 时虚拟得分接近满分而真实得分很低，是模型被利用的反面证据，不是“更确定就更好”。</p>
+</section>
+
+<section class="doc-block" id="repository-callchain">
+  <h2>7. hardmaru 官方仓库结构与真实调用链</h2>
+  <p>本任务指定的仓库 <a href="https://github.com/hardmaru/WorldModelsExperiments/tree/fd982b9691a941b52c6addbde29bc801ca6202c8">hardmaru/WorldModelsExperiments</a> 是 World Models 作者 David Ha（hardmaru）维护的配套实验实现，README 明确给出论文与复现步骤，采用 MIT 许可。固定提交日期为 2020-05-26；README 还指向 zacwellmer 的 TensorFlow 2.2 第三方实现，但那只是推荐链接，不能倒过来把它当作本仓库的代码。本仓库本身是 TensorFlow 1.x 风格。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>路径</th><th>职责</th><th>调用关系</th></tr></thead><tbody>
+  <tr><td>carracing/extract.py、extract.bash</td><td>随机策略收集观测与动作</td><td>写 record/*.npz</td></tr>
+  <tr><td>carracing/vae/vae.py、vae_train.py</td><td>ConvVAE 图、损失和训练</td><td>record → tf_vae/vae.json</td></tr>
+  <tr><td>carracing/series.py</td><td>用已训练 VAE 保存每帧 μ、logvar</td><td>vae.json + record → series/series.npz</td></tr>
+  <tr><td>carracing/rnn/rnn.py、rnn_train.py</td><td>MDN-RNN、采样和 teacher forcing</td><td>series → tf_rnn/rnn.json 与 initial_z</td></tr>
+  <tr><td>carracing/model.py</td><td>真实环境 V-M-C rollout</td><td>加载 vae/rnn/controller JSON</td></tr>
+  <tr><td>carracing/train.py、es.py</td><td>MPI 并行评估、CMA-ES 等优化器</td><td>ask → worker/simulate → tell</td></tr>
+  <tr><td>carracing/dream_env.py、dream_model.py</td><td>潜空间梦境与 VAE 可视化</td><td>M.sample → z；decoder 仅渲染</td></tr>
+  <tr><td>doomrnn/</td><td>含 done 的 Doom 世界模型与梦中训练</td><td>独立 VAE/RNN/env/train 实现</td></tr>
+  </tbody></table></div>
+  <p>CarRacing 的从头训练顺序是：收集数据、训练 VAE、运行 series.py、训练 RNN、将生成的 JSON 放入 <code>vae/</code>、<code>rnn/</code>、<code>initial_z/</code>，最后运行 train.py。评估模型则通过 model.py 加载 controller 的 best JSON。模型权重序列化不是标准 checkpoint：源码将浮点参数乘 10000、四舍五入为整数后存 JSON，加载时除回 10000；测试或转换这些权重时必须保留参数顺序与量化尺度。</p>
+  <p>依赖具有鲜明的时代限制：CarRacing README 列出 TensorFlow 1.8.0、NumPy 1.13.3、Gym 0.9.4、cma 2.2.0、mpi4py 2，根 README 明确指出 gym 0.9.x 可用而 0.10.x 不可用。数据收集需要 OpenGL/headless X，多 worker 训练依赖 MPI。直接用现代 Gymnasium API 替换 reset/step 返回值并不能保证等价；还需要核对渲染、随机种子和旧环境包装。本文没有安装这些依赖，也没有运行仓库中的模型。</p>
+</section>
+
+<section class="doc-block" id="results-and-failure">
+  <h2>8. 实验说明什么，以及模型为何会被“作弊”</h2>
+  <p>CarRacing 的消融将 M 的贡献展示得很清楚：只给 C 输入 z，线性控制器在 100 次随机测试上为 632±251；增加一个含 40 个 tanh 单元的隐藏层后为 788±141；完整 z+h 线性控制器为 906±21。这里的 h 不是每步枚举多个未来再规划，而是把历史压缩成对控制有用的特征，策略仍然是一步反射式决策。论文参数表给出 CarRacing VAE 4,348,547、MDN-RNN 422,368、C 867，说明主要容量确实放在 V/M 而非 C。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>设置</th><th>策略可见信息</th><th>论文报告（100 次测试）</th><th>正确解读</th></tr></thead><tbody>
+  <tr><td>V only</td><td>z</td><td>632±251</td><td>空间表征可开车，但转弯不稳定</td></tr>
+  <tr><td>V + 隐藏层</td><td>z，经非线性策略</td><td>788±141</td><td>增加 C 容量仍不足以达到任务阈值</td></tr>
+  <tr><td>V+M+C</td><td>z、h</td><td>906±21</td><td>历史/预测特征帮助稳定控制</td></tr>
+  <tr><td>Doom 梦中训练 τ=1.15</td><td>z、c、h</td><td>真实环境 1092±556</td><td>可迁移，但方差大且依赖温度</td></tr>
+  </tbody></table></div>
+  <p>梦境的根本风险是<strong>分布外模型误差被策略主动放大</strong>。随机策略数据只覆盖部分状态；CMA-ES 会寻找使模型回报最大的动作，包括那些让 M 错误地“不发火球”或让正在形成的火球消失的动作。梦中高分因此可能只是钻了近似模型的漏洞。更棘手的是，C 可以访问 M 的隐藏状态，相当于能看到部分模拟器内部状态，可能更容易发现并利用错误动态。</p>
+  <p>混合密度与温度是缓解手段而不是正确性保证。MDN 保留多种未来，增加 τ 使控制器不能总沿单一漏洞轨迹获利；但 τ 过大又会让任务难到无法学习。论文表中 τ=1.30 的真实均值低于 τ=1.15，却有较小方差，说明“均值最高”和“策略更稳”并不等价。世界模型的 NLL 或重建图像变好也不自动意味着控制性能提升，必须在真实环境用多随机种子评估。</p>
+</section>
+
+<section class="doc-block" id="iteration-and-comparison">
+  <h2>9. 从一次随机采集到迭代世界模型：不要夸大论文已做之事</h2>
+  <p>对于复杂环境，随机策略可能永远到不了关键区域，论文因此提出迭代流程：初始化 M、C；在真实环境 rollout 并保存动作与观测；训练 M 预测下一观测、奖励、动作和终止，再让 C 在 M 中优化奖励；若任务未完成，就继续收集。M 的高预测损失还可反号作为探索奖励，引导策略进入不熟悉的区域。这里的“预测动作”面向更一般的记忆/技能吸收设想，不是 CarRacing 代码已经实现的输出头。</p>
+  <p>论文实际展示的是简单任务上一次随机数据采集即可得到可用模型，并未证明这个迭代方案能解决开放世界。V/M 分离便于复用和分别调参，但重建目标不知道哪些细节对奖励重要；联合奖励预测虽能强化任务相关信息，又可能削弱跨任务复用。固定容量 LSTM 还可能遗忘持续收集的数据，论文把外部记忆和更大预测模型列为后续方向，而非已完成组件。</p>
+  <p>与 Dreamer 一类后续方法相比，这里的 C 是线性黑盒优化策略，V/M 分阶段训练，主要不是通过潜在想象的解析梯度训练 actor-critic。与 Genie 相比，它需要环境中的真实动作标签来训练 M，且输出的是低维 VAE 潜向量分布而非互联网视频规模的离散时空 token。与普通视频生成模型相比，它的评价终点是累计奖励和策略迁移，而不是 FVD 或文本一致性。把这些系统统称为“世界模型”并不意味着训练数据、状态、动作接口与推理成本可以互换。</p>
+  <p>成本也要拆开报告：V/M 的 GPU 监督训练与 C 的 CPU 并行环境评估是两种资源。论文称单独训练 V 或 M 在单 GPU 上不到一小时，但 CMA-ES 使用 64 核机器、population 64、每候选 16 次评估，并训练到较多代数；不能把“小控制器参数少”误写成“总采样成本低”。梦境可省去游戏渲染和物理引擎，但 LSTM 顺序状态更新仍存在，且最终真实环境评估不可省略。</p>
+</section>
+
+<section class="doc-block" id="reproduction-checklist">
+  <h2>10. 复现与单元测试清单</h2>
+  <p><strong>数据与 VAE。</strong>先固定环境版本、动作重复、图像 resize 和 10,000 条 episode 的选择规则。测试输入 uint8 转 float 后确实除以 255，VAE 输出形状为 [B,64,64,3] 且位于 [0,1]；测试 μ/logvar 到 z 的采样在固定 ε 时逐元素等于公式；KL 在全 μ=0、logvar=0 时应接近容差下限而非随意变成负数。另写测试验证重建损失先对每帧求和再对 batch 求均值，避免误用全局 mean 改变损失尺度。</p>
+  <p><strong>MDN-RNN。</strong>用小 K、小 z 维度和手工 logits 测试 softmax 后每个维度权重和为 1；对照直接计算 log 概率检验 <code>reduce_logsumexp</code> 的 NLL，并包含极大、极小 logstd 的数值稳定性样例。用两条长度不同的伪序列检查 [z<sub>t</sub>,a<sub>t</sub>]→z<sub>t+1</sub> 没有 off-by-one；测试每批重新采样 z 而非把 series 中的某一次采样固化。最后断言 CarRacing MDN 每时间步输出 480 个参数，并检查 reshape 后均值不会串到 logstd。</p>
+  <p><strong>控制与梦境。</strong>构造全零 z/h 时动作应仅由 bias 决定；断言转向在 [-1,1]、油门和刹车在 [0,1]。单步测试应验证 C 先用旧 h 算动作，M 再用当前 z 和该动作更新状态；episode reset 后 h、c 必须归零。固定 τ 和随机种子时梦境序列应可重复，τ 改变应同时影响混合选择和噪声尺度。Doom 还需测试 logit=0 的阈值语义、终止权重、reset 时清状态，以及 2100 步上限。</p>
+  <p><strong>CMA-ES 与系统测试。</strong>用二次型或简单可解析回报的玩具控制器检查 ask/tell 的奖励符号：高奖励候选必须优于低奖励候选，而不是被最小化方向反转。检查 867 维向量拆成 bias 与 weight 的顺序、JSON 的 10000 倍量化和 MPI 返回结果的 job index 对齐。用“一条伪观测序列贯穿 extract→VAE→series→RNN→controller”的 dry-run 测试形状与文件路径即可，不需要在此阶段执行完整训练。最终至少报告多个未见随机种子上的真实环境均值、标准差、episode 数和温度，而非仅展示最佳梦境片段。</p>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>11. 原文、项目与官方代码来源</h2>
+  <ul>
+    <li><a href="https://arxiv.org/abs/1803.10122">David Ha、Jürgen Schmidhuber：World Models，arXiv:1803.10122v4</a>；本文数学定义、实验流程、参数表和温度分析均以该版本为主。正式 NeurIPS 版本题名为 <em>Recurrent World Models Facilitate Policy Evolution</em>。</li>
+    <li><a href="https://worldmodels.github.io/">World Models 官方交互文章与项目页</a>，包含 VAE、梦境和温度交互演示。</li>
+    <li><a href="https://github.com/hardmaru/WorldModelsExperiments/tree/fd982b9691a941b52c6addbde29bc801ca6202c8">hardmaru/WorldModelsExperiments 官方实验仓库，固定提交 fd982b9691a941b52c6addbde29bc801ca6202c8</a>；本地已读 README、carracing 与 doomrnn 中的 VAE、RNN、rollout、梦境、CMA-ES 和训练脚本。</li>
+    <li><a href="https://arxiv.org/abs/1604.00772">Hansen：The CMA Evolution Strategy: A Tutorial</a>，用于区分 CMA-ES 算法本身与本仓库的 cma 包装。</li>
+    <li><a href="https://arxiv.org/abs/1312.6114">Kingma、Welling：Auto-Encoding Variational Bayes</a>；<a href="https://arxiv.org/abs/1308.0850">Graves：Generating Sequences with Recurrent Neural Networks</a>，分别为 VAE 与 MDN 序列建模背景。</li>
+  </ul>
+  <p>资料与源码核验日期：2026-11-28。所有代码链接均指向上述已读文件的真实路径和固定提交；本地只读分析，未执行模型、训练、依赖安装或论文性能复测。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/world-models.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

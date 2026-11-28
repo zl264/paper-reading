@@ -1,0 +1,932 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="MVSplat：高效多视图 3D 高斯重建：原理、详细结构、训练推理与代码精读。"><title>MVSplat：高效多视图 3D 高斯重建｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="mvsplat 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>MVSplat：用平面扫描代价体前馈预测 3D 高斯</h1>
+  <p class="doc-subtitle">从带位姿的稀疏图像，到显式匹配、深度细化、高斯参数化与可微光栅化</p>
+  <p class="reading-note">精读依据：arXiv:2403.14627v2（2024-07-18）与官方仓库固定提交 <a href="https://github.com/donydchen/mvsplat/tree/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01">01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01</a>（2025-08-27）。文中区分论文叙述与该提交的默认配置；只核读源码，未在本地训练或推理。</p>
+  <div class="paper-meta"><span>ECCV 2024 Oral</span><a href="https://arxiv.org/abs/2403.14627">论文</a><a href="https://donydchen.github.io/mvsplat/">项目页</a><a href="https://github.com/donydchen/mvsplat">官方仓库</a></div>
+  <nav class="paper-nav" aria-label="页面导航"><a href="../index.html">← 论文精读首页</a><a href="../categories/3dgs.html">所属分类：3D Gaussian Splatting</a></nav>
+</header>
+
+<section class="doc-block" id="problem">
+  <h2>1. 问题定义：一次前向传播把稀疏视图变成场景表示</h2>
+  <p class="lead">MVSplat 解决的不是“对同一个场景采集大量照片后逐场景优化”，而是跨场景学习一个通用映射：输入 <em>K</em> 张图像及其内参、外参，通常只需两张，就直接输出可用于任意目标相机渲染的 3D Gaussian 集合。图像尺寸为 <em>H</em>×<em>W</em> 时，默认每个输入像素对应一个高斯，因此总计 <em>KHW</em> 个图元。每张上下文图像都保留自己的深度、协方差、透明度和球谐颜色，最后在世界坐标系中合并。</p>
+  <p>形式化地，输入为 <strong>I</strong><sup>i</sup>∈ℝ<sup>H×W×3</sup> 与投影 <strong>P</strong><sup>i</sup>=<strong>K</strong><sup>i</sup>[<strong>R</strong><sup>i</sup>|<strong>t</strong><sup>i</sup>]，输出为 {(μ<sub>j</sub>, α<sub>j</sub>, Σ<sub>j</sub>, c<sub>j</sub>)}。μ 是三维中心，α 是不透明度，Σ 是协方差，c 来自球谐系数。它与原始 3DGS 的本质差别是：没有为每个场景做梯度优化、稠密化和剪枝；与传统 MVS 的差别是：不先输出再融合一个点云，而是把逐视图反投影点的并集直接当作高斯中心，联合学习外观和形状参数。</p>
+  <div class="math-scroll"><div class="math">f<sub>θ</sub> : {(<strong>I</strong><sup>i</sup>, <strong>P</strong><sup>i</sup>)}<sub>i=1…K</sub> ↦ {(μ<sub>j</sub>, α<sub>j</sub>, Σ<sub>j</sub>, c<sub>j</sub>)}<sub>j=1…KHW</sub><span class="equation-number">(1)</span></div></div>
+  <p>pixelSplat 也预测像素对齐高斯，但从跨视图特征直接估计概率深度并采样；MVSplat 则显式问“若这个像素位于某个深度，另一视图对应位置的特征是否相似”。因此它把学习难题部分转化为几何匹配，而不是要求网络记忆绝对图像特征到深度的映射。这也解释了论文所强调的跨数据集泛化：相对相关性通常比绝对特征尺度更稳定。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="MVSplat 的代价体与多视图高斯预测"><rect x="15" y="40" width="175" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="102.5" y="72" text-anchor="middle" class="svg-title">稀疏图像 + 相机</text><text x="102.5" y="97" text-anchor="middle" class="svg-small">内外参已知</text><rect x="255" y="40" width="200" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="355.0" y="72" text-anchor="middle" class="svg-title">平面扫描代价体</text><text x="355.0" y="97" text-anchor="middle" class="svg-small">沿深度假设匹配特征</text><rect x="525" y="40" width="205" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="627.5" y="72" text-anchor="middle" class="svg-title">多视图 Transformer</text><text x="627.5" y="97" text-anchor="middle" class="svg-small">融合成本与图像特征</text><rect x="800" y="40" width="250" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="925.0" y="72" text-anchor="middle" class="svg-title">高斯参数与渲染</text><text x="925.0" y="97" text-anchor="middle" class="svg-small">高效前馈新视角合成</text><path d="M190 78 H255" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M455 78 H525" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M730 78 H800" fill="none" stroke="#788493" stroke-width="1.6"/><text x="540" y="250" text-anchor="middle" class="svg-small">代价体显式编码跨视图几何对应，减少纯学习对应的负担</text></svg></div><p class="figure-caption"><strong>图 1：MVSplat 以平面扫描几何提升前馈重建效率。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <div class="doc-note"><p><strong>输入边界不能省略：</strong>MVSplat 不是无位姿重建器。相机内外参、深度近远界与一致的图像归一化都是前馈过程的一部分；遮挡区域、反光表面与超出深度范围的几何仍会带来歧义。</p></div>
+</section>
+
+<section class="doc-block" id="features">
+  <h2>2. 多视图特征提取：浅层 CNN 加 Swin 式自/交叉注意力</h2>
+  <p>主干先把形状为 [B,V,3,H,W] 的输入按 ImageNet 均值和标准差归一化，再把 batch 与 view 维合并，进入由六个残差块组成的浅层 ResNet 式 CNN。论文附录说明后四个块每两个块 stride 2 一次，净下采样为四倍，得到 <strong>F</strong><sup>i</sup>∈ℝ<sup>H/4×W/4×C</sup>；默认配置 C=128。CNN 原始特征与 Transformer 输出都被保留：前者用于高分辨率上采样，后者用于构造代价体。</p>
+  <p>随后是六层多视图 Transformer。每层先做当前视图内的 self-attention，再以当前视图为 query、其余所有视图为 key/value 做 cross-attention，最后经过 FFN 与残差连接。代码用 <code>batch_features</code> 将 K 个视图组织成 K 组查询，每组查询携带另外 K−1 个视图，因而参数不随视图数改变。位置编码是正弦位置特征；窗口划分为 2×2，奇数层使用移位窗口，使信息能跨窗口流动。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · backbone/multiview_transformer.py</span><pre><code>for i, layer in enumerate(self.layers):
+    concat0 = layer(
+        concat0, concat1,
+        height=h, width=w,
+        shifted_window_attn_mask=shifted_window_attn_mask,
+        attn_num_splits=attn_num_splits,
+    )
+    if i &lt; len(self.layers) - 1:
+        features = list(concat0.chunk(chunks=num_views, dim=0))
+        concat0, concat1 = batch_features(features)
+
+features = concat0.chunk(chunks=num_views, dim=0)
+features = [f.view(b, h, w, c).permute(0, 3, 1, 2).contiguous()
+            for f in features]</code></pre></div>
+  <p class="file-ref">实际文件：<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/backbone/multiview_transformer.py#L503-L638">multiview_transformer.py：batch_features 与 MultiViewFeatureTransformer</a>；初始化见 <a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/backbone/backbone_multiview.py#L36-L183">backbone_multiview.py</a>。</p>
+  <p>这里不应把它描述成“用一个全局注意力混合所有 token”。官方实现的核心是局部窗口：同一窗口内完成跨视图交互，移位窗口弥补边界；多视图情况下 key/value 的 token 维包含其他视图，而输出仍回到每张图自己的特征网格。这种复用同一套投影参数的设计，是从两视图扩展到多视图的关键。</p>
+</section>
+
+<section class="doc-block" id="cost-volume">
+  <h2>3. 平面扫描代价体：用相机几何显式衡量每个深度假设</h2>
+  <p>对参考视图 <em>i</em> 的每个四分之一分辨率像素，先设 <em>D</em> 个深度候选。论文及 <code>config/experiment/re10k.yaml</code> 的正式实验配置均使用 D=128；基础 encoder YAML 中的 32 只是通用默认值，不能拿它替代实验设置。候选在<strong>逆深度</strong>而非线性深度上均匀采样，即 q<sub>m</sub>=(1−λ<sub>m</sub>)/far+λ<sub>m</sub>/near，d<sub>m</sub>=1/q<sub>m</sub>。近处候选因此更密，匹配透视投影的视差分布。</p>
+  <div class="math-scroll"><div class="math">x<sub>i</sub> ∼ d<sub>m</sub> <strong>K</strong><sub>i</sub><sup>−1</sup> x̃<sub>i</sub>；　x<sub>j</sub> ∼ <strong>K</strong><sub>j</sub>(<strong>R</strong><sub>j←i</sub> x<sub>i</sub> + <strong>t</strong><sub>j←i</sub>)；　<strong>F</strong><sup>j→i</sup><sub>d<sub>m</sub></sub> = Sample(<strong>F</strong><sup>j</sup>, π(x<sub>j</sub>))<span class="equation-number">(2)</span></div></div>
+  <p>实现时先由 <code>coords_grid</code> 生成齐次像素网格，用内参逆矩阵反投影，乘候选深度，再经相对位姿变换到另一相机。归一化投影坐标后，<code>grid_sample</code> 做双线性采样，得到 [VB,C,D,H/4,W/4]。注意此实现的 <code>pose</code> 是相对相机变换，不要把 world-to-camera 与 camera-to-world 混用。源视图在有效图像之外的采样填零，这既节约遮挡掩码计算，也意味着无匹配区域需要后续网络补足。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · costvolume/depth_predictor_multiview.py</span><pre><code>points = torch.inverse(intrinsics).bmm(grid.view(b, 3, -1))
+points = torch.bmm(pose[:, :3, :3], points).unsqueeze(2).repeat(
+    1, 1, d, 1
+) * depth.view(b, 1, d, h * w)
+points = points + pose[:, :3, -1:].unsqueeze(-1)
+points = torch.bmm(intrinsics, points.view(b, 3, -1)).view(b, 3, d, h * w)
+pixel_coords = points[:, :2] / points[:, -1:].clamp(min=clamp_min_depth)
+
+warped_feature = F.grid_sample(
+    feature1, grid.view(b, d * h, w, 2),
+    mode="bilinear", padding_mode=warp_padding_mode, align_corners=True,
+).view(b, c, d, h, w)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/costvolume/depth_predictor_multiview.py#L10-L123">官方 warping、候选逆深度与相对位姿实现（固定提交）</a>。</p>
+  <p>对每个候选，参考特征与 warp 后特征做逐通道乘积再求和，除以 √C，得到单通道匹配分数。K&gt;2 时，每个其他视图都贡献一个 [D,H/4,W/4] 相关性体，代码将它们在源视图维求平均。这样每个参考视图最终都有 [D+C,H/4,W/4] 的“代价体＋自身特征”输入，而不是引入昂贵的 3D 卷积。</p>
+  <div class="math-scroll"><div class="math">C<sup>i</sup><sub>d<sub>m</sub></sub>(u) = (1/(K−1)) Σ<sub>j≠i</sub> [〈F<sup>i</sup>(u), F<sup>j→i</sup><sub>d<sub>m</sub></sub>(u)〉 / √C]<span class="equation-number">(3)</span></div></div>
+</section>
+
+<section class="doc-block" id="depth-refinement">
+  <h2>4. 代价体细化与深度：2D U-Net、期望视差与残差修正</h2>
+  <p>原始相关性在无纹理、重复纹理和遮挡处不唯一。MVSplat 将 D 通道相关性与 C 通道图像特征拼接，经卷积和 2D U-Net 产生 D 通道细化结果，再用 1×1 卷积提供从原输入到输出的残差支路。实验配置 <code>costvolume_unet_channel_mult=[1,1,1]</code>、<code>costvolume_unet_attn_res=[4]</code>，网络启用 <code>use_cross_view_self_attn=True</code>，在最低分辨率处展平不同视图以交换信息。它仍是二维卷积网络，D 被当作通道，不存在 [D,H,W] 上的 3D CNN。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 代价体聚合、softmax 与细化</span><pre><code>raw_correlation_in = (feat01.unsqueeze(2) * feat01_warped).sum(1) / (c**0.5)
+raw_correlation_in_lists.append(raw_correlation_in)
+raw_correlation_in = torch.mean(torch.stack(raw_correlation_in_lists, dim=0), dim=0)
+raw_correlation_in = torch.cat((raw_correlation_in, feat01), dim=1)
+
+raw_correlation = self.corr_refine_net(raw_correlation_in)
+raw_correlation = raw_correlation + self.regressor_residual(raw_correlation_in)
+pdf = F.softmax(self.depth_head_lowres(raw_correlation), dim=1)
+coarse_disps = (disp_candi_curr * pdf).sum(dim=1, keepdim=True)
+pdf_max = torch.max(pdf, dim=1, keepdim=True)[0]
+
+refine_out = self.refine_unet(torch.cat(
+    (extra_info["images"], proj_feature, fullres_disps, pdf_max), dim=1
+))
+delta_disps, raw_densities = delta_disps_density.split(gaussians_per_pixel, dim=1)
+fine_disps = fullres_disps + delta_disps
+depths = 1.0 / fine_disps</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/costvolume/depth_predictor_multiview.py#L262-L407">DepthPredictorMultiView.forward</a>；为控制篇幅，节选只保留关键数据流，省略中间形状重排与分支。</p>
+  <p>softmax 沿 D 维归一化，深度不是 argmax，而是候选视差的概率加权平均，再取倒数。期望允许亚候选精度，也能在多峰分布中形成连续梯度，但若两个峰对应两个不同表面，期望可能落在两者之间。上采样后的期望视差、最大匹配置信度、投影特征与原图进入第二个轻量 U-Net，输出残差视差和 density logits。最终视差会被 clamp 到 [1/far,1/near]，所以几何范围明确受输入 near/far 限制。</p>
+  <div class="math-scroll"><div class="math">p<sub>i,u,m</sub> = softmax<sub>m</sub>(Ĉ<sup>i</sup>)，　q̂<sub>i,u</sub> = Σ<sub>m</sub> p<sub>i,u,m</sub> q<sub>m</sub>，　d̂<sub>i,u</sub> = 1 / clip(q̂<sub>i,u</sub> + Δq<sub>i,u</sub>)<span class="equation-number">(4)</span></div></div>
+  <div class="doc-warning"><strong>论文—代码差异：</strong>论文说由匹配置信度经两层卷积预测 opacity；启用深度细化的官方实现还让 <code>to_disparity</code> 输出一个 density logit，并经 sigmoid 得到 densities。渲染前另有 <code>map_pdf_to_opacity</code>，默认 initial=final=0 时简化为 0.5[(1−(1−p))+p]=p，不应把它误写成 softmax 最大值必然就是最终 alpha。</div>
+</section>
+
+<section class="doc-block" id="gaussian-head">
+  <h2>5. Gaussian head：从像素射线和网络原始通道构造合法图元</h2>
+  <p><code>to_gaussians</code> 的输入由深度细化特征、原 RGB 与上采样图像特征组成，两层 3×3 卷积预测像素偏移、尺度、四元数和球谐系数。<code>GaussianAdapter</code> 将每个高斯的原始向量拆成 3 个 scale、4 个 rotation 与 3·(L+1)² 个 SH 通道；默认 L=4，因此仅外观就有 75 个系数通道。另有两个原始通道经 sigmoid 产生 [0,1] 像素内偏移，并减 0.5 后以像素大小为单位加到射线坐标上。这就是“像素对齐”而不是“中心必须钉在像素格点”。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · common/gaussian_adapter.py</span><pre><code>scales, rotations, sh = raw_gaussians.split((3, 4, 3 * self.d_sh), dim=-1)
+scales = scale_min + (scale_max - scale_min) * scales.sigmoid()
+scales = scales * depths[..., None] * multiplier[..., None]
+rotations = rotations / (rotations.norm(dim=-1, keepdim=True) + eps)
+sh = rearrange(sh, "... (xyz d_sh) -> ... xyz d_sh", xyz=3)
+sh = sh.broadcast_to((*opacities.shape, 3, self.d_sh)) * self.sh_mask
+
+covariances = build_covariance(scales, rotations)
+c2w_rotations = extrinsics[..., :3, :3]
+covariances = c2w_rotations @ covariances @ c2w_rotations.transpose(-1, -2)
+origins, directions = get_world_rays(coordinates, extrinsics, intrinsics)
+means = origins + directions * depths[..., None]</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/common/gaussian_adapter.py#L30-L117">GaussianAdapter 完整参数变换</a>；像素偏移及最终视图维合并见 <a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/encoder_costvolume.py#L142-L247">EncoderCostVolume.forward</a>。</p>
+  <div class="math-scroll"><div class="math">μ = o + d r；　s = d·m·[s<sub>min</sub> + (s<sub>max</sub>−s<sub>min</sub>)σ(ŝ)]；　Σ = R<sub>c→w</sub> Q(q) diag(s²) Q(q)<sup>T</sup> R<sub>c→w</sub><sup>T</sup><span class="equation-number">(5)</span></div></div>
+  <p>协方差实现为 Q diag(s) diag(s)<sup>T</sup> Q<sup>T</sup>，等价于 Q diag(s²) Q<sup>T</sup>，四元数先归一化，尺度经 sigmoid 限制在配置区间并乘深度与像素反投影因子。球谐被旋到世界坐标，非零阶系数使用随阶数减小的 mask，初始化时更偏向 DC 常量颜色。各视图点云不做学习式融合，直接 flatten 成一个 [B,V·H·W,…] 集合；所以默认模型一像素一高斯，与 pixelSplat 一像素三个高斯形成明显的图元数量差异。</p>
+</section>
+
+<section class="doc-block" id="render-loss">
+  <h2>6. 可微渲染与光度监督：目标 RGB 是唯一必需的真值信号</h2>
+  <p>预测高斯传给官方修改版 <code>diff_gaussian_rasterization</code>。渲染器使用目标相机的内外参、近远界和背景色，把三维协方差投影成屏幕空间椭圆，按深度排序，并以 alpha 合成颜色。概念上像素颜色可写为按前后顺序累加的透射率公式；球谐根据观察方向提供视角相关颜色。与 NeRF 沿射线多次查询 MLP 不同，一套高斯可供多个目标视角共享，光栅化不用为每条射线重新跑场景网络。</p>
+  <div class="math-scroll"><div class="math">Ĉ(u) = Σ<sub>n</sub> T<sub>n</sub> α̃<sub>n</sub>(u) c<sub>n</sub>(v)，　T<sub>n</sub>=Π<sub>ℓ&lt;n</sub>(1−α̃<sub>ℓ</sub>(u))，　α̃<sub>n</sub>(u)=α<sub>n</sub> exp(−½ δu<sup>T</sup>Σ<sub>2D,n</sub><sup>−1</sup>δu)<span class="equation-number">(6)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · decoder/decoder_splatting_cuda.py</span><pre><code>color = render_cuda(
+    rearrange(extrinsics, "b v i j -> (b v) i j"),
+    rearrange(intrinsics, "b v i j -> (b v) i j"),
+    rearrange(near, "b v -> (b v)"),
+    rearrange(far, "b v -> (b v)"),
+    image_shape,
+    repeat(self.background_color, "c -> (b v) c", b=b, v=v),
+    repeat(gaussians.means, "b g xyz -> (b v) g xyz", v=v),
+    repeat(gaussians.covariances, "b g i j -> (b v) g i j", v=v),
+    repeat(gaussians.harmonics, "b g c d_sh -> (b v) g c d_sh", v=v),
+    repeat(gaussians.opacities, "b g -> (b v) g", v=v),
+)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/decoder/decoder_splatting_cuda.py#L35-L67">decoder_splatting_cuda.py</a> 调用 <a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/decoder/cuda_splatting.py#L47-L127">cuda_splatting.py：render_cuda</a>。</p>
+  <p>训练目标是所有目标视图上的 RGB 均方误差与 VGG-LPIPS 的加权和。默认 <code>mse</code> 权重 1，<code>lpips</code> 权重 0.05 且从第 0 步启用；LPIPS 调用 <code>normalize=True</code>，把 [0,1] 图像转换到网络需要的范围。论文明确指出无真实深度监督，几何约束来自“相机 warp 的结构先验＋目标视图光度误差”，而非额外 depth loss。</p>
+  <div class="math-scroll"><div class="math">L = (1/(B·N·3HW)) Σ ||Ĉ−C||²₂ + 0.05·mean(LPIPS<sub>VGG</sub>(Ĉ,C))<span class="equation-number">(7)</span></div></div>
+  <div class="doc-warning"><strong>不要把可选模块当成论文默认：</strong>仓库还有 <code>loss_depth.py</code>，它对渲染深度的相邻像素差做 RGB 边缘感知平滑，不是深度真值监督；默认 <code>experiment/re10k.yaml</code> 仅组合 <code>[mse, lpips]</code>。引用官方配置：<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/config/experiment/re10k.yaml#L1-L48">re10k.yaml</a>。</div>
+</section>
+
+<section class="doc-block" id="training">
+  <h2>7. 训练设置与优化：数据采样和主干初始化也属于方法的一部分</h2>
+  <p>论文在 RealEstate10K 的 67,477 个训练场景和 ACID 的 11,075 个训练场景上分别训练，输入输出统一为 256×256。每个 batch 元素是一条场景样本：两个上下文视图和四个目标视图，batch size 14，单张 A100 训练 300,000 次迭代，Adam 优化。当前配置给出初始/峰值学习率 2×10<sup>−4</sup>、余弦 OneCycle 调度、梯度裁剪 0.5；主干加载 UniMatch/GMDepth 预训练参数，而其余高斯预测部分照常学习。</p>
+  <p>RealEstate10K 的视角间隔在前 150,000 步从 25–45 帧逐渐扩大到 45–192 帧，让模型先学较容易的近基线对应，再适应大基线。代码还保留一个注释说明的兼容性细节：非环形相机采样时实际将 <code>min_gap</code> 用于上限，以复现 pixelSplat 的配置行为。因此复现实验不宜只照抄论文的“逐渐增加视角间隔”，而应固定相同配置和代码提交。</p>
+  <div class="code-block"><span class="code-label">官方配置节选 · experiment/re10k.yaml 与 main.yaml</span><pre><code># experiment/re10k.yaml
+model:
+  encoder:
+    num_depth_candidates: 128
+    costvolume_unet_attn_res: [4]
+    depth_unet_feat_dim: 32
+    depth_unet_attn_res: [16]
+    depth_unet_channel_mult: [1, 1, 1, 1, 1]
+trainer: {max_steps: 300001}
+loss:
+  lpips: {apply_after_step: 0, weight: 0.05}
+
+# config/main.yaml
+optimizer: {lr: 2.e-4, warm_up_steps: 2000, cosine_lr: true}
+trainer: {gradient_clip_val: 0.5}</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/config/experiment/re10k.yaml">实验覆盖配置</a>；<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/config/main.yaml#L20-L68">优化器与 trainer 基础配置</a>；<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/config/dataset/view_sampler_dataset_specific_config/bounded_re10k.yaml">视图间隔调度</a>。</p>
+  <p>一次训练迭代在 <code>ModelWrapper.training_step</code> 中依次执行 data shim、encoder(context)、decoder(target camera)、loss 累加。论文消融显示，去掉代价体导致最严重退化；去掉跨视图注意力不仅降低质量，还出现过拟合；去掉 U-Net 主要伤害只在一个输入视图可见的区域；深度细化进一步提升最终质量。由此不能把全部收益简单归因于“用了 Transformer”或“用了 3DGS”。</p>
+</section>
+
+<section class="doc-block" id="inference">
+  <h2>8. 推理与源码调用链：从数据集索引到目标视图图像</h2>
+  <p>官方测试入口是 Hydra 驱动的 <code>src/main.py</code>：解析配置后构建 <code>DataModule</code>、<code>EncoderCostVolume</code>、<code>DecoderSplattingCUDA</code> 和 loss 列表，再由 Lightning 加载 checkpoint 并执行 <code>test</code>。<code>ModelWrapper.test_step</code> 调用 encoder 一次，然后对每个目标相机调用 decoder，保存 RGB，可选计算 PSNR、SSIM、LPIPS。下面是官方 README 的评估命令，本文没有执行它。</p>
+  <div class="code-block"><span class="code-label">官方使用示例 · README.md（未在本地运行）</span><pre><code>python -m src.main +experiment=re10k \
+    checkpointing.load=checkpoints/re10k.ckpt \
+    mode=test \
+    dataset/view_sampler=evaluation \
+    test.compute_scores=true
+
+# 核心训练/测试调用链
+# src.main.train
+#   → DataModule → ModelWrapper
+#   → EncoderCostVolume.forward
+#       → BackboneMultiview → DepthPredictorMultiView → GaussianAdapter
+#   → DecoderSplattingCUDA.forward → render_cuda</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/README.md#L69-L196">官方评估与跨数据集命令</a>；<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/main.py#L39-L158">入口</a>；<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/model_wrapper.py#L123-L240">training_step 与 test_step</a>。</p>
+  <p>主要可调项是输入视图数、D、near/far、图像尺寸、每像素高斯数及是否启用深度细化。增加视图不增加参数，但会增加 warp 和注意力计算；增加 D 提升深度分辨率，却线性扩大代价体通道和相关计算。论文附录报告每像素三个高斯可小幅改善指标，但渲染更慢，默认仍是一。评估使用官方场景索引，不能把任意两张照片直接当成与 RE10K 同分布的输入。</p>
+  <p>环境上，README 固定 PyTorch 2.1.2/torchvision 0.16.2 与 CUDA 11.8 安装源；<code>requirements.txt</code> 还依赖 Hydra、Lightning、einops、jaxtyping、beartype、LPIPS，以及 dcharatan 的修改版 CUDA rasterizer。路径、相机约定、数据 chunk 格式和 checkpoint 键名都需匹配；纯 Python 复刻 splatting 可以作为单元测试，但不能据此宣称复现官方速度。</p>
+</section>
+
+<section class="doc-block" id="limits">
+  <h2>9. 效率、真实对比与局限：快来自整条管线，而非单个算子</h2>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>方法/设计</th><th>几何与生成方式</th><th>关键成本或边界</th></tr></thead><tbody>
+    <tr><td>逐场景 NeRF / 3DGS</td><td>一个场景单独优化；NeRF 体渲染采样，3DGS 光栅化</td><td>测试新场景仍需优化；MVSplat 则一次前向</td></tr>
+    <tr><td>pixelSplat</td><td>极线 Transformer 特征直接产生概率深度，再采样高斯</td><td>默认每像素三个高斯；论文报告更多参数及较慢编码</td></tr>
+    <tr><td>传统 MVSNet 类</td><td>代价体估计深度，再做点云融合</td><td>常依赖深度监督与 3D 卷积；MVSplat 用 2D 网络直接输出高斯</td></tr>
+    <tr><td>MVSplat</td><td>平面扫描相关性＋2D U-Net＋反投影高斯并集</td><td>仍受位姿、深度范围、遮挡和反射限制</td></tr>
+  </tbody></table></div>
+  <p>论文在作者实验条件下报告 0.044 秒（含 encoder 和 renderer）、12.0M 参数，输入两视图并渲染三个目标视图；encoder 为 0.043 秒，renderer 约 0.0015 秒。它不是“22 fps 的视频自回归生成”，而是稀疏图像到三维表示再到新视图的测量结果，硬件和计时协议必须一起引用。论文用 3DGS 光栅化避免逐射线网络查询，同时用一像素一高斯进一步减少图元数量。</p>
+  <p>代价体也有明确代价：粗略内存尺度为 O(K·D·(H/4)·(W/4)·C) 的 warp 特征和 O(K·D·H/4·W/4) 的相关性，注意力、上采样和中间 U-Net 特征另计；实际实现为了减少持有量会在各阶段重排和聚合，不能把某一个张量大小当作总显存。论文的限制包括玻璃、窗户等非朗伯反射面，以及 RE10K 场景多样性不足。只有单视图可见的区域不能靠相关性恢复真实几何，只能靠学习先验补全。</p>
+  <div class="doc-note"><p>对相机控制任务而言，MVSplat 是“重建一次、目标相机可重复渲染”的显式场景先验；它不提供文本到视频运动生成，也不保证离输入相机很远的视角有可靠内容。把其输出用于轨迹渲染时，应同时检查深度、浮游高斯和视野外空洞，而不能只看目标 PSNR。</p></div>
+</section>
+
+<section class="doc-block" id="reproduce">
+  <h2>10. 复现检查清单与可执行单元测试设计</h2>
+  <ul class="checklist">
+    <li><strong>相机约定：</strong>构造已知平移/旋转的合成双目场景，验证 warp 在正确深度处采样同一三维点；再交换视图顺序，检查相对位姿与内参像素缩放是否同步变化。</li>
+    <li><strong>候选深度：</strong>断言 q<sub>1</sub>=1/far、q<sub>D</sub>=1/near，所有 d 单调且位于 [near,far]；深度细化后 clamp 和取倒数不能颠倒顺序。</li>
+    <li><strong>张量布局：</strong>用 B=2、V=3 的小张量覆盖 <code>(v b)</code> 历史布局；确认每个 query 只看到其余 V−1 视图，代价体按源视图平均而非按 batch 平均。</li>
+    <li><strong>softmax 与期望：</strong>在手工相关性体上检查深度维概率和为 1，期望视差在候选范围内；用双峰分布测试说明 argmax、期望与细化残差的不同。</li>
+    <li><strong>高斯合法性：</strong>测试四元数非零归一化、协方差对称半正定、scale 限幅、opacity 范围；单位深度和相机旋转下验证 μ=o+dr 与 Σ 的世界旋转一致。</li>
+    <li><strong>渲染梯度：</strong>用单个或少量高斯的合成图测试 RGB loss 对 means、scales、rotation、SH、opacity 的梯度是否有限，并与 CPU 简化 alpha 合成器对小案例做数值对照。</li>
+    <li><strong>训练配置：</strong>确认正式实验覆盖 D=128、四个目标视图、LPIPS=0.05、300k 步与间隔调度，避免把通用默认 D=32 当作论文模型。</li>
+    <li><strong>评估复现：</strong>固定官方 index、checkpoint、输入分辨率与相机近远界；分别记录 encoder 和每个目标的 renderer 时间，预热策略和硬件必须注明。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>11. 原文、项目与已核读源码</h2>
+  <ul class="doc-sources">
+    <li>论文：Chen et al., <a href="https://arxiv.org/abs/2403.14627">MVSplat: Efficient 3D Gaussian Splatting from Sparse Multi-View Images</a>，本文核读 v2 的正文、实验与附录。</li>
+    <li>项目与模型入口：<a href="https://donydchen.github.io/mvsplat/">donydchen.github.io/mvsplat</a>；官方代码：<a href="https://github.com/donydchen/mvsplat/tree/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01">固定提交 01f9a28edb</a>。</li>
+    <li>核心源码链：<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/backbone/backbone_multiview.py">多视图主干</a>、<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/costvolume/depth_predictor_multiview.py">代价体与深度</a>、<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/encoder/common/gaussian_adapter.py">高斯适配器</a>、<a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/src/model/decoder/cuda_splatting.py">CUDA 光栅化接口</a>。</li>
+    <li>依赖来源：官方 <a href="https://github.com/donydchen/mvsplat/blob/01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01/requirements.txt">requirements.txt</a> 指向修改版 diff-gaussian-rasterization；本文不将第三方光栅器代码冒充 MVSplat 原创实现。</li>
+  </ul>
+  <p class="reading-note">范围声明：所有代码片段来自上述已核读的本地官方仓库快照，个别节选为突出数据流省略相邻行。未下载额外权重、未安装依赖、未运行模型，性能和训练结论均明确归属于论文或仓库文档。</p>
+  <nav class="paper-nav"><a href="#top">回到顶部</a><a href="../index.html">论文精读首页</a><a href="../categories/3dgs.html">所属分类</a></nav>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/3dgs.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

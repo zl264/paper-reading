@@ -1,0 +1,935 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="pixelSplat：从稀疏图像前馈预测 3D 高斯：原理、详细结构、训练推理与代码精读。"><title>pixelSplat：从稀疏图像前馈预测 3D 高斯｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="pixelsplat 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>pixelSplat：从两张图像前馈预测 3D 高斯</h1>
+  <p class="doc-subtitle">极线 Transformer 解决尺度线索，概率深度让高斯“生成与淘汰”可微，再由 CUDA Splatting 渲染监督。</p>
+  <p class="reading-note">约需 40–55 分钟。论文对应 arXiv:2312.12337v4 / CVPR 2024；代码依据 dcharatan/pixelsplat 固定提交 59d420a409cd0f059366808a9f956001536b55f1。已核对官方论文、配置和多个真实源文件，未下载模型、安装依赖或运行训练/推理。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/3dgs.html">所属分类：3D Gaussian Splatting</a></div>
+  <div class="paper-meta"><a href="https://arxiv.org/abs/2312.12337">官方论文</a><a href="https://dcharatan.github.io/pixelsplat/">项目页</a><a href="https://github.com/dcharatan/pixelsplat/tree/59d420a409cd0f059366808a9f956001536b55f1">固定提交源码</a></div>
+</header>
+
+<section class="doc-block" id="task-and-paradigm">
+  <h2>1. 任务与范式：从逐场景拟合到跨场景前馈重建</h2>
+  <p class="lead">pixelSplat 的输入是一对参考图像、各自相机内外参与近远平面，输出是两视图预测的像素对齐高斯之并集；给定目标相机，输出新视角 RGB，也可输出深度。它通过在 RealEstate10k、ACID 等大量场景上训练一个共享网络，学习从稀疏观测推断三维辐射场。推理一个新场景时只做一次编码器前向，不做原始 3DGS 那种数万步逐场景优化。</p>
+  <p>原始 3DGS 的高斯参数本身就是优化变量，可借非可微的克隆、分裂、修剪改变基元布局。pixelSplat 的参数由编码器预测，训练梯度必须穿过高斯集合回到共享网络；直接移动一个局部支撑的椭球容易卡在错误位置，又不能用不可微操作任意生成或删除它。论文因此把“高斯在哪里”重写为“每条射线上各深度的概率是多少”，再让采样位置和概率耦合。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="pixelSplat 从稀疏视图预测高斯"><rect x="15" y="40" width="175" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="102.5" y="72" text-anchor="middle" class="svg-title">稀疏图像 + 位姿</text><text x="102.5" y="97" text-anchor="middle" class="svg-small">两个输入视角</text><rect x="255" y="40" width="200" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="355.0" y="72" text-anchor="middle" class="svg-title">多视图特征编码</text><text x="355.0" y="97" text-anchor="middle" class="svg-small">跨视图 attention</text><rect x="525" y="40" width="205" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="627.5" y="72" text-anchor="middle" class="svg-title">概率深度估计</text><text x="627.5" y="97" text-anchor="middle" class="svg-small">深度分布与不确定性</text><rect x="800" y="40" width="250" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="925.0" y="72" text-anchor="middle" class="svg-title">像素对齐高斯参数</text><text x="925.0" y="97" text-anchor="middle" class="svg-small">一次前向 → 可微渲染</text><path d="M190 78 H255" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M455 78 H525" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M730 78 H800" fill="none" stroke="#788493" stroke-width="1.6"/><text x="540" y="250" text-anchor="middle" class="svg-small">推理不逐场景梯度优化；新视角渲染用于训练监督</text></svg></div><p class="figure-caption"><strong>图 1：pixelSplat 将多视图预测与概率深度结合。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <p>另一障碍是 SfM 位姿只有任意尺度：同一张室内照片无法单独决定物体究竟是一米还是十米，输出却必须与该场景重建的相机平移尺度一致。pixelSplat 不是先估计一个全局尺度标量再相乘，而是在极线采样点上注入由两相机三角化得到的深度编码，让注意力通过对应关系取得尺度相容的几何线索。这里的“解决尺度歧义”是多视图条件推断，并非从无约束单目图像恢复真实米制。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>方法</th><th>新场景输入</th><th>表示获得方式</th><th>目标视图生成</th></tr></thead>
+    <tbody><tr><td>原始 3DGS</td><td>多视图、SfM 位姿与稀疏点</td><td>每个场景独立优化与密度控制</td><td>高斯光栅化</td></tr><tr><td>pixelNeRF</td><td>少量条件图像</td><td>共享图像编码器 + 条件辐射场</td><td>沿射线查询与体渲染</td></tr><tr><td>光场 Transformer</td><td>少量图像及相机</td><td>图像 token/射线查询，不显式导出 3D 场</td><td>跨注意力回归射线颜色</td></tr><tr><td>pixelSplat</td><td>通常两张带位姿图像</td><td>一次前向预测显式高斯</td><td>同一高斯集合可重复光栅化</td></tr></tbody>
+  </table></div>
+  <div class="doc-note"><p>论文在 256×256 训练和评测，RealEstate10k 主结果 PSNR 26.09、SSIM 0.863、LPIPS 0.136；消融显示去掉极线编码器或概率采样会明显下降。这些数值只适用于其数据划分和设置，不应外推为任意双图三维重建性能。</p></div>
+</section>
+
+<section class="doc-block" id="architecture-and-tensors">
+  <h2>2. 网络结构与数据流：主干、两轮极线注意力、逐像素头</h2>
+  <p>EncoderEpipolar 接收 context[image]，形状为 B×V×3×H×W；主实验 V=2。DINO 主干由 DINO 预训练 ResNet-50 和 ViT-B/8 组成，将 ResNet 特征、ViT 局部 token 重排到原分辨率后的特征、ViT 全局 token 广播特征相加。之后 ReLU+Linear 投影为 d_feature=128。与仅把低分辨率 ViT token 直接解码相比，这种像素对齐特征保留了预测每个像素高斯的接口。</p>
+  <p>极线 Transformer 先用 stride=kernel=4 的卷积降采样，因此 256×256 特征变成 64×64；注意力 query 为每个视图像素位置，key/value 来自其他视图沿极线的样本。配置 num_layers=2、num_heads=4、d_dot=128，深度编码有 10 个 octave。每层之后的 feed-forward 位置被 ImageSelfAttentionWrapper 替换为逐图自注意力，在单张图像内部传播信息，而不是执行普通全局 MLP。结束后用转置卷积升回 4 倍，再经两层 7×7 卷积细化并加残差。</p>
+  <p>特征回到 H×W 后，再叠加一个由原 RGB 经 7×7 卷积得到的高分辨率 skip。逐像素 DepthPredictorMonocular 输出 2×Z×S 个数，Z=32 是深度桶，S=1 是表面数；softmax 得到深度概率，sigmoid 得到桶内 offset。另一个 to_gaussians 头输出 S×(2+7+3D<sub>SH</sub>)，前两个是像素内位置偏移，其余是 3 个 scale、4 个四元数和三通道 SH。默认 SH 阶数 4，所以 D<sub>SH</sub>=25。</p>
+  <a class="file-ref" href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/encoder_epipolar.py#L112-L213">官方源码：encoder_epipolar.py 的 forward；维度默认见 config/model/encoder/epipolar.yaml</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · encoder_epipolar.py（排版精简）</span><pre><code>b, v, _, h, w = context["image"].shape
+features = self.backbone_projection(self.backbone(context))
+features, sampling = self.epipolar_transformer(
+    features, context["extrinsics"], context["intrinsics"],
+    context["near"], context["far"])
+features = features + self.high_resolution_skip(context["image"])
+
+features = rearrange(features, "b v c h w -> b v (h w) c")
+depths, densities = self.depth_predictor(
+    features, context["near"], context["far"], deterministic,
+    1 if deterministic else self.cfg.gaussians_per_pixel)
+# to_gaussians: 像素内 xy 偏移 + scale/rotation/SH。
+gaussians = rearrange(self.to_gaussians(features),
+                      "... (srf c) -> ... srf c", srf=num_surfaces)</code></pre></div>
+  <p>训练每像素独立采样三次，故 H=W=256、V=2、S=1 时，一个场景产生 2×256×256×3=393,216 个高斯。deterministic=True 时采样数强制为 1，走 top-k 等价的最大概率桶，产生 131,072 个高斯。最终把 B×V×R×S×M 合并为 B×G，再被目标视图共享使用。网络不会先对两个视角重合的高斯去重，重复覆盖是其显式设计局限。</p>
+</section>
+
+<section class="doc-block" id="epipolar-transformer">
+  <h2>3. 极线 Transformer：把候选对应和对应深度一起编码</h2>
+  <p>对于参考图 I 的像素 u，其射线由相机内参 K 和 camera-to-world 外参 T 确定。将该射线在另一视图 Ĩ 中投影，近、远平面交点定义有效极线区段 ℓ。官方 EpipolarSampler 在该区段均匀取 S=32 个归一化图像坐标，grid_sample 双线性抽取另一视图的特征。若视锥区段不与图像相交，使用 overlaps_image 将采样特征置零。</p>
+  <p>每个候选点 ũ<sub>l</sub> 不只提供外观特征，还和原射线三角化，得到该对应若成立时在原相机中的深度 d̃<sub>l</sub>。深度先裁剪到 near/far，再转换为 relative disparity，经过频率位置编码 γ 与线性投影，和采样特征相加。论文用拼接符号描述“特征加深度编码”，固定提交实现是相加，两者通道都投影到 128：</p>
+  <div class="math-scroll"><div class="math">s<sub>l</sub> = F̃[ũ<sub>l</sub>] + P(γ(disparity(d̃<sub>l</sub>))),　q = QF[u],　k<sub>l</sub> = Ks<sub>l</sub>,　v<sub>l</sub> = Vs<sub>l</sub><span class="equation-number">(1)</span></div></div>
+  <div class="math-scroll"><div class="math">F[u] ← F[u] + softmax<sub>l</sub>(q·k<sub>l</sub>/√d) v<sub>l</sub>,　F ← F + SelfAttention(F)<span class="equation-number">(2)</span></div></div>
+  <p>当外观匹配选中正确极线位置时，value 也携带该位置的深度编码，因此 query 特征能获得与当前 SfM 尺度一致的深度线索。没有可靠跨视图对应的区域，由逐图 self-attention 传播邻近信息填补，但这只是先验推断，不是真实观测恢复。</p>
+  <a class="file-ref" href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/epipolar/epipolar_transformer.py#L79-L159">官方源码：epipolar_transformer.py；几何采样在 epipolar_sampler.py</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · epipolar_transformer.py 与 epipolar_sampler.py</span><pre><code># 对每条射线在另一图像的近/远投影端点间均匀采样。
+s = self.num_samples
+sample_depth = (torch.arange(s, device=device) + 0.5) / s
+xy_sample = xy_min + sample_depth[..., None] * (xy_max - xy_min)
+samples = F.grid_sample(images, 2 * samples - 1,
+    mode="bilinear", padding_mode="zeros", align_corners=False)
+
+# 三角化候选深度，转为视差后编码，再与外观特征相加。
+depths = get_depth(origins, directions, sampling.xy_sample,
+                   other_extrinsics, other_intrinsics)
+depths = depths.maximum(near[..., None]).minimum(far[..., None])
+depths = depth_to_relative_disparity(depths, near, far)
+kv = sampling.features + self.depth_encoding(depths[..., None])
+q = rearrange(features, "b v c h w -> (b v h w) () c")
+features = self.transformer(q,
+    rearrange(kv, "b v ov r s c -> (b v r) (s ov) c"))</code></pre></div>
+  <p>多于两个输入视图时，可将所有其他视图极线样本并入 key/value 集合，并加入可学习的 per-view embedding；官方补充材料提供三视图结果。然而 key/value 数大致随“像素数×其他视图数×每线样本数”增加，显存开销不能忽略。注意力不是在整幅另一张图上全局匹配，而是利用已知相机把搜索约束到极线，这与无位姿图像匹配有本质差别。</p>
+</section>
+
+<section class="doc-block" id="probabilistic-depth">
+  <h2>4. 概率深度：用离散分布替代单点深度回归</h2>
+  <p>直接回归 d，然后 μ=o+d·r，会让均值只能从一个局部起点连续移动。高斯在错误位置几乎没有响应时，梯度很弱；即使移向真值，途中也可能先遮挡背景导致损失升高。pixelSplat 沿每条像素射线设置 Z 个深度桶。在视差空间均匀采样，z=0…Z−1：</p>
+  <div class="math-scroll"><div class="math">b<sub>z</sub> = [(1−z/Z)(1/d<sub>near</sub>−1/d<sub>far</sub>) + 1/d<sub>far</sub>]<sup>−1</sup><span class="equation-number">(3)</span></div></div>
+  <p>视差均布意味着近处深度划分更密、远处更稀，符合透视下近处像素运动更敏感的特点。网络输出 φ=softmax(a)，作为桶的归一化概率，并对每个桶输出 δ=sigmoid(b)。采样索引 z 后，用 (z+δ<sub>z</sub>)/Z 表示相对视差，再转换为深度，而不是简单把 δ 当作一个世界坐标单位加到 b<sub>z</sub>。这与代码的 relative_disparity_to_depth 一致，也比文字公式的简写更明确。</p>
+  <div class="math-scroll"><div class="math">ρ = (z+δ<sub>z</sub>)/Z,　d = [1/d<sub>near</sub> + ρ(1/d<sub>far</sub>−1/d<sub>near</sub>)]<sup>−1</sup>,　μ = o + d·r<sub>u</sub><span class="equation-number">(4)</span></div></div>
+  <p>sample_discrete_distribution 先再次归一化 pdf，累加为 CDF，以均匀随机数和 searchsorted 反演采样；gather 同时取回 φ<sub>z</sub> 和 δ<sub>z</sub>。训练时同一分布独立采样 M=3 次，使一次前向能让多个候选深度收到图像监督。deterministic 分支不是取期望深度，而是 top-k；当样本数被 EncoderEpipolar 固定为 1 时，就是概率最大的桶。</p>
+  <a class="file-ref" href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/epipolar/depth_predictor_monocular.py#L37-L81">官方源码：深度头；离散采样位于 src/misc/discrete_probability_distribution.py</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · depth_predictor_monocular.py 与 discrete_probability_distribution.py</span><pre><code>pdf = softmax(pdf_raw, dim=-1)
+offset = sigmoid(offset_raw)
+index, pdf_i = self.sampler.sample(pdf, deterministic, gaussians_per_pixel)
+offset = self.sampler.gather(index, offset)
+relative_disparity = (index + offset) / self.num_samples
+depth = relative_disparity_to_depth(relative_disparity, near, far)
+
+# 随机训练采样：CDF 反演；索引本身不对 pdf 求导。
+cdf = (pdf / (eps + pdf.sum(dim=-1, keepdim=True))).cumsum(dim=-1)
+u = torch.rand((*batch, num_samples), device=pdf.device)
+index = torch.searchsorted(cdf, u, right=True).clip(max=bucket_count - 1)
+pdf_i = normalized_pdf.gather(dim=-1, index=index)</code></pre></div>
+  <p>near/far 并非总是原数据的固定 0.1/10。默认配置 apply_bounds_shim=true，会按图像高度、near_disparity=3 和视差约束调整边界，再裁剪输入 patch 以符合注意力 patch 与下采样倍数。复现时必须同时保留数据 shim 和模型，不应只拷贝网络形状。</p>
+</section>
+
+<section class="doc-block" id="differentiable-sampling">
+  <h2>5. 可微采样的关键：把被抽中桶的概率作为不透明度</h2>
+  <p>离散索引 z 的采样本身不可微，但取回的 φ<sub>z</sub> 是普通可微张量。pixelSplat 将抽中高斯的不透明度设为该概率（训练再除以 M）：</p>
+  <div class="math-scroll"><div class="math">z ~ p<sub>φ</sub>(z),　α = φ<sub>z</sub>/M,　∂L/∂a<sub>z</sub> 经由 α=softmax(a)<sub>z</sub> 回传<span class="equation-number">(5)</span></div></div>
+  <p>若某次抽样的高斯改善渲染，梯度通常推动其 opacity 增大，softmax 相应提高以后再次采到该桶的概率；若它造成错误遮挡，梯度可压低 opacity 和该桶概率。网络于是能以连续概率变化实现软性的“生成/淘汰”，无需把不可分割的 clone/prune 操作插入编码器计算图。训练时 M=3 条样本共享同一条射线，除以 3 避免总 opacity 因样本数直接翻三倍。</p>
+  <div class="doc-warning"><strong>不要把它误写成普通连续 VAE 重参数化。</strong>这里没有 z=μ+σ·ε 的连续位置变换，也没有直接用 ∇<sub>φ</sub>μ 穿过离散采样；可微通道是 gather 回来的概率到 opacity 的恒等映射。它能提供有用学习信号，但不是无偏的路径导数估计，也不保证离散索引采样方差消失。</div>
+  <p>固定提交的 map_pdf_to_opacity 还支持幂次 warm-up，一般公式为 0.5[1−(1−p)<sup>e</sup>+p<sup>1/e</sup>]，e 随 global_step 变化。然而默认 initial=final=0、warm_up=1，即 e=1，映射退化为 p。use_transmittance 默认 false；若开启，会先计算 p/(1−cumsum_previous+ε) 再 gather，以桶间剩余透过率修改概率。这些分支不能省略成“实现永远 α=φ/3”的绝对规则。</p>
+  <p>可选 predict_opacity 还会增加独立 sigmoid 乘子，但默认 false。因而官方默认主路径仍是 PDF 概率控制不透明度；独立颜色、尺度和旋转头则正常通过可微回归监督。概率采样解决的是位置的局部极小与学习信号问题，不意味着模型能自动发现完全不可见区域的真实几何。</p>
+</section>
+
+<section class="doc-block" id="gaussian-adapter">
+  <h2>6. 从像素头到世界高斯：尺度、协方差与 SH 旋转</h2>
+  <p>GaussianAdapter 将原始输出切为 scale(3)、rotation(4)、SH(3D<sub>SH</sub>)。scale 经 sigmoid 映射到 [0.5, 15]，再乘深度和由归一化内参、像素尺寸得到的 0.1 倍尺度因子。因此高斯的物理范围会随射线上深度和相机焦距变化，而不是固定为若干世界单位。四元数除以自身范数，D<sub>SH</sub> 各阶在初始化乘衰减 mask：一阶起乘 0.1×0.25<sup>ℓ</sup>，使高阶方向分量初始更小。</p>
+  <div class="math-scroll"><div class="math">Σ<sub>cam</sub> = R(q) diag(s<sup>2</sup>) R(q)<sup>T</sup>,　Σ<sub>world</sub> = R<sub>c2w</sub> Σ<sub>cam</sub> R<sub>c2w</sub><sup>T</sup>,　μ<sub>world</sub> = o + d·r<span class="equation-number">(6)</span></div></div>
+  <p>由于编码器预测的是相机空间的高斯，外参不仅平移均值，还必须旋转协方差。方向相关 SH 也不能原样搬运：官方 rotate_sh 使用 e3nn 约定的 Wigner D 矩阵把 SH 从相机坐标旋到世界坐标。opacity 在旋转中保持不变。若仅将 μ 乘外参、却忘记 Σ 和 SH，目标视角中会出现椭圆朝向或反光方向错误。</p>
+  <a class="file-ref" href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/common/gaussian_adapter.py#L48-L116">官方源码：GaussianAdapter.forward 与输出维度 d_in</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · common/gaussian_adapter.py（排版精简）</span><pre><code>scales, rotations, sh = raw_gaussians.split((3, 4, 3 * self.d_sh), dim=-1)
+scales = scale_min + (scale_max - scale_min) * scales.sigmoid()
+scales = scales * depths[..., None] * self.get_scale_multiplier(
+    intrinsics, pixel_size)[..., None]
+rotations = rotations / (rotations.norm(dim=-1, keepdim=True) + 1e-8)
+
+covariances = build_covariance(scales, rotations)
+c2w_rotations = extrinsics[..., :3, :3]
+covariances = c2w_rotations @ covariances @ c2w_rotations.transpose(-1, -2)
+origins, directions = get_world_rays(coordinates, extrinsics, intrinsics)
+means = origins + directions * depths[..., None]
+harmonics = rotate_sh(sh.reshape(..., 3, self.d_sh), c2w_rotations)</code></pre></div>
+  <p>源码还预测像素内 xy offset：sigmoid 后以 0.5 为中心，乘一个像素尺寸加到射线格点，即每个表面可在本像素范围内微调位置。两个参考视图生成的全部高斯在返回时直接拼接，而目标视图 decoder 对同一场景的 G 个高斯做 repeat。这种设计便于批量渲染，但也让重复覆盖和数量随输入视图线性增长的问题显现。</p>
+  <p>值得区分两种 Gaussians 类型标注：common/gaussian_adapter.py 的内部 dataclass 保留 scales、rotations 供可视化/PLY 导出，model/types.py 的输出 Gaussians 则面向 decoder，携带 means、covariances、harmonics、opacities。固定提交还注明内部导出的 scale/rotation 尚未旋到世界空间，不能把调试导出当作已完全修正的外部资产格式。</p>
+</section>
+
+<section class="doc-block" id="rendering-and-losses">
+  <h2>7. 可微渲染与训练损失：同一高斯场渲染多个目标视图</h2>
+  <p>ModelWrapper.training_step 先编码 context，再把输出高斯与 target 相机交给 DecoderSplattingCUDA。decoder 将 B 个场景、V 个目标视图展开成 B·V 次渲染任务，每视图 repeat 同一份场景高斯。render_cuda 默认按 1/near 将相机平移、均值、协方差和 near/far 一起缩放，以改善数值范围；协方差乘 scale²，均值和相机平移乘 scale，保证几何相似而不改变渲染。</p>
+  <p>投影矩阵使用 OpenCV 风格 camera-to-world 外参的逆，并采用 z 映射到 [0,1] 的形式；归一化内参转 FoV。循环中构造 GaussianRasterizer，以 cov3D_precomp 的上三角六个数输入，SH 从 B×G×3×D 转成 B×G×D×3。最终颜色堆叠回 B×V×3×H×W。深度渲染不是另一套几何积分，而是把高斯相机空间 z（或 disparity 等变换）作为固定 RGB，再用同一 α 混合渲染并平均三通道。</p>
+  <a class="file-ref" href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/decoder/cuda_splatting.py#L47-L127">官方源码：render_cuda；损失实现见 src/loss/loss_mse.py、loss_lpips.py、loss_depth.py</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · cuda_splatting.py 与损失（排版精简）</span><pre><code>if scale_invariant:
+    scale = 1 / near
+    extrinsics[..., :3, 3] *= scale[:, None]
+    gaussian_means *= scale[:, None, None]
+    gaussian_covariances *= scale[:, None, None, None] ** 2
+    near, far = near * scale, far * scale
+view_matrix = extrinsics.inverse().transpose(-1, -2)
+full_projection = view_matrix @ projection_matrix.transpose(-1, -2)
+image, radii = GaussianRasterizer(settings)(
+    means3D=means, shs=shs, opacities=opacities[..., None],
+    cov3D_precomp=covariances[:, triu_row, triu_col])
+
+mse = cfg.weight * ((prediction.color - target_image) ** 2).mean()
+lpips = 0 if step &lt; 150_000 else 0.05 * vgg_lpips(pred, target).mean()</code></pre></div>
+  <div class="math-scroll"><div class="math">L = mean[(Ĉ−C)<sup>2</sup>] + 0.05·LPIPS(Ĉ,C)·1[step ≥ 150000] (+ L<sub>depth</sub> 仅特定正则配置)<span class="equation-number">(7)</span></div></div>
+  <p>RE10k 实验 batch size=7，训练 300,001 步（论文写 300,000），每场景采 4 个 target 视图；前 150,000 步参考视图帧距从 25 线性增至 45。Adam 学习率 1.5×10<sup>−4</sup>，前 2000 步线性 warm-up，梯度裁剪 0.5。LPIPS 的 VGG 参数作为 buffer，不作为重建网络训练目标。README 说主配置需要约 80 GB 单卡显存，不能用降低 batch 后的资源需求冒充同等训练设置。</p>
+  <p>深度正则不是主模型必需项。对应配置使用 50,000 步 fine-tune，并启用 log-depth 归一化的邻域差分、二阶差分与图像边缘衰减；固定代码采用 exp(−σ<sub>image</sub>·颜色差) 和绝对值均值。论文附录公式出现正指数的排版，但实现应以此处代码为准并说明版本边界。主实验默认 train.depth_mode=null，不应无故给每次训练都加深度损失。</p>
+</section>
+
+<section class="doc-block" id="repository-call-chain">
+  <h2>8. 仓库结构与真实调用链：Hydra 配置如何落到模块</h2>
+  <p>入口是 src/main.py，+experiment=re10k 组合 dataset/re10k、encoder/epipolar、backbone/dino、decoder/splatting_cuda 和 mse/lpips 配置。dataset 的 view_sampler=bounded 负责根据 global_step 扩大双视图间距并选择中间 target；encoder.get_data_shim 先裁剪 patch，再按视差生成 near/far。数据提供的是 OpenCV 风格 camera-to-world 矩阵和归一化内参，方向约定为 +Z 朝前、+X 朝右、−Y 朝上。</p>
+  <div class="code-block"><span class="code-label">官方配置节选 · experiment/re10k.yaml + model/encoder/epipolar.yaml</span><pre><code># python -m src.main +experiment=re10k
+# 此处只展示配置，不表示本地执行。
+dataset.image_shape: [256, 256]
+data_loader.train.batch_size: 7
+trainer.max_steps: 300001
+loss: [mse, lpips]
+
+encoder:
+  d_feature: 128
+  num_monocular_samples: 32
+  num_surfaces: 1
+  gaussians_per_pixel: 3
+  use_epipolar_transformer: true
+  use_transmittance: false
+  epipolar_transformer: {num_layers: 2, num_heads: 4,
+                         num_samples: 32, downscale: 4}
+  gaussian_adapter: {gaussian_scale_min: 0.5,
+                     gaussian_scale_max: 15.0, sh_degree: 4}</code></pre></div>
+  <p>训练调用链可明确追踪为 <code>ModelWrapper.training_step → EncoderEpipolar.forward → BackboneDino → EpipolarTransformer/EpipolarSampler → DepthPredictorMonocular/DistributionSampler → GaussianAdapter → DecoderSplattingCUDA → render_cuda → losses</code>。验证同时跑 probabilistic 和 deterministic 两条路径并比较 PSNR、SSIM、LPIPS；测试入口则以 deterministic=False 采样，再每 32 个 target 相机分块解码。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>目录/文件</th><th>责任</th><th>复现关注点</th></tr></thead>
+    <tbody><tr><td>src/model/encoder/</td><td>图像编码、极线注意力、深度采样与高斯适配</td><td>各模块张量约定和配置共同决定输出</td></tr><tr><td>src/model/decoder/</td><td>基于 diff_gaussian_rasterization 的 RGB/深度渲染</td><td>需匹配的 PyTorch/CUDA 编译环境</td></tr><tr><td>src/dataset/view_sampler/</td><td>训练课程和评估视角索引</td><td>训练与测试的 gap 规则不同</td></tr><tr><td>src/loss/</td><td>MSE、延迟 LPIPS、可选深度正则</td><td>权重及生效 step 不可遗漏</td></tr><tr><td>assets/evaluation_index_*.json</td><td>固定评估参考/目标帧</td><td>用于可比评价，不应随机替换后横比论文数值</td></tr></tbody>
+  </table></div>
+  <p>README 记录 camera-ready 版本将“自注意力+卷积”改为纯逐图 self-attention，并修复 LPIPS 输入范围问题；loss_lpips.py 当前 normalize=True。不要拿旧 checkpoint、旧架构和新配置的结果直接混为同一模型。官方仅提供代码、预处理数据入口和 checkpoint 链接；本文未验证这些外部文件在本环境的可下载性或运行兼容性。</p>
+</section>
+
+<section class="doc-block" id="inference-and-limitations">
+  <h2>9. 推理步骤、成本与真实局限</h2>
+  <p>完整推理顺序是：准备固定数量的带位姿参考图；执行 patch/bounds 数据变换；提取 DINO 双主干特征；执行两轮极线交叉与逐图自注意力；预测深度 PDF、offset、像素偏移、scale、rotation 和 SH；随机采样或选最大概率桶；转换到世界高斯；最后对任意多个目标相机重复 splatting。编码成本按场景支付一次，渲染成本按视图支付，这比每条新射线重新跑光场解码更有利于多帧输出。</p>
+  <p>可调的 deterministic 会改变高斯数和位置分布：验证 deterministic=True 只取每桶最大概率，并非取 3 个 top-k，因为编码器将样本数参数强制为 1。若在其他调用路径直接设置 num_samples&gt;1，则 DistributionSampler 可返回 top-k。随机推理可产生视图间不稳定性；要求可重复输出时应固定随机种子或使用确定性路径，并明确它与论文主测试设置的差异。</p>
+  <p>主要限制有四点。第一，需要准确相机与适当 near/far，宽基线遮挡或无纹理区域仍只能靠先验。第二，两视角高斯简单求并，不做融合去重；第三，未观测区域没有生成式补全，不能把 plausible 颜色当真实几何。第四，更多参考视图会增加极线注意力 key/value 和显存。论文还观察到反光表面可能变透明、从分布外视角看高斯像 billboard，这些问题继承自显式 splat 表示与训练分布。</p>
+  <p>成本不能只引用“渲染快”：256² 双图训练样本就产生近 40 万个高斯，编码器还需在 64×64 特征、每线 32 个样本上做多视图注意力。论文报告在其设置下比对比光场 Transformer 大幅降低编码加多帧渲染时间和训练内存，但场景目标视图数、图像分辨率和 GPU 都会改变结论。与 3DGS 的关系应是“共享显式表示和光栅器、不同参数获得方式”，而不是前者无条件取代后者。</p>
+</section>
+
+<section class="doc-block" id="reproduction-and-tests">
+  <h2>10. 复现与单元测试清单：先验证几何，再验证学习</h2>
+  <ul class="checklist">
+    <li><strong>相机与极线：</strong>用已知的平移双目相机验证同一三维点落在对应极线上，near/far 端点顺序正确；测试视锥不相交时 overlaps_image 和特征置零，检查 grid_sample 的 [0,1] 到 [−1,1] 转换。</li>
+    <li><strong>三角化与尺度：</strong>将整套世界坐标、相机平移、near/far 同乘 s，三角化深度应相应乘 s，relative disparity 保持一致。验证深度编码的 batch/view/other_view 轴没有转置错误。</li>
+    <li><strong>注意力形状：</strong>在 B=1、V=2、小 H/W 下手算 query 与 kv 数量；确保 key/value 的 sample 轴合并的是 S×(V−1)，图像 self-attention 不跨场景、不跨视图。</li>
+    <li><strong>深度桶：</strong>测试 z=0、Z−1 和 offset=0/1 的端点，验证 disparity 线性而 depth 非线性；PDF 每射线归一化到 1，gather 的索引和 offset 属于同一个桶。</li>
+    <li><strong>随机/确定采样：</strong>固定随机种子时 CDF 反演应可复现；单峰分布总命中正确桶。deterministic=True 配合编码器只返回一个最大概率桶，不要误断言返回三个。</li>
+    <li><strong>梯度通道：</strong>对单像素合成渲染的 opacity 求导，检查梯度经 gather、softmax 回到所有 logits；确认离散 index 没有伪梯度，训练 M=3 时 opacity 有 /3。</li>
+    <li><strong>高斯几何：</strong>检查 Σ 对称半正定，四元数归一化，scale 随深度和内参变化；将相机旋转后，均值、协方差和 SH 应一致变换，而非仅移动均值。</li>
+    <li><strong>尺度不变渲染：</strong>对 means、extrinsic translation、covariance、near/far 按代码同时缩放，在数值容差内输出应一致；协方差必须乘 s² 而不是 s。</li>
+    <li><strong>损失与课程：</strong>149,999 步 LPIPS 应为零，150,000 步后权重为 0.05；验证参考视图 gap 的课程、每场景 4 个 target、batch=7、Adam warm-up 与梯度裁剪。</li>
+    <li><strong>版本与评价：</strong>锁定提交和匹配 checkpoint，使用官方 evaluation index，分别记录随机和确定性输出、编码与解码耗时及峰值显存，不把不同版本数字拼接比较。</li>
+  </ul>
+  <p>推荐实现顺序为：独立几何函数与简单两像素 splat 参考实现；不接注意力的单视图概率深度；接入极线采样与深度编码；最后接完整 DINO 主干和多目标训练。这样可以在显存和训练时间大幅增加之前定位坐标轴、采样轴和梯度路径错误。</p>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>11. 原文、项目与官方代码来源</h2>
+  <ul class="doc-sources">
+    <li><a href="https://arxiv.org/abs/2312.12337">Charatan, Li, Tagliasacchi, Sitzmann. pixelSplat: 3D Gaussian Splats from Image Pairs for Scalable Generalizable 3D Reconstruction</a>，v4。重点依据第 4 节、Algorithm 1、实验设置与附录 A–C。</li>
+    <li><a href="https://dcharatan.github.io/pixelsplat/">官方项目页</a>；<a href="https://github.com/dcharatan/pixelsplat/tree/59d420a409cd0f059366808a9f956001536b55f1">官方仓库固定提交 59d420a409cd0f059366808a9f956001536b55f1</a>。</li>
+    <li>已读核心文件：<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/encoder_epipolar.py">encoder_epipolar.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/epipolar/epipolar_transformer.py">epipolar_transformer.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/epipolar/epipolar_sampler.py">epipolar_sampler.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/epipolar/depth_predictor_monocular.py">depth_predictor_monocular.py</a> 和 <a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/misc/discrete_probability_distribution.py">discrete_probability_distribution.py</a>。</li>
+    <li>高斯与渲染：<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/encoder/common/gaussian_adapter.py">gaussian_adapter.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/decoder/decoder_splatting_cuda.py">decoder_splatting_cuda.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/decoder/cuda_splatting.py">cuda_splatting.py</a>。</li>
+    <li>训练与配置：<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/model/model_wrapper.py">model_wrapper.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/loss/loss_lpips.py">loss_lpips.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/src/loss/loss_depth.py">loss_depth.py</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/config/experiment/re10k.yaml">experiment/re10k.yaml</a>、<a href="https://github.com/dcharatan/pixelsplat/blob/59d420a409cd0f059366808a9f956001536b55f1/config/model/encoder/epipolar.yaml">model/encoder/epipolar.yaml</a>。所有代码块均为实际读取文件的节选或为对齐多文件而显式精简的配置呈现；没有声称本地复现结果。</li>
+  </ul>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/3dgs.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

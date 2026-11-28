@@ -1,0 +1,917 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="3D Gaussian Splatting：显式高斯与实时渲染：原理、详细结构、训练推理与代码精读。"><title>3D Gaussian Splatting：显式高斯与实时渲染｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="3dgs 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>3D Gaussian Splatting：从稀疏点云到实时可微光栅化</h1>
+  <p class="doc-subtitle">把场景写成可优化的各向异性 3D 高斯：表示、投影、SH、自适应密度与官方训练源码。</p>
+  <p class="reading-note">约需 35–50 分钟。建议对照论文第 4–6 节和官方 Python 调用链阅读；公式使用 HTML 排版。代码依据 graphdeco-inria/gaussian-splatting 的固定提交 54c035f7834b564019656c3e3fcc3646292f727d，已在本地逐文件核对，未运行训练或推理。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/3dgs.html">所属分类：3D Gaussian Splatting</a></div>
+  <div class="paper-meta"><a href="https://arxiv.org/abs/2308.04079">论文：Kerbl et al., SIGGRAPH 2023 / TOG</a><a href="https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/">官方项目页</a><a href="https://github.com/graphdeco-inria/gaussian-splatting/tree/54c035f7834b564019656c3e3fcc3646292f727d">固定提交源码</a></div>
+</header>
+
+<section class="doc-block" id="problem-and-pipeline">
+  <h2>1. 问题边界：不是神经网络渲染器，而是显式场景的逐场景优化</h2>
+  <p class="lead">3DGS 接收静态场景的多张照片、对应的相机内外参，通常还有 SfM 标定时产生的稀疏点云；输出是一组可在任意目标相机下渲染的三维高斯。它不是“输入两张图、一次前向生成新场景”的泛化模型，也没有一个用于重建的编码器。训练针对每个场景单独进行，推理时直接使用优化好的高斯集合。</p>
+  <p>原始 NeRF 在每条相机射线上采样大量位置，反复查询密度与颜色网络，再沿射线积分。体素或哈希网格能减少网络成本，却仍然需要处理空间采样和空区域。3DGS 将基本单元改为有空间范围的显式椭球：每个高斯有位置、三维协方差、不透明度和方向相关颜色。渲染时将这些椭球投影成屏幕上的二维椭圆，按深度进行 α 混合，不沿每条射线查询 MLP。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="3DGS 高斯初始化、光栅化与密度控制"><rect x="15" y="35" width="180" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="105.0" y="67" text-anchor="middle" class="svg-title">多视图图像 + 相机</text><text x="105.0" y="92" text-anchor="middle" class="svg-small">SfM 稀疏点云</text><rect x="275" y="35" width="205" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="377.5" y="67" text-anchor="middle" class="svg-title">各向异性 3D 高斯</text><text x="377.5" y="92" text-anchor="middle" class="svg-small">位置、协方差、颜色</text><rect x="575" y="35" width="210" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="680.0" y="67" text-anchor="middle" class="svg-title">可微光栅化</text><text x="680.0" y="92" text-anchor="middle" class="svg-small">投影、排序、α 混合</text><rect x="875" y="35" width="185" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="967.5" y="67" text-anchor="middle" class="svg-title">渲染视图</text><text x="967.5" y="92" text-anchor="middle" class="svg-small">与真实图比较</text><path d="M195 73 H275" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M480 73 H575" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M785 73 H875" fill="none" stroke="#788493" stroke-width="1.6"/><rect x="335" y="205" width="400" height="76" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="535.0" y="237" text-anchor="middle" class="svg-title">分裂 / 克隆 / 修剪</text><text x="535.0" y="262" text-anchor="middle" class="svg-small">根据梯度和不透明度调整密度</text><path d="M967 111 V165 H535 V205" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M535 205 V166 H377 V111" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：3DGS 将显式场景表示与逐场景优化结合。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <p>“Splatting”不是把高斯直接当作一张带透明通道的精灵图片贴到屏幕，而是对三维概率形状的投影、可见性排序和连续权重求和。图中所示闭环体现三个相互依赖的设计：高斯提供可微的体积表示；tile 光栅器使训练和渲染足够快；密度控制则改变基元的数量，弥补稀疏初始化覆盖不足与 oversized 高斯的表示误差。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>维度</th><th>3DGS</th><th>典型 NeRF</th><th>普通点云渲染</th></tr></thead>
+    <tbody><tr><td>场景参数</td><td>无序的显式三维高斯</td><td>连续坐标到密度/颜色的函数</td><td>离散位置与颜色</td></tr><tr><td>图像生成</td><td>投影、按深度排序、前到后混合</td><td>沿射线采样与体渲染</td><td>点精灵或固定大小圆盘</td></tr><tr><td>获得方式</td><td>逐场景优化，并动态增删高斯</td><td>逐场景优化或条件网络预测</td><td>重建后直接显示</td></tr><tr><td>所需初始化</td><td>SfM 稀疏点即可；合成场景可随机初始化</td><td>相机位姿，通常无需点云</td><td>需要较可靠几何以免空洞</td></tr></tbody>
+  </table></div>
+  <div class="doc-note"><p>论文报告的是其数据集、A6000 等硬件及实现条件下的结果，包括 1080p 下至少 30 FPS 的目标和若干真实场景更高的帧率。这些不是对任意场景、任意 GPU 的保证；分辨率、遮挡深度、高斯数量及渲染器实现都会影响成本。</p></div>
+</section>
+
+<section class="doc-block" id="gaussian-representation">
+  <h2>2. 高斯表示：用旋转与缩放保证协方差合法</h2>
+  <p>第 k 个高斯可以记为 g<sub>k</sub> = (μ<sub>k</sub>, Σ<sub>k</sub>, o<sub>k</sub>, S<sub>k</sub>)。μ ∈ R<sup>3</sup> 是世界坐标均值；Σ 是 3×3 对称半正定协方差；o 是学习的不透明度参数，经 sigmoid 得到 α；S 是三个颜色通道的球谐系数。以 μ 为中心的非归一化高斯形状为：</p>
+  <div class="math-scroll"><div class="math">G<sub>k</sub>(x) = exp(−½ (x−μ<sub>k</sub>)<sup>T</sup> Σ<sub>k</sub><sup>−1</sup> (x−μ<sub>k</sub>))<span class="equation-number">(1)</span></div></div>
+  <p>这里没有把概率密度前面的归一化常数用于像素着色，因为真正参与混合的是学习的不透明度与空间响应的乘积。直接对 Σ 的九个元素做无约束梯度下降会破坏半正定性，Σ<sup>−1</sup> 也可能失去意义。论文把协方差分解为旋转 R 和对角缩放 S：</p>
+  <div class="math-scroll"><div class="math">L = R diag(s<sub>x</sub>, s<sub>y</sub>, s<sub>z</sub>),　Σ = L L<sup>T</sup> = R S S<sup>T</sup> R<sup>T</sup><span class="equation-number">(2)</span></div></div>
+  <p>实际存储的是三维 log-scale 和四元数 q，而不是矩阵 Σ。读取时执行 exp(scale) 得到正轴长，并归一化 q 构造旋转。L 的三列是椭球旋转后的主轴，L L<sup>T</sup> 自动对称半正定；正缩放让奇异情况也尽量受控。各向异性不是装饰：贴近表面的扁平椭球、细杆状结构和大面积低频区域，需要不同的轴长与朝向。若仅使用各向同性球体，在相同基元数下往往更难贴合几何。</p>
+  <a class="file-ref" href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L32-L48">官方源码：scene/gaussian_model.py，激活与协方差构造</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · scene/gaussian_model.py（排版精简）</span><pre><code>def build_covariance_from_scaling_rotation(scaling, modifier, rotation):
+    L = build_scaling_rotation(modifier * scaling, rotation)
+    return strip_symmetric(L @ L.transpose(1, 2))
+
+self.scaling_activation = torch.exp
+self.scaling_inverse_activation = torch.log
+self.opacity_activation = torch.sigmoid
+self.inverse_opacity_activation = inverse_sigmoid
+self.rotation_activation = torch.nn.functional.normalize
+self.covariance_activation = build_covariance_from_scaling_rotation</code></pre></div>
+  <p>注意成员变量 _scaling、_opacity、_rotation 都是“激活前”的值，_xyz 则直接是位置。因此保存的 PLY 中 opacity 是 logit、scale 是对数、rotation 是四元数，不能把这些列误读为 α 和物理轴长。读取/导出工具必须与该约定一致。</p>
+</section>
+
+<section class="doc-block" id="initialization-and-sh">
+  <h2>3. SfM 初始化与球谐：位置来自点云，视角颜色渐进开放</h2>
+  <p>官方 Scene 在输入目录存在 sparse 时走 COLMAP 读取器，存在 transforms_train.json 时走 Blender 合成数据读取器。COLMAP 分支读取 images.bin/txt、cameras.bin/txt 和 points3D，并支持针孔及简单针孔模型；它不是直接从畸变鱼眼照片运行高斯训练，输入需先完成合适的相机标定与去畸变。评估模式下按排序后的图像名每八张留出一张测试，前提是开启 eval。</p>
+  <p>初始化将每个 SfM 点的 RGB 转成零阶 SH，非零阶系数置零；不透明度设为 0.1 的 logit，旋转设为单位四元数。源码用 distCUDA2 计算最近三个邻点的平均平方距离，开方后取对数作为三个相同的初始 scale。这样无需从极稀疏点云估计易噪声的法线，也让初始半径适应局部点间距。合成数据若无点云，可在 [−1.3, 1.3]<sup>3</sup> 中生成 100,000 个随机点。</p>
+  <a class="file-ref" href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L149-L176">官方源码：create_from_pcd；Blender 初始化另见 scene/dataset_readers.py</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · scene/gaussian_model.py（排版精简）</span><pre><code>fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+features = torch.zeros((N, 3, (self.max_sh_degree + 1) ** 2)).cuda()
+features[:, :3, 0] = fused_color
+features[:, 3:, 1:] = 0.0
+
+dist2 = torch.clamp_min(distCUDA2(points), 1e-7)
+scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
+rots = torch.zeros((N, 4), device="cuda")
+rots[:, 0] = 1
+opacities = inverse_sigmoid(0.1 * torch.ones((N, 1), device="cuda"))</code></pre></div>
+  <p>球谐函数用低频方向基表达每个高斯随观察方向变化的 RGB。设 d 为从相机指向高斯或其反向的约定方向（实现必须一致），颜色为：</p>
+  <div class="math-scroll"><div class="math">c<sub>k</sub>(d) = Σ<sub>ℓ=0…L</sub> Σ<sub>m=−ℓ…ℓ</sub> S<sub>k,ℓm</sub> Y<sub>ℓm</sub>(d),　通道数 = 3，系数数/通道 = (L+1)<sup>2</sup><span class="equation-number">(3)</span></div></div>
+  <p>零阶近似漫反射本色，高阶用于表达反光等方向效应，但不是完整的物理 BRDF、阴影或多次光照模型。默认最大 L=3，每通道 16 个系数。每 1000 次迭代调用 oneupSHdegree，从 0 阶逐渐增加一个 band，防止早期视角信息不足时高阶颜色干扰基本几何。若 convert_SHs_python 开启，Python 中先按高斯位置与相机中心构造方向、eval_sh，再以 clamp_min(SH+0.5, 0) 得到预计算颜色；否则把 SH 交给 CUDA 光栅器。</p>
+</section>
+
+<section class="doc-block" id="projection-and-rasterization">
+  <h2>4. 投影与 tile 光栅化：三维协方差如何成为屏幕椭圆</h2>
+  <p>透视投影在局部用仿射近似。W 是世界到观察坐标的变换，J 是透视投影在高斯中心处的仿射近似雅可比，则相机/屏幕相关协方差为：</p>
+  <div class="math-scroll"><div class="math">Σ′ = J W Σ W<sup>T</sup> J<sup>T</sup>,　Σ<sub>2D</sub> = Σ′<sub>前两行、前两列</sub><span class="equation-number">(4)</span></div></div>
+  <p>J 包含焦距和深度倒数带来的局部尺度变化，因此同一个高斯靠近相机时 footprint 通常增大。去掉第三行与第三列后得到二维椭圆协方差，可在像素偏移 Δu 上计算 exp(−½ Δu<sup>T</sup> Σ<sub>2D</sub><sup>−1</sup> Δu)。这只是局部投影近似；靠近近裁剪面、远离视锥或透视变化剧烈时可能不稳定，论文因此描述 guard band 等剔除策略。</p>
+  <p>论文的快速光栅器把屏幕分为 16×16 像素 tile。先剔除视锥外基元，用 99% 置信范围检测与视锥/tile 的相交；一个高斯若覆盖多个 tile，就产生多个实例。实例的排序键组合 tile ID 和观察空间深度，使用 GPU radix sort 一次排序。每个 tile 确定有序列表的首尾范围，一个线程块协同把一批高斯装入 shared memory，像素线程再按前到后顺序合成。</p>
+  <p>这是一种全局预排序加 tile 内顺序遍历，而非逐像素精确排序。大高斯、复杂遮挡或深度交叉时，混合顺序可能是近似的。饱和像素可提前停止；整个 tile 内所有像素都饱和后停止遍历。反向传播复用前向的排序数组和 tile 范围，从后向前重走列表，而不是为每个像素保存任意长的动态数组。这样避免固定“只给前 N 个 splat 回传梯度”的限制，尽管计算量仍随实际深度复杂度增长。</p>
+  <a class="file-ref" href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/gaussian_renderer/__init__.py#L18-L128">官方源码：gaussian_renderer/__init__.py，Python 到 CUDA 光栅器的接口</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · gaussian_renderer/__init__.py（排版精简）</span><pre><code>screenspace_points = torch.zeros_like(pc.get_xyz, requires_grad=True, device="cuda") + 0
+screenspace_points.retain_grad()
+settings = GaussianRasterizationSettings(
+    image_height=camera.image_height, image_width=camera.image_width,
+    tanfovx=tan(camera.FoVx * 0.5), tanfovy=tan(camera.FoVy * 0.5),
+    viewmatrix=camera.world_view_transform,
+    projmatrix=camera.full_proj_transform,
+    sh_degree=pc.active_sh_degree, campos=camera.camera_center,
+    bg=bg_color, scale_modifier=scaling_modifier,
+    prefiltered=False, antialiasing=pipe.antialiasing)
+
+# 默认将 scale 和 quaternion 交给 CUDA；也可预先计算协方差和颜色。
+image, radii, depth = GaussianRasterizer(settings)(
+    means3D=pc.get_xyz, means2D=screenspace_points,
+    opacities=pc.get_opacity, scales=pc.get_scaling,
+    rotations=pc.get_rotation, shs=pc.get_features)</code></pre></div>
+  <div class="doc-warning"><strong>接口不是算法全貌。</strong>render() 主要组织张量、相机和设置；透视、tile 枚举、排序和前后向混合位于 diff-gaussian-rasterization 子模块。不能用这段 Python 就声称实现了完整 3DGS。固定提交还有 antialiasing、可选 Python SH/协方差分支及 depth 输出，这些是源码接口的一部分，不应倒填为 2023 论文全部原始细节。</div>
+</section>
+
+<section class="doc-block" id="alpha-compositing">
+  <h2>5. α 混合与梯度：与体渲染同构，但没有射线采样网络</h2>
+  <p>对覆盖某像素且按前到后排列的 N 个高斯，定义学习不透明度与二维高斯响应的乘积 α<sub>i</sub>，T<sub>i</sub> 为到达第 i 个基元前仍未被遮挡的透过率：</p>
+  <div class="math-scroll"><div class="math">α<sub>i</sub>(u) = o<sub>i</sub> G<sub>i,2D</sub>(u),　T<sub>i</sub> = Π<sub>j=1…i−1</sub> (1−α<sub>j</sub>),　C(u) = Σ<sub>i=1…N</sub> T<sub>i</sub> α<sub>i</sub>(u) c<sub>i</sub>(d)<span class="equation-number">(5)</span></div></div>
+  <p>迭代实现为 C ← C + T α<sub>i</sub> c<sub>i</sub>、T ← T(1−α<sub>i</sub>)，再加入背景项 T<sub>N+1</sub>C<sub>bg</sub>。NeRF 离散体渲染中 α<sub>i</sub>=1−exp(−σ<sub>i</sub>δ<sub>i</sub>)，两者合成形式相同；区别在于 3DGS 的有序项来自已投影的显式基元，而非沿射线采样的密度查询。一个高斯的位置、轴长、旋转和 SH 都能通过像素误差获得梯度。</p>
+  <p>screenspace_points 的零值占位张量被 retain_grad 标记，CUDA 将屏幕空间位置梯度写入其中。add_densification_stats 只累计可见高斯的二维梯度范数，并同步增加 denom。也就是说，密度控制的“位置梯度”不是三维世界坐标的梯度，而是 viewspace 张量前两维的梯度。这个细节直接影响复现时统计量的尺度。</p>
+  <p>前向的 T 随混合逐步衰减，反向从最终累积量恢复所需系数，避免长列表存储。对图像 L1/SSIM 的梯度先流经合成公式，再经二维协方差、透视雅可比和三维参数回到每个高斯。深度排序本身离散不可微，算法通过固定本次遍历顺序、对局部颜色和覆盖权重求导来优化；它并不把交换遮挡顺序的过程变成光滑函数。</p>
+</section>
+
+<section class="doc-block" id="adaptive-density">
+  <h2>6. 自适应密度：克隆、分裂、修剪与 Adam 状态同步</h2>
+  <p>只优化固定点集无法可靠地从稀疏 SfM 覆盖所有细节。论文在预热后每 100 次迭代进行一次密度控制，默认从第 500 次持续至第 15,000 次；阈值是平均 view-space 位置梯度 0.0002。高梯度的小高斯倾向对应欠重建，保留原件并复制一个，后续优化让二者移动、分化。高梯度且尺度较大的高斯倾向对应一个基元覆盖过多变化区域，则删除原高斯并生成 N=2 个新样本。</p>
+  <p>分裂时，以原高斯为概率分布，在局部按缩放采样标准正态、旋转到世界方向并加原均值；新缩放除以 0.8N，即 N=2 时除以 1.6。颜色和旋转继承，opacity 的原始 logit 也复制。分裂大致保持覆盖体积但提高空间分辨率；克隆增加基元总量与覆盖。源码中的 clone 并未在同一语句显式沿梯度位移，而是靠之后优化分开，这是实现上值得说明的边界。</p>
+  <a class="file-ref" href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py#L409-L473">官方源码：densify_and_split、densify_and_clone 与 densify_and_prune</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · scene/gaussian_model.py（排版精简）</span><pre><code>grads = self.xyz_gradient_accum / self.denom
+grads[grads.isnan()] = 0.0
+self.densify_and_clone(grads, max_grad, extent)  # 小且高梯度：复制
+self.densify_and_split(grads, max_grad, extent, N=2)
+
+# split：从原高斯采样位置，scale 除以 1.6，然后移除原高斯。
+samples = torch.normal(mean=zeros, std=self.get_scaling[mask].repeat(N, 1))
+new_xyz = bmm(rotations, samples[..., None]).squeeze(-1) + old_xyz.repeat(N, 1)
+new_scaling = log(self.get_scaling[mask].repeat(N, 1) / (0.8 * N))
+
+prune_mask = (self.get_opacity &lt; min_opacity).squeeze()
+big_points_vs = self.max_radii2D &gt; max_screen_size
+big_points_ws = self.get_scaling.max(dim=1).values &gt; 0.1 * extent
+self.prune_points(prune_mask | big_points_vs | big_points_ws)</code></pre></div>
+  <p>训练每 3000 次把 opacity 激活后上限压到 0.01，再转回 logit。后续确有需要的区域可重新增大 α，无用或浮空的低 α 高斯则被修剪。max_radii2D 记录各高斯在历史可见视图中的最大屏幕半径；超过屏幕阈值，或世界空间最大轴长超过场景尺度 0.1 倍，都可能被移除。场景尺度来自训练相机中心到其均值的距离最大值乘 1.1，不是点云的坐标包围盒。</p>
+  <p>基元数变化不能只执行张量拼接或布尔索引：官方 replace/prune/cat 工具还同步更新 Adam 的 exp_avg 和 exp_avg_sq、param_groups，以及 xyz_gradient_accum、denom、max_radii2D。分裂后的统计数组重置。漏掉优化器状态会导致参数引用错位、形状不匹配或学习动态异常，这是手写复现最常见的工程陷阱之一。</p>
+</section>
+
+<section class="doc-block" id="training-and-code-path">
+  <h2>7. 训练目标与官方调用链：一视图一步、渲染反传、周期性增删</h2>
+  <p>基础图像目标是 L1 与 D-SSIM 的加权和：</p>
+  <div class="math-scroll"><div class="math">L<sub>photo</sub> = (1−λ) ||Ĉ−C||<sub>1</sub> + λ (1−SSIM(Ĉ,C)),　λ = 0.2<span class="equation-number">(6)</span></div></div>
+  <p>train.py 每步从当前相机栈随机取一张训练视图，栈空后重新复制。渲染、取对应 GT、计算损失并 backward，再在 no_grad 区域更新密度统计、保存、增删高斯，最后执行优化器 step/zero_grad。默认总迭代 30,000；位置学习率从 0.00016×spatial_lr_scale 指数衰减到 0.0000016×spatial_lr_scale。其余默认学习率分别为 SH DC 0.0025、SH 高阶 0.000125、opacity 0.025、scale 0.005、rotation 0.001。</p>
+  <a class="file-ref" href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/train.py#L89-L190">官方源码：train.py 主循环；超参数在 arguments/__init__.py</a>
+  <div class="code-block"><span class="code-label">官方源码节选 · train.py（省略日志与 GUI）</span><pre><code>for iteration in range(first_iter, opt.iterations + 1):
+    gaussians.update_learning_rate(iteration)
+    if iteration % 1000 == 0:
+        gaussians.oneupSHdegree()
+    viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack) - 1))
+    pkg = render(viewpoint_cam, gaussians, pipe, background,
+                 use_trained_exp=dataset.train_test_exp)
+    image, gt = pkg["render"], viewpoint_cam.original_image.cuda()
+    loss = (1 - opt.lambda_dssim) * l1_loss(image, gt)
+    loss += opt.lambda_dssim * (1 - ssim(image.unsqueeze(0), gt.unsqueeze(0)))
+    loss.backward()
+
+    with torch.no_grad():
+        gaussians.add_densification_stats(pkg["viewspace_points"],
+                                          pkg["visibility_filter"])
+        if iteration &gt; opt.densify_from_iter and iteration % 100 == 0:
+            gaussians.densify_and_prune(0.0002, 0.005,
+                scene.cameras_extent, size_threshold, pkg["radii"])
+        if iteration % opt.opacity_reset_interval == 0:
+            gaussians.reset_opacity()
+        gaussians.optimizer.step()
+        gaussians.optimizer.zero_grad(set_to_none=True)</code></pre></div>
+  <p>完整调用链是 <code>train.py → Scene → dataset_readers/camera_utils → GaussianModel.create_from_pcd → training_setup → gaussian_renderer.render → GaussianRasterizer</code>。反向后回到 train.py 的密度控制，GaussianModel 负责参数与 Adam 状态重建。保存由 Scene.save 调用 save_ply，输出 point_cloud/iteration_*/point_cloud.ply、cameras.json 和曝光配置；纯 PLY 场景与包含优化器状态的训练 checkpoint 并不等价。</p>
+  <div class="doc-warning"><strong>论文与固定提交的差异必须保留。</strong>当前 train.py 还可加入可靠单目逆深度监督，深度损失权重默认从 1 指数降至 0.01；也可学习每相机 3×4 曝光变换、使用 fused SSIM 或 SparseGaussianAdam。这些属于 2024 更新后的代码能力，不是论文公式 (7) 的必要组成。复现原论文对比实验时，应核对数据预处理与开关，不能仅看当前 README 的默认硬件建议。</div>
+</section>
+
+<section class="doc-block" id="inference-and-usage">
+  <h2>8. 推理、输出与参数：从 PLY 到目标视图</h2>
+  <p>推理时不再需要 SfM 优化或图像损失。加载点云 PLY 后恢复 xyz、log-scale、rotation、opacity logit、SH 系数，将 active_sh_degree 设为最大值。对每个目标相机，构造 world-to-camera 和投影矩阵，准备背景色与相机中心，调用光栅器即得 RGB。若要连续导航，可复用同一场景表示，只更新相机，不逐帧训练。GaussianModel.capture/restore 保存的是恢复训练所需的优化器状态与统计，不同于仅渲染所需参数。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>参数或开关</th><th>作用</th><th>使用时的边界</th></tr></thead>
+    <tbody><tr><td>sh_degree</td><td>方向相关颜色的最高阶数</td><td>官方训练默认最大 3；高阶增加存储和计算，不自动改善观察不足区域</td></tr><tr><td>scaling_modifier</td><td>统一缩放高斯轴长</td><td>可视化/调试有用，改变实际 footprint，不是无成本缩放图像</td></tr><tr><td>resolution / data_device</td><td>控制训练图像分辨率、原图放 GPU 或 CPU</td><td>影响画质、显存和数据传输，不能与论文分辨率混为一谈</td></tr><tr><td>white_background / random_background</td><td>设置合成背景或随机训练背景</td><td>应与数据透明通道、评价协议一致</td></tr><tr><td>densify_* / opacity_reset</td><td>控制数量增长与低透明度清理</td><td>场景尺度和坐标约定变化会改变阈值意义</td></tr><tr><td>train_test_exp</td><td>启用训练/测试曝光处理</td><td>是较新源码特性，评价时应与基准协议匹配</td></tr></tbody>
+  </table></div>
+  <p>官方渲染脚本可按模型目录保存训练与测试视图，再由 metrics.py 计算指标。真正复现应使用留出视图而非训练图像来报告泛化质量，且确保训练/渲染分辨率、背景、曝光裁剪和相机拆分一致。若换用自定义 PLY，应保留官方字段顺序及原始参数化，尤其不要提前对 scale 取 exp 后又按 log-scale 加载。</p>
+</section>
+
+<section class="doc-block" id="limitations-and-cost">
+  <h2>9. 局限与成本：显式并不等同于小而完美</h2>
+  <p>论文测试场景通常形成一百万到五百万个高斯。每个基元不仅有 3 个位置，还包括 48 个最大三阶 RGB SH 数、3 个 scale、4 个四元数、1 个 opacity；训练时还需梯度、Adam 一阶/二阶状态、密度统计及光栅化中间数组。因此“无 MLP”不代表低显存。论文指出大型场景未优化原型的训练峰值可超过 20 GB，渲染除模型外还需随分辨率和场景变化的额外光栅器内存。</p>
+  <p>成本还来自覆盖面积和重叠深度：一个高斯与越多 tile 相交，实例和排序负载越大；同像素串行混合越长，前向与反向越昂贵。32-bit 基元属性和未压缩 PLY 会扩大磁盘与显存占用，但不应把网络权重大小与场景参数大小直接比较而忽略批量与激活。</p>
+  <p>在观察不足的区域，3DGS 可能产生漂浮物、斑片状或过度拉长的高斯；大高斯经过 guard band 或遮挡次序改变时可能出现 popping。近似 tile 排序并非严格逐像素可见性，视角相关颜色与错误几何也可能互相解释。它主要针对静态、已标定场景，不原生处理动态物体、未知曝光、镜面物理传输或相机姿态优化。论文还指出极大场景可能需要降低位置学习率。</p>
+  <p>与 NeRF 相比，3DGS 的优势是显式编辑和快速光栅化，而非“所有指标都更好”；与点云相比，可优化的连续 footprint 和 α 混合减少硬点洞与离散性，但带来排序和参数冗余。pixelSplat 等前馈方法则解决另一个问题：它们用网络从稀疏输入预测高斯，将逐场景重建成本转移到跨场景训练。</p>
+</section>
+
+<section class="doc-block" id="reproduction-checklist">
+  <h2>10. 复现检查清单与单元测试</h2>
+  <ul class="checklist">
+    <li><strong>相机约定：</strong>用单个已知点验证 world-to-camera、投影矩阵转置、像素中心、图像宽高与 FoV；构造同一点在 CUDA 与独立 NumPy 参考投影中的一致性测试。</li>
+    <li><strong>协方差合法性：</strong>随机 scale/quaternion 测试 Σ 的对称性、特征值非负，以及 q 与 −q 产生相同旋转；比较 LL<sup>T</sup> 与 R diag(s²) R<sup>T</sup>。</li>
+    <li><strong>二维椭圆：</strong>轴对齐高斯应产生与轴长对应的椭圆；旋转 90° 应交换屏幕轴。检查 Σ<sub>2D</sub> 求逆的数值稳定性与近裁剪面剔除。</li>
+    <li><strong>SH 与初始化：</strong>零阶常数输入应输出恒定 RGB；检查 (L+1)² 个系数和颜色通道布局。用一个手工点云验证最近邻尺度、0.1 opacity logit 及 PLY 保存/加载往返。</li>
+    <li><strong>混合参考：</strong>对两个具有固定前后顺序的半透明高斯手算 T 和 RGB，加入背景验证总贡献；交换深度顺序应得到预期的不同结果。测试 T 足够小时的提前退出。</li>
+    <li><strong>梯度：</strong>在小型合成图上对 position、scale、rotation、opacity 做有限差分抽查，特别是 Python 预计算协方差与 CUDA 内部协方差两条路径。</li>
+    <li><strong>密度控制：</strong>构造恰好跨阈值的二维梯度与小/大高斯，分别断言 clone/split 数量、分裂轴长除以 1.6、原始高斯删除及 opacity 修剪；检查 denom 为零时无 NaN。</li>
+    <li><strong>优化器引用：</strong>每次增删后遍历 param_groups，验证参数对象、exp_avg/exp_avg_sq、统计数组长度一致；执行一次额外 step 以确保没有悬空引用。</li>
+    <li><strong>训练协议：</strong>固定随机种子、相机留出、背景和输入分辨率，逐步记录高斯总数、可见数、最大半径与损失；区分原始光度目标和新增深度/曝光选项。</li>
+  </ul>
+  <p>建议先用少量高斯和几十像素图像做参考光栅器，再验证 CUDA 优化；先固定基元数量验证可微参数，再接入密度控制。直接把大规模训练 loss 下降作为唯一测试，会掩盖坐标、排序和参数化错误。</p>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>11. 原文与核验来源</h2>
+  <ul class="doc-sources">
+    <li><a href="https://arxiv.org/abs/2308.04079">Kerbl, Kopanas, Leimkühler, Drettakis. 3D Gaussian Splatting for Real-Time Radiance Field Rendering</a>；重点依据第 4 节高斯表示、第 5 节优化与密度控制、第 6 节光栅器及附录。</li>
+    <li><a href="https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/">官方项目、论文、数据和预训练模型入口</a>。</li>
+    <li>官方仓库固定提交 <code>54c035f7834b564019656c3e3fcc3646292f727d</code>：<a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/gaussian_model.py">scene/gaussian_model.py</a>、<a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/__init__.py">scene/__init__.py</a>、<a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/scene/dataset_readers.py">scene/dataset_readers.py</a>、<a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/gaussian_renderer/__init__.py">gaussian_renderer/__init__.py</a>、<a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/train.py">train.py</a> 与 <a href="https://github.com/graphdeco-inria/gaussian-splatting/blob/54c035f7834b564019656c3e3fcc3646292f727d/arguments/__init__.py">arguments/__init__.py</a>。</li>
+    <li><a href="https://github.com/graphdeco-inria/gaussian-splatting/tree/54c035f7834b564019656c3e3fcc3646292f727d">完整官方仓库与 README</a>。本文代码是为阅读而精简的官方节选，省去处以注释说明；没有本地安装依赖、编译 CUDA、运行模型或复现论文数值。</li>
+  </ul>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/3dgs.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

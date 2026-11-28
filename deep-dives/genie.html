@@ -1,0 +1,905 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Genie：生成式交互环境：原理、详细结构、训练推理与代码精读。"><title>Genie：生成式交互环境｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="genie 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>Genie：从无动作标签视频学习可玩的生成式环境</h1>
+  <p class="doc-subtitle">Bruce 等，Google DeepMind，2024 · ST-ViViT 视频 tokenizer、潜在动作模型与 MaskGIT 动态模型</p>
+  <p class="reading-note">本文以 Genie 原始论文 arXiv:2402.15391v1 及作者项目入口为依据，覆盖架构、数学目标、训练、推理和复现边界。论文明确不发布训练权重与训练数据集；本次核验也未发现作者公开的完整官方源码。因此下方代码全部是明确标注的教学伪代码/教学实现，不是 Google DeepMind 官方代码，未执行任何模型。</p>
+</header>
+<nav aria-label="页面导航"><a href="../index.html">← 论文精读首页</a> · <a href="../categories/world-models.html">所属分类：视频世界模型与长时生成</a></nav>
+
+<section class="doc-block" id="problem-and-scope">
+  <h2>1. 问题定义：视频能生成之后，怎样让每一帧“可操作”</h2>
+  <p>普通视频生成模型接收文本或初始图像，输出一段视频；它的条件通常描述整段内容，用户不能在每个时间步决定角色下一步做什么。传统动作条件世界模型则通常需要 <code>(x<sub>t</sub>, u<sub>t</sub>, x<sub>t+1</sub>)</code>，其中 u<sub>t</sub> 是游戏或机器人环境给出的真实动作。互联网视频大量存在，却很少带有同步按键、机械臂控制量或环境内部状态。Genie 的核心问题是：能否只从这些无动作标签的视频，学到一个能在帧级别接受动作输入的生成式环境。</p>
+  <p>Genie 的输入是一段视频 <em>x<sub>1:T</sub></em>，训练时不需要真实动作或文本标注。视频 tokenizer 将帧变成离散 token <em>z<sub>1:T</sub></em>；latent action model（LAM）从相邻帧变化中推断离散潜在动作 <em>a<sub>t</sub></em>；dynamics model 学习在过去帧 token 与潜在动作条件下预测下一帧 token。推理时输入可以只是一个图像 prompt x<sub>1</sub>，用户每步给 [0,|A|) 中的整数动作，模型自回归产生后续帧。论文还称可用文本、合成图、照片和草图作为环境起点；其中“文本 prompt”通过文本到图像生成起始画面，不应误解为论文公开了一个直接读取长文本并维护游戏逻辑的引擎。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>范式</th><th>训练数据</th><th>控制接口</th><th>主要限制</th></tr></thead><tbody>
+  <tr><td>动作条件世界模型</td><td>视频 + 环境真实动作</td><td>帧级真实动作</td><td>动作采集依赖具体环境</td></tr>
+  <tr><td>一般视频模型</td><td>视频，常有文本条件</td><td>文本/初始帧等视频级条件</td><td>通常不能逐帧玩</td></tr>
+  <tr><td>Genie</td><td>仅视频像素</td><td>学习得到的离散潜在动作，帧级控制</td><td>动作语义需探索，长期记忆与速度有限</td></tr>
+  </tbody></table></div>
+  <p>“foundation world model”在论文中对应约 11B 参数、较大视频数据集和跨 prompt 的生成能力，不等价于可验证物理规律的通用模拟器。它的预测可能不现实，没有公开的环境状态查询、碰撞断言或精确奖励接口。理解 Genie 最有用的角度是把“视觉压缩”“动作发现”“动作条件动态”视为三个彼此衔接、训练目标却不同的模块。</p>
+</section>
+
+<section class="doc-block" id="st-transformer">
+  <h2>2. 共同骨架：ST-transformer 如何拆分空间与时间注意力</h2>
+  <p>视频经过 patch embedding 后可形成 T×H×W 个 token。若所有时空 token 进入一个全局自注意力，注意力矩阵规模与 (T·H·W)² 成正比；论文指出视频 token 可达 O(10⁴)，这种成本会成为扩展障碍。Genie 的三个组件都使用 spatiotemporal transformer（ST-transformer）：每个 block 先做单帧内的空间注意力，再做同一空间位置跨 T 帧的时间注意力，最后只放置一个前馈网络 FFW。</p>
+  <div class="math-scroll"><div class="math">X∈R<sup>T×H×W×d</sup> → SpatialAttn<sub>(1,H,W)</sub>(X) → CausalTemporalAttn<sub>(T,1,1)</sub>(X) → FFW(X)<span class="equation-number">(1)</span></div></div>
+  <p>空间层在每一帧内部让 H×W 个位置互相注意；时间层针对固定 (h,w) 位置读取 T 个时间步，并使用 causal mask 防止看见未来。忽略常数与其他层时，空间部分约随 T·(HW)² 增长，时间部分约随 HW·T² 增长，而全时空注意为 (THW)²。论文特别强调占主导的空间计算随帧数<strong>线性</strong>增长，并非声称整个模型所有项都严格随 T 线性，也并非取消注意力的平方项。时间层仍含 T²，只是其作用维度被限制在同一空间位置。</p>
+  <p>一个 ST block 在空间与时间层后只保留一个 FFW，省略 post-spatial FFW；论文报告这样能把容量分配给其他组件并改善结果。这里的因果结构既用于 tokenizer 让 z<sub>t</sub> 汇总 x<sub>1:t</sub>，也用于 LAM 一次输入完整视频、并行产生各时刻动作，以及 dynamics model 对所有下一帧位置计算训练预测。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码（仅说明 ST-block 数据流）</span><pre><code># x: [B, T, H, W, D]；mask_future 是 T×T 的因果掩码
+# 本例省略线性投影、归一化、位置编码及具体多头实现
+def st_block_teaching(x, spatial_attn, temporal_attn, ffw):
+    b, t, h, w, d = x.shape
+    x_space = rearrange(x, 'b t h w d -&gt; (b t) (h w) d')
+    x_space = spatial_attn(x_space) + x_space
+    x = rearrange(x_space, '(b t) (h w) d -&gt; b t h w d',
+                  b=b, t=t, h=h, w=w)
+    x_time = rearrange(x, 'b t h w d -&gt; (b h w) t d')
+    x_time = temporal_attn(x_time, mask=causal_mask(t)) + x_time
+    x = rearrange(x_time, '(b h w) t d -&gt; b t h w d',
+                  b=b, h=h, w=w)
+    return x + ffw(x)  # 每个 ST block 只在末尾调用一次 FFW</code></pre></div>
+  <p>这段代码不是论文发布的实现，注意力内部、残差/归一化顺序、位置编码、初始化和并行策略都需要按正式重实现补全。特别是不能将 spatial attention 的 batch 维和时间注意力的 batch 维混用，否则很容易发生跨帧或跨位置信息泄漏。</p>
+</section>
+
+<section class="doc-block" id="video-tokenizer">
+  <h2>3. Video Tokenizer：ST-ViViT、离散码本与重建目标</h2>
+  <p>tokenizer 是 VQ-VAE 式视频压缩器，编码器与解码器都采用 ST-transformer。输入 x<sub>1:T</sub>∈R<sup>T×H×W×C</sup>，输出每帧 D 个离散索引 z<sub>1:T</sub>∈I<sup>T×D</sup>；D 表示一帧离散 latent 的 token 数，不是码本 embedding 的维数。论文 Platformers 模型的 patch size 为 4，码本含 1024 个 code、每个 embedding 32 维。编码器 12 层、d_model=512、8 heads；解码器更大，为 20 层、d_model=1024、16 heads。整体 tokenizer 约 200M 参数。</p>
+  <p>设编码器输出连续向量 e<sub>t,i</sub>，从码本 E={e<sub>k</sub>} 中选择欧氏距离最近的 code，得到量化向量 q<sub>t,i</sub> 和离散索引 z<sub>t,i</sub>：</p>
+  <div class="math-scroll"><div class="math">z<sub>t,i</sub>=argmin<sub>k</sub>||e<sub>t,i</sub>−e<sub>k</sub>||²₂，q<sub>t,i</sub>=e<sub>zₜ,ᵢ</sub>，x̂<sub>1:T</sub>=Dec(q<sub>1:T</sub>)<span class="equation-number">(2)</span></div></div>
+  <p>论文只表述采用标准 VQ-VAE 目标。可以用常见的三项形式理解其机制：解码器重建、codebook 向编码输出靠拢、编码器承诺不远离所选 code；argmin 的梯度通常通过 straight-through estimator 传给编码器。但论文正文和附录没有逐项写出损失权重，因此以下公式是标准定义的解释，不应把任意 β、γ 数值归于 Genie：</p>
+  <div class="math-scroll"><div class="math">L<sub>VQ</sub>=L<sub>recon</sub>(x,x̂)+||sg[E<sub>enc</sub>(x)]−e||²₂+β||E<sub>enc</sub>(x)−sg[e]||²₂<span class="equation-number">(3)</span></div></div>
+  <p>与只在每帧内部做空间压缩的 ViT tokenizer 不同，ST-ViViT 的时间因果注意力让 z<sub>t</sub> 能包含 x<sub>1:t</sub> 的历史信息，这对动态预测有利，但也意味着 token 并非独立“单帧压缩结果”。清理缓存、改变 prompt 帧数或打乱视频顺序时必须重新考虑 token 的条件上下文。论文将它与 Phenaki 的 C-ViViT 对比，指出全时空注意力成本较高；ST-ViViT 在其消融设置中取得 FVD 81.4、ΔPSNR 1.66，C-ViViT 为 272.7、1.37，空间 ViT 为 114.5、1.39。该比较采用 patch size 10、batch 128、16 帧，不能直接套到主模型 patch 4 的配置。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码（最近邻量化与 straight-through）</span><pre><code># encoded: [B, T, D_tokens, 32]；codebook: [1024, 32]
+def quantize_teaching(encoded, codebook):
+    distance = ((encoded ** 2).sum(-1, keepdim=True)
+                - 2 * encoded @ codebook.T
+                + (codebook ** 2).sum(-1))
+    indices = distance.argmin(-1)             # 离散视频 token
+    quantized = codebook[indices]
+    # 前向使用量化值，反向把 decoder 梯度复制到 encoded
+    quantized_st = encoded + (quantized - encoded).detach()
+    return indices, quantized, quantized_st
+# 正式实现还需 VQ 辅助损失、视频 ST encoder/decoder、重建与码本管理</code></pre></div>
+  <p>主 tokenizer 以 AdamW 训练 300k steps，warmup 10k，weight decay 10⁻⁴，β₁=β₂=0.9。附录表中 max_lr 与 min_lr 均写为 3e-4，尽管正文提到 cosine decay；复现报告应保留这个原文事实，不要擅自补出最小学习率。tokenizer 先独立训练，之后为 dynamics 提供离散目标和推理解码器。</p>
+</section>
+
+<section class="doc-block" id="latent-action-model">
+  <h2>4. Latent Action Model：把“两帧之间发生了什么”压成少量动作</h2>
+  <p>LAM 是一个条件逆动态/重建系统。编码器读取历史 x<sub>1:t</sub> 与下一帧 x<sub>t+1</sub>，输出连续潜在动作 ã<sub>t</sub>，再经小型 VQ 码本离散化。解码器读取历史与量化动作，重建下一帧 x̂<sub>t+1</sub>。如果动作不包含有用的帧间变化，解码器就难以重建；如果码本过大，它又可能把场景细节塞进动作而失去可玩性。主 Platformers 实验将动作词表 |A| 限为 8，码本 embedding 为 32 维，patch size 为 16。</p>
+  <div class="math-scroll"><div class="math">ã<sub>t</sub>=Q<sub>A</sub>(LAM<sub>enc</sub>(x<sub>1:t</sub>,x<sub>t+1</sub>))，x̂<sub>t+1</sub>=LAM<sub>dec</sub>(x<sub>1:t</sub>,ã<sub>t</sub>)，a<sub>t</sub>∈{0,…,|A|−1}<span class="equation-number">(4)</span></div></div>
+  <p>这里编码器在训练时可以看到 x<sub>t+1</sub>，因为它要从已经发生的变化中反推动作；解码器不能绕过动作直接读取目标帧，否则动作就无需承载信息。因果时间注意力允许把完整 x<sub>1:T</sub> 输入一次并产生 ã<sub>1:T−1</sub>。论文将 LAM 编码器和解码器都设为 20 层、d_model=1024、16 heads，输入归一化到 [0,1]，解码器最终用 sigmoid 输出。模型约 300M 参数。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码（LAM 的信息瓶颈）</span><pre><code># history: [B,t,H,W,C]，next_frame: [B,H,W,C]
+# ST-LAM encoder 可看 next_frame；decoder 不可直接看 next_frame
+continuous_action = lam_encoder(history, next_frame)
+action_id, action_embedding = nearest_in_codebook(
+    continuous_action, action_codebook)       # 主实验共 8 codes
+predicted_next = lam_decoder(history, action_embedding)
+lam_reconstruction_loss = pixel_loss(predicted_next, next_frame)
+# dynamics 接收的 action embedding 要 stop-gradient
+# 推理时仅保留 action_codebook：action_embedding = action_codebook[user_id]</code></pre></div>
+  <p>“无监督动作”不意味着自动得到标准键盘。某个 ID 可能在不同初始帧上表现为左、右、跳或 no-op，但训练前并不知道哪个 ID 对应什么。用户需要尝试这些按钮，并通过跨输入观察归纳其语义。论文指出动作含义在不同输入上保持一致，附录展示左、右、跳、no-op；这不保证八个动作在所有域都一一对应真实按键，也不保证相同 ID 能精确产生固定位移。</p>
+  <p>论文对比了把 LAM 输入从像素换成视频 token 的方案。token-input 在 Platformers 的 FVD 略低（38.8 对 40.1），可控性 ΔPSNR 却更差（1.33 对 1.91）；Robotics 上像素输入的 FVD 和可控性都更好。这说明压缩 token 会损失部分运动信息，也说明仅追求重建/FVD 可能牺牲动作发现。注意 LAM 的解码器只提供训练信号；推理时 LAM 编码器、解码器均被弃用，仅动作码本用来把用户 ID 查成 embedding。</p>
+</section>
+
+<section class="doc-block" id="dynamics-model">
+  <h2>5. Dynamics Model：decoder-only MaskGIT，而非逐像素扩散</h2>
+  <p>动态模型接收已量化视频 token z<sub>1:t−1</sub> 和 stop-gradient 的潜在动作 ã<sub>1:t−1</sub>，预测下一帧 token z<sub>t</sub>。它使用 decoder-only MaskGIT transformer 与 ST 模块，在 T−1 个历史位置上并行训练对 z<sub>2:T</sub> 的预测。动作不是简单与对应帧 token 拼接，而是作为<strong>加性 embedding</strong>加入表示；论文报告这一设计改善可控性。stop-gradient 使 dynamics 的交叉熵不会反向改变 LAM 动作表示，两模块仍有各自训练目标。</p>
+  <div class="math-scroll"><div class="math">p<sub>θ</sub>(z<sub>t</sub>|z<sub>&lt;t</sub>,ã<sub>&lt;t</sub>)=∏<sub>i=1…D</sub>softmax(f<sub>θ</sub>(z<sub>&lt;t</sub>,ã<sub>&lt;t</sub>)<sub>t,i</sub>)，L<sub>dyn</sub>=−∑<sub>t=2…T</sub>∑<sub>i</sub>log p<sub>θ</sub>(z<sub>t,i</sub>|·)<span class="equation-number">(5)</span></div></div>
+  <p>训练时按 Bernoulli 分布遮盖输入 token z<sub>2:T−1</sub>，每个训练序列的 mask rate 从 [0.5,1] 均匀采样。这使模型既看到部分已知 token，又学习填补未知 token；标签仍是 tokenizer 产生的真实 z<sub>2:T</sub>，损失是分类交叉熵。这里“mask 输入”与“以全部真实历史 teacher forcing 做下一帧预测”需要仔细对齐：掩码率和每个位置的可见性决定条件信息，不能让被预测 token 通过非因果注意力泄漏给自己。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码（掩码动态训练的目标与 stop-gradient）</span><pre><code># tokens: [B,T,D]，范围 0..1023；lam_actions: [B,T-1,32]
+mask_rate = uniform(0.5, 1.0)
+input_tokens = tokens.clone()
+mask = bernoulli(mask_rate, input_tokens[:, 1:-1].shape)
+input_tokens[:, 1:-1][mask] = MASK_ID
+action_embedding = lam_action_embedding.detach()
+history = input_tokens[:, :-1]
+actions = action_embedding[:, :-1]
+logits = st_dynamics(history, actions)  # 加性动作 embedding
+# logits: [B,T-1,D,1024]；targets 对应原视频的 z_2:T
+loss = cross_entropy(
+    logits.reshape(-1, 1024), tokens[:, 1:].reshape(-1))</code></pre></div>
+  <p>该教学片段刻意不声称给出作者内部实现。例如完整 MaskGIT 采样中各位置何时保持 masked、如何根据置信度逐步填 token、如何维持跨时间因果性，都需按论文图与原 MaskGIT 方法严谨实现。不能将上面“所有目标一次 CE”误当作推理一次并行调用就足够：论文推理每帧执行 25 个 MaskGIT steps。</p>
+  <p>主动态模型为 10.1B 参数、48 层、36 heads、d_model=5120、k/q size 128。训练使用 bfloat16 与 QK norm，batch size 512、125k steps、256 TPUv5p；论文附录表 12 一处写 TPUv5，而正文明确写 TPUv5p，引用时以正文并注明原文差异更稳妥。动态模型与约 200M tokenizer、300M LAM 合计约 10.7B，论文概括为 11B；项目网站使用更大的 360p decoder 还会增加参数，不能把这个额外 decoder 当作基础数据管线的必需部分。</p>
+</section>
+
+<section class="doc-block" id="training-data-and-schedule">
+  <h2>6. 数据、过滤与分阶段训练：200k 小时不等于最终训练集</h2>
+  <p>摘要说模型从超过 200,000 小时的公开互联网游戏视频语料学习，而主训练使用过滤后的 30,000 小时 Platformers 数据集，这两个数字描述不同阶段。初始收集按标题中的 2D platformer 关键词筛选，标题或描述需含 speedrun、playthrough 等动作词，并排除 movie、unboxing 等否定词。视频切成 16 秒、10 FPS、160×90 分辨率的片段，每段 160 帧，得到约 55M 段、约 244k 小时；过滤后剩 6.8M 段、超过 30k 小时。</p>
+  <p>过滤不是简单去重。团队人工标注 10k 个视频，质量分 1 到 5，约投入十小时；训练 11M 参数 ResNet18 二分类器时删除评分 2–4 的样本，把 5 当好、1 当坏，最后根据预测与置信度决定去留。高质量定义强调清晰 gameplay，并排除菜单和主播人脸等干扰。相同 580M 模型在原始 55M 视频与过滤后的 6.8M 视频上比较，FVD 从 61.4 改善到 54.8，说明“数据更多”不必然优于“分布更干净”。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>输入与冻结关系</th><th>主要目标</th><th>论文设置</th></tr></thead><tbody>
+  <tr><td>先训练 Video Tokenizer</td><td>视频；独立 VQ-VAE</td><td>视频重建 + VQ 目标</td><td>300k steps，AdamW，1024 codes</td></tr>
+  <tr><td>再联合训练 LAM 与 Dynamics</td><td>LAM 从像素；Dynamics 从固定 tokenizer 的 token</td><td>LAM 重建；Dynamics 下一 token CE</td><td>16 帧序列，LAM 8 codes，动作 stop-grad 到 Dynamics</td></tr>
+  <tr><td>主 Genie 动态模型</td><td>过滤 Platformers</td><td>规模化动态预测</td><td>10.1B，512 batch，125k steps，942B tokens（三组件合计口径）</td></tr>
+  </tbody></table></div>
+  <p>“联合训练”不是说三个网络从零端到端一起更新，也不是 tokenizer 在动态训练时继续变。正确顺序是先训练并固定 tokenizer，再让 LAM 与 dynamics 并行优化各自目标；dynamics 对 LAM 的 embedding 停止梯度。动态优化器附录给 max_lr=3e-5、min_lr=3e-6、β₁=β₂=0.9、weight decay=1e-4、warmup 5k。</p>
+  <p>为验证领域通用性，论文还把 RT1 的约 130k robot demonstrations、额外模拟数据和先前工作的 209k 真实机器人 episodes 合并为 Robotics 视频数据，明确不使用其中的动作标签。2.5B 模型在该数据上得到测试 FVD 82.7，并展示一致的上、下、左等潜在动作。它是另一套数据与模型实验，不应与 Platformers 的 11B 主模型或网络视频规模混为一次训练。</p>
+</section>
+
+<section class="doc-block" id="inference-controllability">
+  <h2>7. 推理与可控性：八个按钮如何驱动逐帧生成</h2>
+  <p>推理从 prompt 帧 x<sub>1</sub> 开始。视频编码器产生 z<sub>1</sub>；玩家选择整数 a<sub>1</sub>∈[0,8)，系统从训练好的 LAM 码本取出 embedding ã<sub>1</sub>=E<sub>A</sub>[a<sub>1</sub>]；动态模型根据 z<sub>1</sub> 和 ã<sub>1</sub> 用 MaskGIT 采样 ẑ<sub>2</sub>；tokenizer decoder 把 token 转回图像 x̂<sub>2</sub>。下一轮把已生成历史与新的用户动作交给 dynamics，如此自回归。可使用多个 prompt 帧，但一个图像是最基本示例。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="Genie 的视频 tokenizer、动作模型与动态预测"><rect x="15" y="40" width="180" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="105.0" y="72" text-anchor="middle" class="svg-title">无动作标注视频</text><text x="105.0" y="97" text-anchor="middle" class="svg-small">互联网游戏视频</text><rect x="260" y="40" width="210" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="365.0" y="72" text-anchor="middle" class="svg-title">Video Tokenizer</text><text x="365.0" y="97" text-anchor="middle" class="svg-small">时空离散 token</text><rect x="540" y="40" width="210" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="645.0" y="72" text-anchor="middle" class="svg-title">Latent Action Model</text><text x="645.0" y="97" text-anchor="middle" class="svg-small">从相邻帧学潜在动作</text><rect x="825" y="40" width="230" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="940.0" y="72" text-anchor="middle" class="svg-title">Dynamics Model</text><text x="940.0" y="97" text-anchor="middle" class="svg-small">历史 token + 动作 → 下一帧</text><path d="M195 78 H260" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M470 78 H540" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M750 78 H825" fill="none" stroke="#788493" stroke-width="1.6"/><text x="540" y="255" text-anchor="middle" class="svg-small">推理时把潜在动作 ID 变成用户可控的交互接口</text></svg></div><p class="figure-caption"><strong>图 1：Genie 从没有动作标签的视频中学习可交互环境。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <div class="code-block"><span class="code-label">教学伪代码 · 非官方源码（逐帧交互与 25 步 MaskGIT）</span><pre><code>z_prompt = video_tokenizer.encode(prompt_frames)
+z_history = z_prompt
+frames = list(prompt_frames)
+for user_action_id in action_stream:             # 整数 0..7
+    a = latent_action_codebook[user_action_id]   # 不运行 LAM encoder
+    z_next = MASK_TOKEN_GRID
+    for step in range(25):
+        logits = dynamics(z_history, a, partially_masked=z_next)
+        probs = softmax(logits / 2.0)            # 主模型 temperature=2
+        z_next = maskgit_update(z_next, probs, step)
+        # 正式实现需按 MaskGIT 置信度/掩码调度逐步确定 token
+    z_history = append_generated(z_history, z_next)
+    frames.append(video_tokenizer.decode(z_history))
+return frames</code></pre></div>
+  <p>这段伪代码表达接口而非可直接运行的官方推理器。<code>maskgit_update</code> 的置信度重掩码策略、上下文窗口截断、时间位置和多 prompt 帧处理必须另行实现。主模型每帧采用 25 MaskGIT steps、temperature 2 的随机采样；附录的小 CoinRun 示例则 temperature 1.0、同样 25 steps。温度更高增加采样多样性，也可能降低一致性；动作 ID 只提供条件，不能强制保证精确结果。</p>
+  <p>为了量化“动作是否真的影响生成”，论文定义 Δ<sub>t</sub>PSNR。先让 LAM 从真实视频推断动作并生成 x̂<sub>t</sub>，再随机从 categorical 分布抽动作生成 x̂′<sub>t</sub>，两者都与真实帧 x<sub>t</sub> 比 PSNR：</p>
+  <div class="math-scroll"><div class="math">Δ<sub>t</sub>PSNR=PSNR(x<sub>t</sub>,x̂<sub>t</sub>)−PSNR(x<sub>t</sub>,x̂′<sub>t</sub>)，实验报告 t=4<span class="equation-number">(6)</span></div></div>
+  <p>若推断动作使结果更接近真实视频，而随机动作较差，该差值为正且越大表示动作条件更有用。它不是“动作准确率”，因为没有真实动作标签；也不是交互延迟、长期一致性或物理正确性的度量。FVD 评价整体视频 fidelity，ΔPSNR 评价这一特定对照下的 controllability，两者必须同时读，且随机动作分布和 roll 到第 4 帧的设置影响数值。</p>
+  <p>可控性的实际边界同样重要：动作语义是事后探索出来的；少量离散动作不能表达任意细粒度控制；生成的下一帧是概率样本，并非游戏引擎确定性 transition；16 帧记忆和约 1 FPS 运行速度使长时连续游玩仍受限。论文展示草图、真实照片、Imagen 2 图像等 OOD prompt 上角色运动与视差现象，但定性示例不能证明对任意图像都能形成稳定世界。</p>
+</section>
+
+<section class="doc-block" id="agents-and-scaling">
+  <h2>8. 从动作发现到智能体训练：仍需少量真实动作做映射</h2>
+  <p>Genie 不仅能被人类“玩”，论文还用冻结的 LAM 给 CoinRun 专家视频打潜在动作标签。对专家相邻帧 (x<sub>t</sub>,x<sub>t+1</sub>)，计算 a<sub>t</sub>=LAM(x<sub>t</sub>,x<sub>t+1</sub>)，再训练策略 π(a<sub>t</sub>|x<sub>t</sub>) 预测专家在该观测下选择的潜在动作。这一步不需要专家真实动作，因此能把无动作视频转成模仿学习目标；但部署到真实 CoinRun 时，仍需把潜在 ID 翻译为环境动作。</p>
+  <div class="math-scroll"><div class="math">a<sub>t</sub>←LAM(x<sub>t</sub>,x<sub>t+1</sub>)，π<sub>φ</sub>(a<sub>t</sub>|x<sub>t</sub>) 用 CE 训练；D[a] 收集与 latent a 对应的真实 u，部署时 u<sub>t</sub>∼D[a<sub>t</sub>]<span class="equation-number">(7)</span></div></div>
+  <p>映射字典 D 来自一小批带真实动作的专家序列 (x<sub>t</sub>,u<sub>t</sub>,x<sub>t+1</sub>)：LAM 推断 a<sub>t</sub>，把 u<sub>t</sub> 添加到 D[a<sub>t</sub>] 的列表，推理时从列表采样。论文报告少至 200 个 expert samples 即可适配，在其图中 LAM 策略可达到使用真实动作的 oracle BC 相同分数。这个结果支持动作空间具有跨域语义，但不能表述为“完全零真实动作训练 CoinRun 控制器”；最后的潜在到真实映射确实使用了真实动作。</p>
+  <p>BC 策略使用 ST-ViViT 编码 x<sub>1:t</sub>，历史动作 one-hot 后以加性 embedding 与对应帧表示结合，序列长度 4、batch 16；编码器 12 层、d_model=512、patch 4，策略线性层 512。oracle 与 LAM 版本分别对真实动作或潜在动作做交叉熵。论文还指出 oracle 在 10% 时间随机采样动作表现更好，这是特定实验细节，不是所有 BC 的通用要求。</p>
+  <p>规模化实验单独考察 dynamics：固定 tokenizer 和 LAM，模型从 40M 扩到 2.7B，训练损失持续下降；2.3B 模型把 batch 从 128、256 增至 448（对应约 1.9M、3.8M、6.6M tokens）也有收益。主模型由此扩到 10.1B dynamics。规模化实验每档训练 200k steps、batch 256，使用 batch parallelism、ZeRO stage-3，大模型另用 tensor parallelism。它证明的是该设置下 loss 的 scaling 趋势，不等价于长期可玩性、真实物理或下游策略性能随参数同样单调提升。</p>
+</section>
+
+<section class="doc-block" id="reproducible-case-study">
+  <h2>9. 附录 F 的小规模复现：有配方，不等于已发布官方实现</h2>
+  <p>主 Genie 训练用了 256 TPUv5p，论文认识到多数人无法承担，因此附录 F 给出单张中端 TPU/GPU、一周内完成的 CoinRun case study。数据使用 Procgen CoinRun hard mode、随机策略、无 action repeat，level seed 从 0 到 10,000，每个 level 收集 1000 timesteps，总计 10M transitions。虽然环境本身能产生动作，案例的模型学习仍按视频方式组织，重点在复现 tokenizer、LAM 与 dynamics 架构。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>组件</th><th>CoinRun 小模型设置</th><th>训练预算/批量</th></tr></thead><tbody>
+  <tr><td>Video Tokenizer</td><td>编码器、解码器均 8 层，d_model=512，8 heads；1024 codes，patch 4，latent 32</td><td>48 条×16 帧=768 图/batch，300k steps，单 TPU 约 3 天</td></tr>
+  <tr><td>LAM</td><td>编码器、解码器均 8 层，d_model=512，8 heads；6 codes，latent 32</td><td>与 dynamics 并行 200k steps</td></tr>
+  <tr><td>Dynamics</td><td>表中架构列 12 层、d_model=512；推理 25 steps，temperature 1</td><td>36 条×16 帧=576 图/batch，目标 16GB</td></tr>
+  </tbody></table></div>
+  <p>附录表 17 在 dynamics 行里重复出现 <code>num_layers</code>，分别为 12 和 8，原文 HTML 表格确实如此；这可能是排版或字段标注问题，不能擅自把其中一个改名为 heads 并宣称是官方值。严谨复现应记录歧义、先检查原 PDF 表格，再在小实验中报告实际选择。案例的 6 个动作也不同于主 Platformers 的 8 个，不应共享码本大小假设。</p>
+  <div class="doc-warning"><strong>官方可用性边界：</strong>截至本次对原论文、arXiv 页面和作者项目入口的核验，Genie 论文明确写道“不发布训练模型 checkpoints、训练数据集或该数据示例”，arXiv 页面没有 GitHub 代码链接，也未核实到 Google DeepMind 的完整官方实现。本文不提供所谓“官方仓库结构”或“官方调用链”。网上同名或复现仓库只能标为第三方，不能因 star、作者名单相似或 README 自称复现就称为官方代码。</div>
+  <p>因此本地静态复现能做的是依据附录写模块接口、损失、mask 和形状测试；不能声称跑通原作者训练管线，也不能下载一个第三方权重后称为 Genie 官方权重。主数据集不公开还意味着无法完全复核筛选偏差、游戏覆盖、版权与内容组成。小规模 CoinRun 是论文提供的可复现路径，不是主 30k 小时互联网数据结果的替代证明。</p>
+</section>
+
+<section class="doc-block" id="limits-compute-and-tests">
+  <h2>10. 局限、计算成本与实现检查清单</h2>
+  <p><strong>长时记忆与幻觉。</strong>论文明确只有 16 帧记忆，在 10 FPS 数据设置下对应很短的上下文；长时离开再返回、物体永久性和关卡状态都难以保证。自回归 transformer 会生成不合理未来，错误还会进入下一步历史。与显式游戏引擎不同，模型没有硬约束碰撞、库存、分数和地图持久性，视觉相似不能代替这些性质。</p>
+  <p><strong>速度与成本。</strong>主模型约 1 FPS，离实时交互仍有距离；每帧 25 次 MaskGIT 迭代、大 transformer 和视频解码都产生推理开销。训练主 dynamics 的论文报告为 6.6×10²² FLOPs、256 TPUv5p、125k steps；scale 表中最大 2.7B 实验也使用 256 TPUv3、16 天。不能用单 GPU 附录案例的一周成本去描述主 11B 模型。显存除参数外还包括时空注意力、optimizer states、视频 batch 和 ZeRO/tensor 分片通信，论文没有给所有硬件上一个可直接套用的显存数字。</p>
+  <p><strong>动作与评价。</strong>动作码本小有利于人类探索，却限制控制表达；码本大可能提升重建但削弱可玩性。LAM 可能把不可控背景变化也吸收到动作中，ΔPSNR 只检验推断动作相对随机动作更接近真实轨迹，并不证明因果可控。跨域 BC 还依赖 200 个真实动作样本建立映射，不应宣称零适配。FVD 和短时 PSNR 无法覆盖长期可玩性、重访一致性与真实任务完成率。</p>
+  <p><strong>可执行的测试清单。</strong>（1）ST 空间注意力测试：同一时间不同位置可通信，不同帧不通信；时间注意力对打乱未来帧的当前输出不变，验证 causal mask。（2）tokenizer 测试：固定码本时最近邻索引与暴力距离一致，straight-through 前向取量化值、反向梯度能到编码器，token ID 全部在 [0,1024)。（3）LAM 泄漏测试：修改 x<sub>t+1</sub> 应改变推断动作，但不能通过 decoder 的额外目标帧通道绕开动作；推理仅给动作 ID 就能查码本。</p>
+  <p>（4）Dynamics 对齐测试：z<sub>t</sub> 与 ã<sub>t</sub> 的条件对应 z<sub>t+1</sub>，loss 不能错位到 z<sub>t</sub>；动作分支应 stop-gradient，mask rate 只落在 [0.5,1]，目标 token 不经过非因果路径泄漏。（5）推理测试：重复同一 prompt、动作序列与采样种子应可复现，用户只改某个动作 ID 时确实重新查码本，不必运行 LAM encoder。（6）评价测试：ΔPSNR 的 x̂ 与 x̂′ 除动作外必须共享 prompt、采样预算与可比随机条件，避免把采样随机性误计为可控性。（7）小规模案例先验证数据包含 10M transitions、16 帧切片无跨 episode 污染，再谈完整训练。</p>
+</section>
+
+<section class="doc-block" id="sources-and-code-boundary">
+  <h2>11. 原文、项目与代码来源说明</h2>
+  <ul>
+    <li><a href="https://arxiv.org/abs/2402.15391">Jake Bruce 等：Genie: Generative Interactive Environments，arXiv:2402.15391v1</a>，2024-02-23。本文方法、ΔPSNR、数据过滤、训练超参数、附录 F 和局限均以该版本为依据。</li>
+    <li><a href="https://sites.google.com/view/genie-2024/home">Genie 作者官方项目页</a>，论文原文明确链接此网站，用于查看动作轨迹与不同 prompt 的演示。演示不是可下载模型或开源仓库。</li>
+    <li><a href="https://arxiv.org/abs/1706.03762">Vaswani 等：Attention Is All You Need</a>；<a href="https://arxiv.org/abs/2010.11929">Dosovitskiy 等：An Image Is Worth 16×16 Words（ViT）</a>，为 transformer 与视觉 patch 表征背景。</li>
+    <li><a href="https://arxiv.org/abs/1711.00937">van den Oord 等：Neural Discrete Representation Learning（VQ-VAE）</a>；<a href="https://arxiv.org/abs/2202.04200">Chang 等：MaskGIT</a>，分别为离散量化和迭代 masked token 采样基础。</li>
+    <li><a href="https://arxiv.org/abs/2211.09800">Villegas 等：Phenaki / C-ViViT</a>；<a href="https://arxiv.org/abs/2001.02908">Xu 等：Spatial-Temporal Transformer Networks</a>，用于论文中的视频 tokenizer 和 ST 注意力比较背景。</li>
+    <li><a href="https://arxiv.org/abs/1911.08217">Cobbe 等：Leveraging Procedural Generation to Benchmark Reinforcement Learning（Procgen/CoinRun）</a>；<a href="https://arxiv.org/abs/2212.06817">Brohan 等：RT-1</a>，对应附录复现与 Robotics 数据来源。</li>
+  </ul>
+  <div class="doc-note"><p><strong>代码声明：</strong>本文 4 个代码块均为根据论文公式与数据流撰写的教学实现/伪代码，未复制或冒充任何官方源码；没有运行这些代码，也没有安装依赖、训练或推理。若读者采用第三方 Genie 复现，应单列其仓库、作者、提交与许可，并与 Google DeepMind 原论文分栏核对。</p></div>
+  <p>资料核验日期：2026-11-28。这里的“未核实到完整官方源码”限定于本次所读官方论文和项目入口，不声称互联网上不存在第三方实现；模型 checkpoints 与主训练数据集未发布则是论文的明确声明。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/world-models.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

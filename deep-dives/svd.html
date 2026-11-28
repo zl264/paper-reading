@@ -1,0 +1,960 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Stable Video Diffusion：图像到视频生成：原理、详细结构、训练推理与代码精读。"><title>Stable Video Diffusion：图像到视频生成｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="svd 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <p class="doc-kicker">VIDEO GENERATION / PAPER + SOURCE</p>
+  <h1>Stable Video Diffusion：图像条件如何变成一段视频</h1>
+  <p class="doc-subtitle">沿官方 Stability-AI/generative-models，拆解图像潜变量与 CLIP 双条件、时空 U-Net、EDM、运动微条件和时间感知解码器。</p>
+  <p class="reading-note">阅读对象：Blattmann 等人的《Stable Video Diffusion: Scaling Latent Video Diffusion Models to Large Datasets》（arXiv:2311.15127v1）。源码核对固定提交 <code>e8cd657656fa5d61688191730d0e03242bf4ed44</code>。该提交还包含 SV3D、SV4D 等后续模型，本文只把 <code>version=&quot;svd&quot;</code> / <code>&quot;svd_xt&quot;</code> 的配置用于原始 SVD 解读。未运行模型或安装依赖。</p>
+  <nav class="doc-nav" aria-label="文章导航"><a href="../index.html">← 论文精读首页</a><a href="../categories/video-generation.html">所属分类：视频生成</a></nav>
+</header>
+
+<section class="doc-block" id="i2v-formulation">
+  <h2>1. I2V 的任务不是重建首帧，而是学习整条条件轨迹</h2>
+  <p>给定归一化到 [-1,1] 的单张参考图像 <em>r</em>，SVD 生成 T 帧 RGB 视频 <em>x<sub>0</sub> = (x<sup>1</sup><sub>0</sub>,…,x<sup>T</sup><sub>0</sub>)</em>。公开 SVD 默认 T=14，SVD-XT 默认 T=25，训练分辨率都是 576×1024。模型要近似条件分布 <em>p(x<sub>0</sub>|r)</em>：同一张图可以对应不同合理运动，输出不是由确定性光流或相机参数唯一决定。</p>
+  <p>论文的核心贡献还包括数据治理：从约 5.77 亿个 clip 的 LVD 出发，经切分、字幕、光流、OCR、美学和 CLIP 筛选形成 1.52 亿样本的 LVD-F，并区分图像预训练、视频预训练和高质量微调三阶段。这一训练策略解释了模型为何能学习通用运动先验；不能把最终效果仅归因于新增的时间注意力。</p>
+  <p>SVD 不是逐帧自回归模型。每一轮扩散去噪都同时处理全部 T 帧，时间卷积和时间注意力交换帧间信息，因而能在一次生成中协调运动。参考图像同时以局部 latent 和全局 CLIP 图像嵌入进入网络，而帧率、运动分数、条件增强强度作为微条件提供统计偏置。</p>
+  <div class="doc-note"><p><strong>控制边界：</strong>原始 SVD 的 <code>motion_bucket_id</code> 不指定物体位移、旋转矩阵或相机轨迹。论文另外训练了只作用于时间注意力的 camera-motion LoRA 来研究水平移动、缩放、静态等控制；它们不是基础 SVD checkpoint 自带的精确相机接口。</p></div>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="SVD 图像条件与时空去噪"><rect x="15" y="40" width="180" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="105.0" y="72" text-anchor="middle" class="svg-title">输入参考图像</text><text x="105.0" y="97" text-anchor="middle" class="svg-small">固定首帧外观</text><rect x="255" y="40" width="195" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="352.5" y="72" text-anchor="middle" class="svg-title">图像 / CLIP 条件</text><text x="352.5" y="97" text-anchor="middle" class="svg-small"> latent + embedding</text><rect x="515" y="40" width="215" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="622.5" y="72" text-anchor="middle" class="svg-title">时空 U-Net</text><text x="622.5" y="97" text-anchor="middle" class="svg-small">空间层 + temporal 层</text><rect x="805" y="40" width="250" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="930.0" y="72" text-anchor="middle" class="svg-title">迭代去噪 / VAE 解码</text><text x="930.0" y="97" text-anchor="middle" class="svg-small">输出短视频帧序列</text><path d="M195 78 H255" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M450 78 H515" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M730 78 H805" fill="none" stroke="#788493" stroke-width="1.6"/><text x="540" y="250" text-anchor="middle" class="svg-small">不是直接输入目标相机轨迹；动作幅度与帧间变化由训练先验决定</text></svg></div><p class="figure-caption"><strong>图 1：SVD 用图像条件生成连续视频。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+</section>
+
+<section class="doc-block" id="latent-shapes">
+  <h2>2. 从图像与视频到张量：8 通道 U-Net 输入的来源</h2>
+  <p>视频每帧经冻结的 SD 2.1 VAE 编码器得到四通道 latent，空间尺寸缩小八倍，并乘 <code>scale_factor=0.18215</code>。单段 576×1024、14 帧视频因此从 14×3×576×1024 变成 14×4×72×128；SVD-XT 仅把帧数变为 25。官方脚本把帧维折叠进 batch，而不是保留一个独立的五维 batch-video 张量供整个 U-Net 使用。</p>
+  <p>参考图像另走一个 <code>AutoencoderKLModeOnly</code>：它采用同一套 SD 2.1 图像编码器结构及对应预训练权重，但取后验均值，不对 latent 分布采样。得到的 1×4×H/8×W/8 latent 复制到 T 帧，与带噪视频 latent 在通道维拼接。因此配置中 <code>in_channels=8</code>、<code>out_channels=4</code>：四通道是当前需要清理的视频噪声，另外四通道是空间对齐的图像条件；网络最终只需预测四通道干净视频的相关量。</p>
+  <div class="math-scroll"><div class="math">Z<sub>0</sub> = 0.18215 · E<sub>video</sub>(X<sub>0</sub>)，&nbsp;&nbsp; Z<sub>σ</sub> = Z<sub>0</sub> + σN，&nbsp;&nbsp; U<sub>σ</sub> = [Z<sub>σ</sub> ; repeat(E<sub>mode</sub>(r̃))]<span class="equation-number">(1)</span></div></div>
+  <p><em>N</em> 是标准高斯噪声，<em>r̃</em> 是受轻微噪声增强的参考图像，分号表示通道拼接。条件图像本身没有 mask；论文明确说不用 masking，而是把条件帧复制到整个时间轴。这也是它与首帧 inpainting、遮挡预测式插值模型的区别。</p>
+  <p>在生成脚本中，初始噪声形状是 <code>(num_frames,4,H//8,W//8)</code>。输入高宽要求能被 64 整除，而模型训练偏好 576×1024；其他尺寸即使能通过网络，也处于训练分布之外。图像宽高不相等时 latent 为矩形，U-Net 卷积和空间注意力可以继续处理，不需要套用 DiT 的方形 unpatchify。</p>
+</section>
+
+<section class="doc-block" id="dual-image-conditioning">
+  <h2>3. 同一张图为什么要编码两次：concat 保局部，cross-attention 提供语义</h2>
+  <p>第一条路径是 VAE 条件 latent，负责颜色、纹理、边缘和空间布局，按像素对应的潜网格直接拼到每一帧。训练时参考图像先加噪，论文使用 <em>log σ ∼ N(−3.0,0.5²)</em>，再取 VAE 后验均值。这个轻扰动有助于避免模型把参考条件当作完全无损拷贝；同时 <code>cond_aug</code> 本身也作为一个 256 维微条件输入。</p>
+  <p>第二条路径是冻结的 OpenCLIP ViT-H/14 图像编码器。它把无额外噪声的 <code>cond_frames_without_noise</code> resize 到 224×224，以 CLIP 均值和标准差归一化，输出 1024 维全局图像嵌入，并保留一个长度为一的 token 维。它替换基础文生视频模型原来的文本 cross-attention context；不是把 VAE latent 投影成 CLIP 特征，也不是同时使用文字提示。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · encoders/modules.py：条件如何归入三种键</span><pre><code>class GeneralConditioner(nn.Module):
+    OUTPUT_DIM2KEYS = {2: &quot;vector&quot;, 3: &quot;crossattn&quot;, 4: &quot;concat&quot;}
+    KEY2CATDIM = {&quot;vector&quot;: 1, &quot;crossattn&quot;: 2, &quot;concat&quot;: 1}
+
+    def forward(self, batch, force_zero_embeddings=None):
+        output = dict()
+        for embedder in self.embedders:
+            # 冻结编码器在 no_grad 下运行；同一键的多个输出按指定维度拼接
+            emb_out = embedder(batch[embedder.input_key])
+            if not isinstance(emb_out, (list, tuple)):
+                emb_out = [emb_out]
+            for emb in emb_out:
+                out_key = self.OUTPUT_DIM2KEYS[emb.dim()]
+                if embedder.input_key in (force_zero_embeddings or []):
+                    emb = torch.zeros_like(emb)
+                if out_key in output:
+                    output[out_key] = torch.cat(
+                        (output[out_key], emb), self.KEY2CATDIM[out_key])
+                else:
+                    output[out_key] = emb
+        return output</code></pre></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · wrappers.py 与 simple_video_sample.py：条件进入 U-Net</span><pre><code># OpenAIWrapper.forward
+x = torch.cat((x, c.get(&quot;concat&quot;, torch.Tensor([]).type_as(x))), dim=1)
+return self.diffusion_model(
+    x, timesteps=t, context=c.get(&quot;crossattn&quot;, None),
+    y=c.get(&quot;vector&quot;, None), **kwargs)
+
+# 先把单图条件在帧维展开，再折叠回 (b*t)
+for k in [&quot;crossattn&quot;, &quot;concat&quot;]:
+    c[k] = repeat(c[k], &quot;b ... -&gt; b t ...&quot;, t=num_frames)
+    c[k] = rearrange(c[k], &quot;b t ... -&gt; (b t) ...&quot;, t=num_frames)
+# vector 中三项各 256 维，合计 adm_in_channels=768</code></pre></div>
+  <p>无条件分支通过把 <code>cond_frames</code> 和 <code>cond_frames_without_noise</code> 对应 embedding 置零来构造，但 <code>fps_id</code>、<code>motion_bucket_id</code> 和 <code>cond_aug</code> 保留。因而所谓“无条件”是没有图像语义和图像 latent，并非删除所有标量条件。这个细节对复现 CFG 至关重要。</p>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/encoders/modules.py#L574-L729" target="_blank" rel="noopener">冻结 CLIP 图像编码与预处理 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/encoders/modules.py#L955-L1054" target="_blank" rel="noopener">VAE 条件编码及 CLIP 帧复制 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/wrappers.py#L23-L45" target="_blank" rel="noopener">OpenAIWrapper 的 concat 接口 ↗</a></p>
+</section>
+
+<section class="doc-block" id="temporal-unet">
+  <h2>4. 时空 U-Net：先空间、后时间，再融合回每一帧</h2>
+  <p>基础图像模型是 SD 2.1 U-Net。论文在每个空间卷积和空间注意力之后插入时间卷积与时间注意力，加入 656M 新参数，总参数达到 1521M，并对完整模型进行视频训练，而非冻结所有空间权重只训练时间层。开源 <code>VideoUNet</code> 保留编码、中央 bottleneck、带跳连的解码路径，默认通道倍率 [1,2,4,4]，基础通道 320，每级两个残差块。</p>
+  <p><code>VideoResBlock</code> 先对 (B·T)×C×H×W 做普通二维 ResBlock，再重排为 B×C×T×H×W，送入一个 <code>dims=3</code> 的 ResBlock。SVD 配置的时间卷积核为 [3,1,1]，即只在时间轴混合三帧，不改变空间位置。然后 <code>AlphaBlender</code> 融合空间输出和时间输出，配置为 <code>learned_with_images</code>；纯图像输入与视频输入可采取不同融合策略。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · video_model.py：VideoResBlock 的五维时间分支</span><pre><code>def forward(self, x, emb, num_video_frames, image_only_indicator=None):
+    x = super().forward(x, emb)  # 空间二维 ResBlock
+    x_mix = rearrange(x, &quot;(b t) c h w -&gt; b c t h w&quot;, t=num_video_frames)
+    x = rearrange(x, &quot;(b t) c h w -&gt; b c t h w&quot;, t=num_video_frames)
+    x = self.time_stack(
+        x, rearrange(emb, &quot;(b t) ... -&gt; b t ...&quot;, t=num_video_frames))
+    x = self.time_mixer(
+        x_spatial=x_mix, x_temporal=x, image_only_indicator=image_only_indicator)
+    return rearrange(x, &quot;b c t h w -&gt; (b t) c h w&quot;)</code></pre></div>
+  <p>时间注意力另有两种轴变换。空间分支先把每帧变成 HW 个 token，做空间 self-attention 和以 CLIP 图像为 context 的 cross-attention。时间分支再把 <code>(b t) s c</code> 变成 <code>(b s) t c</code>：对每个固定空间位置 s，T 个时间 token 相互注意。帧序号经正弦编码和 MLP 加到 token 上，否则自注意力不知道时间顺序。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · video_attention.py：空间位置固定、时间轴注意</span><pre><code># VideoTransformerBlock._forward
+B, S, C = x.shape
+x = rearrange(x, &quot;(b t) s c -&gt; (b s) t c&quot;, t=timesteps)
+x = self.attn1(self.norm1(x)) + x          # 时间 self-attention
+if self.attn2 is not None:
+    x = self.attn2(self.norm2(x), context=context) + x
+x = self.ff(self.norm3(x)) + x
+return rearrange(x, &quot;(b s) t c -&gt; (b t) s c&quot;,
+                 s=S, b=B // timesteps, c=C, t=timesteps)
+
+# SpatialVideoTransformer 在调用时间块前加入 frame-index embedding
+num_frames = torch.arange(timesteps, device=x.device)
+emb = self.time_pos_embed(timestep_embedding(num_frames, self.in_channels))</code></pre></div>
+  <p>因 <code>use_spatial_context=True</code>，同一 CLIP context 还用于时间分支的 cross-attention：每个空间位置都取得对应的参考语义。空间注意力的 token 数随 HW 增长，时间注意力为每个空间位置构造 T 长度序列；总代价同时受分辨率、帧数、U-Net 层数影响。配置启用 gradient checkpointing 和 <code>softmax-xformers</code>，这是内存/实现选择，不是论文新的概率目标。</p>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/video_model.py#L17-L86" target="_blank" rel="noopener">VideoResBlock ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/video_attention.py#L102-L141" target="_blank" rel="noopener">VideoTransformerBlock ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/configs/svd.yaml#L14-L34" target="_blank" rel="noopener">SVD 的 VideoUNet 配置 ↗</a></p>
+</section>
+
+<section class="doc-block" id="micro-conditioning">
+  <h2>5. fps、motion bucket 与 cond_aug：三个 256 维微条件</h2>
+  <p>论文在 base model 和高分辨率 Text/Image-to-Video 训练中，都以输入视频的帧率和运动分数作为条件。代码将 <code>fps_id</code>、<code>motion_bucket_id</code>、<code>cond_aug</code> 分别送入 <code>ConcatTimestepEmbedderND(outdim=256)</code>。这个类复用正弦时间步嵌入，不是把数值当成一个可直接线性解释的旋钮；三者拼成 768 维 <code>vector</code>，经 U-Net 的 sequential label MLP 后加入扩散时间嵌入。</p>
+  <p><code>fps_id</code> 表示训练元数据意义上的帧率条件，默认 6。它会改变模型对相邻帧运动幅度的先验，但官方最终 <code>imageio.mimwrite(video_path, vid)</code> 没有传 fps 参数，因此不能把 <code>fps_id=6</code> 简单当成导出 MP4 容器的播放帧率。要得到确定播放速度，写文件或后处理时还需另行设置帧率。</p>
+  <p><code>motion_bucket_id</code> 是数据光流分数分桶后的离散标识，默认 127。它可在训练覆盖范围内偏向更静止或更运动的视频，却不是“像素/帧”的速度，也不保证所有场景单调响应。脚本对大于 255 的值给出警告；<code>fps_id</code> 小于 5 或大于 30 也会警告。这些范围是脚本对分布外条件的提示，不应扩展成物理解释。</p>
+  <p><code>cond_aug</code> 默认 0.02。开源推理直接在像素域构造 <code>cond_frames = image + cond_aug * randn_like(image)</code>，而论文训练描述的是从对数正态分布采样增强强度，再经 VAE 编码。前者是发布的默认推理参数化，后者是训练方案，不能把二者说成完全相同的一个 σ 采样过程。过强条件噪声可能削弱首帧外观，过弱又可能加重复制感，应把它视作需按输入调整的分布参数，而非确定的质量开关。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · simple_video_sample.py：条件字典的真实键</span><pre><code>value_dict[&quot;cond_frames_without_noise&quot;] = image
+value_dict[&quot;motion_bucket_id&quot;] = motion_bucket_id
+value_dict[&quot;fps_id&quot;] = fps_id
+value_dict[&quot;cond_aug&quot;] = cond_aug
+value_dict[&quot;cond_frames&quot;] = image + cond_aug * torch.randn_like(image)
+
+c, uc = model.conditioner.get_unconditional_conditioning(
+    batch, batch_uc=batch_uc,
+    force_uc_zero_embeddings=[&quot;cond_frames&quot;, &quot;cond_frames_without_noise&quot;])
+additional_model_inputs[&quot;image_only_indicator&quot;] = torch.zeros(2, num_frames).to(device)
+additional_model_inputs[&quot;num_video_frames&quot;] = batch[&quot;num_video_frames&quot;]</code></pre></div>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/simple_video_sample.py#L24-L40" target="_blank" rel="noopener">默认参数 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/simple_video_sample.py#L205-L257" target="_blank" rel="noopener">条件构造、采样与解码 ↗</a></p>
+</section>
+
+<section class="doc-block" id="edm-training">
+  <h2>6. EDM 训练：连续 σ、去噪分数匹配与 v 型预条件</h2>
+  <p>在连续时间形式中，加噪样本为 <em>Z = Z<sub>0</sub> + n</em>，<em>n ∼ N(0,σ²I)</em>。去噪器 D<sub>θ</sub>(Z;σ,c) 预测干净的整段视频 latent，score 由 <em>(D<sub>θ</sub>−Z)/σ²</em> 给出。概率流 ODE 可写为 <em>dZ = −σ̇(t)σ(t)s<sub>θ</sub>(Z;σ(t))dt</em>。训练从指定 p(σ) 抽取噪声级别，以加权平方误差进行去噪分数匹配：</p>
+  <div class="math-scroll"><div class="math">L = E<sub>(Z₀,c),σ,n</sub>[ λ(σ) ‖D<sub>θ</sub>(Z₀+n;σ,c) − Z₀‖²₂ ]<span class="equation-number">(2)</span></div></div>
+  <p>λ(σ) 决定不同噪声级别的相对权重。论文初始图像适配取 <em>logσ ∼ N(P<sub>mean</sub>,P<sub>std</sub>²)</em>，P<sub>mean</sub>=−1.2、P<sub>std</sub>=1，λ(σ)=(1+σ²)/σ²。分辨率越高，低频内容越难被充分破坏，因此论文随训练阶段提高噪声：320×576 视频预训练把 P<sub>mean</sub> 增至 0；I2V 基础适配取 0.7/1.6；576×1024 I2V 取 1.0/1.6。这里的 σ 作用于视频 latent，与参考图像的轻微 cond augmentation 是两套噪声。</p>
+  <div class="math-scroll"><div class="math">D<sub>θ</sub>(Z;σ) = c<sub>skip</sub>Z + c<sub>out</sub>F<sub>θ</sub>(c<sub>in</sub>Z; c<sub>noise</sub>,c)<span class="equation-number">(3)</span></div></div>
+  <p>SVD 配置选 <code>VScalingWithEDMcNoise</code>：c<sub>skip</sub>=1/(σ²+1)，c<sub>out</sub>=−σ/√(σ²+1)，c<sub>in</sub>=1/√(σ²+1)，c<sub>noise</sub>=0.25logσ。也就是说，U-Net 并非直接输出 epsilon；包装器把网络的 v 型输出还原成干净 latent D<sub>θ</sub>。σ 很大时 c<sub>skip</sub> 趋近 0，模型主要依靠 F<sub>θ</sub>；σ 趋近 0 时跳跃分支保留 Z。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · denoiser.py 与 denoiser_scaling.py</span><pre><code># VScalingWithEDMcNoise，等价于 sigma_data=1 的 EDM v 型预条件
+c_skip = 1.0 / (sigma**2 + 1.0)
+c_out = -sigma / (sigma**2 + 1.0) ** 0.5
+c_in = 1.0 / (sigma**2 + 1.0) ** 0.5
+c_noise = 0.25 * sigma.log()
+
+# Denoiser.forward：返回的是 clean-latent prediction
+sigma = append_dims(sigma, input.ndim)
+c_skip, c_out, c_in, c_noise = self.scaling(sigma)
+return (network(input * c_in, c_noise, cond, **additional_model_inputs) * c_out
+        + input * c_skip)</code></pre></div>
+  <p>通用训练器 <code>StandardDiffusionLoss</code> 逐样本抽取 σ，构造 <code>noised_input=input+noise*sigmas</code>，再比较 denoiser 输出和原始 latent。源码把 <code>w</code> 乘在平方误差上；若要逐项对齐论文的 λ 记号，必须检查具体训练配置中 weighting 的定义，不能只凭类名臆测。发布的 SVD YAML 是推理配置，并未给出完整论文训练 recipe。</p>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/denoiser.py#L23-L39" target="_blank" rel="noopener">Denoiser 包装 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/loss.py#L42-L96" target="_blank" rel="noopener">加噪和加权损失实现 ↗</a></p>
+</section>
+
+<section class="doc-block" id="training-stages">
+  <h2>7. 三阶段训练与冻结策略：先改图像噪声参数，再扩展时间</h2>
+  <p>阶段 I 从公开的 SD 2.1 开始。论文先将离散 epsilon 预条件迁移到连续 σ/v 参数化：前 1k 步冻结 F<sub>θ</sub> 除时间嵌入外的全部参数，在 512×512 图像上适配；随后解冻全部 F<sub>θ</sub>，在 256×384 上训练 30k 步，总计 31k。这个短暂的部分冻结只是为了让时间嵌入适配新的 c<sub>noise</sub>，不是整个 SVD 训练始终冻结空间层。</p>
+  <p>阶段 II 插入时间层后，在 LVD-F 上以 14 帧、256×384 训练 150k 步，AdamW 学习率 10<sup>−4</sup>、batch 1536，文本条件以 15% 概率 dropout。再以 14 帧、320×576 训练 100k 步，batch 768，并把 P<sub>mean</sub> 提高到 0。阶段 III 才在约 100 万高质量视频上微调具体任务。I2V 不使用文本，而是用参考帧 CLIP 图像嵌入替代文本 context，并加入复制到时间轴的 VAE 条件。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>分辨率 / 帧数</th><th>步数与全局 batch</th><th>学习率 / 噪声设置</th></tr></thead><tbody>
+    <tr><td>SD 2.1 连续噪声适配</td><td>512² 后 256×384；图像</td><td>1k 部分冻结 + 30k 全量</td><td>P<sub>mean</sub>=−1.2，P<sub>std</sub>=1</td></tr>
+    <tr><td>视频预训练</td><td>256×384，14 帧</td><td>150k；1536</td><td>1e−4；文本 dropout 15%</td></tr>
+    <tr><td>视频提高分辨率</td><td>320×576，14 帧</td><td>100k；768</td><td>1e−4；P<sub>mean</sub>=0</td></tr>
+    <tr><td>I2V 基础适配</td><td>320×576</td><td>50k；768</td><td>3e−5；0.7 / 1.6</td></tr>
+    <tr><td>SVD 与 SVD-XT 微调</td><td>576×1024，14 / 25 帧</td><td>各 50k；768</td><td>3e−5；1.0 / 1.6；EMA 0.9999</td></tr>
+  </tbody></table></div>
+  <p>训练时目标视频帧与额外参考帧是两个输入角色。冻结的 CLIP 和 VAE 负责提供条件，主干整体接受扩散损失。最终 checkpoint 结合视觉检查和人工评价选择，而非以单一验证 loss 最小值决定。原始训练数据 LVD 并非随开源仓库完整提供，因此“代码公开”不等于可以从头逐项复现数据筛选和大规模训练。</p>
+  <div class="doc-warning"><strong>不要混淆任务：</strong>高分辨率文生视频、I2V、帧插值、camera LoRA 与 SVD-MV 都是基于同一个 base prior 的不同微调。I2V 不需要文本；帧插值才使用左右帧与 mask；多视图模型输出的帧轴也不等于真实时间运动。</div>
+</section>
+
+<section class="doc-block" id="sampling-and-guidance">
+  <h2>8. 推理：EDM 离散化、Euler 更新与逐帧线性 CFG</h2>
+  <p>公开 SVD 使用 <code>EulerEDMSampler</code> 与 <code>EDMDiscretization</code>，σ<sub>min</sub>=0.002、σ<sub>max</sub>=700、ρ=7，并在末尾追加 0。SVD 默认 25 步，SVD-XT 默认 30 步。与训练时 log-normal 随机 σ 不同，推理使用确定性的 ρ 次幂网格：</p>
+  <div class="math-scroll"><div class="math">σ<sub>i</sub> = [σ<sub>max</sub><sup>1/ρ</sup> + (i/(K−1))(σ<sub>min</sub><sup>1/ρ</sup> − σ<sub>max</sub><sup>1/ρ</sup>)]<sup>ρ</sup>，&nbsp;&nbsp; σ<sub>K</sub>=0<span class="equation-number">(4)</span></div></div>
+  <p>采样器把初始标准正态张量乘 √(1+σ<sub>0</sub>²)，这与输入预条件及 EDM 初始噪声尺度配套。默认 s_churn=0，不加入额外随机 churn。利用 score 与 D 的关系，以 σ 为积分变量时导数是 <em>(Z−D<sub>θ</sub>(Z;σ,c))/σ</em>，所以一次 Euler 更新为：</p>
+  <div class="math-scroll"><div class="math">Z<sub>next</sub> = Z + (σ<sub>next</sub>−σ) · (Z − D<sub>θ</sub>(Z;σ,c))/σ<span class="equation-number">(5)</span></div></div>
+  <p>每一步 guider 先把无条件与有条件输入拼为两倍 batch，得到去噪预测后再合成 <em>D<sup>w</sup>=D<sub>u</sub>+w(D<sub>c</sub>−D<sub>u</sub>)</em>。SVD 的关键变化是 w 随帧索引线性变化：SVD 配置从 1.0 到 2.5，SVD-XT 从 1.5 到 3.0。离参考帧较近的帧使用较小引导，远处帧用更强引导，试图兼顾前段一致性与后段运动、减少固定大引导的过饱和。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · sampling.py、guiders.py 与 discretizer.py</span><pre><code># prepare_sampling_loop：randn 是单位高斯张量
+x *= torch.sqrt(1.0 + sigmas[0] ** 2.0)
+
+# Euler EDM 单步；默认 gamma=0
+denoised = self.denoise(x, denoiser, sigma_hat, cond, uc)
+d = to_d(x, sigma_hat, denoised)       # (x - denoised) / sigma
+x = x + append_dims(next_sigma - sigma_hat, x.ndim) * d
+
+# LinearPredictionGuider：每一帧的 w 不同
+self.scale = torch.linspace(min_scale, max_scale, num_frames).unsqueeze(0)
+x_u, x_c = x.chunk(2)
+x_u = rearrange(x_u, &quot;(b t) ... -&gt; b t ...&quot;, t=self.num_frames)
+x_c = rearrange(x_c, &quot;(b t) ... -&gt; b t ...&quot;, t=self.num_frames)
+scale = repeat(self.scale, &quot;1 t -&gt; b t&quot;, b=x_u.shape[0])
+return rearrange(x_u + append_dims(scale, x_u.ndim) * (x_c - x_u),
+                 &quot;b t ... -&gt; (b t) ...&quot;)</code></pre></div>
+  <p>因为 CFG 把 U-Net batch 加倍，峰值去噪显存不只与 14 或 25 帧成正比，还包含条件/无条件两路。减少采样步数降低总网络调用次数，但不降低单次 U-Net 的空间 token 和帧数负担。改变随机种子影响初始噪声和 cond augmentation；默认脚本的种子在逐图循环之前设定，批量处理多张输入时的噪声序列需另行注意。</p>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/sampling.py#L41-L130" target="_blank" rel="noopener">采样初始化与 EDM 主循环 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/guiders.py#L60-L99" target="_blank" rel="noopener">逐帧线性引导 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/discretizer.py#L28-L39" target="_blank" rel="noopener">σ 离散化 ↗</a></p>
+</section>
+
+<section class="doc-block" id="temporal-decoder">
+  <h2>9. 解码器：去闪烁不是把每帧独立送入原 SD decoder</h2>
+  <p>原始 SVD 保留 SD 2.1 的图像编码器，但将 VAE decoder 换成时间感知的 <code>VideoDecoder</code>，官方称为 deflickering decoder。生成器输出的 T×4×72×128 latent 先除 0.18215，再经过含时间卷积的解码残差块。默认 <code>time_mode=&quot;conv-only&quot;</code>：卷积与残差块包含 [3,1,1] 时间混合，而中间空间注意力不启用额外时间注意力。它能利用当前送入解码器内的相邻 latent 帧来减少独立解码产生的纹理闪烁。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · models/diffusion.py 与 temporal_ae.py</span><pre><code># DiffusionEngine.decode_first_stage
+z = 1.0 / self.scale_factor * z
+n_samples = default(self.en_and_decode_n_samples_a_time, z.shape[0])
+for n in range(math.ceil(z.shape[0] / n_samples)):
+    z_chunk = z[n * n_samples : (n + 1) * n_samples]
+    if isinstance(self.first_stage_model.decoder, VideoDecoder):
+        kwargs = {&quot;timesteps&quot;: len(z_chunk)}
+    out = self.first_stage_model.decode(z_chunk, **kwargs)
+    all_out.append(out)
+
+# AE3DConv.forward：二维卷积后增加时间卷积
+x = super().forward(input)
+x = rearrange(x, &quot;(b t) c h w -&gt; b c t h w&quot;, t=timesteps)
+x = self.time_mix_conv(x)
+return rearrange(x, &quot;b c t h w -&gt; (b t) c h w&quot;)</code></pre></div>
+  <p><code>decoding_t</code> 默认 14，控制每次送入 decoder 的帧数；官方注释明确指出它占用大量显存，可降低。它不改 U-Net 去噪帧数，也不缩短生成时长。由于是分批处理，时间卷积不会跨解码 chunk 看到相邻批次，边缘可能与一次性全帧解码不同；追求严格一致性时，应将这一参数纳入验收。</p>
+  <p>解码输出从 [-1,1] 映射到 [0,1] 并截断，随后加水印、安全过滤、转为 uint8，最后写 MP4。基础 I2V 脚本不像 SV3D 分支那样在解码后强制覆盖首帧，因此不能把输出第一帧假设为逐像素等于输入。配置仓库还包含 <code>svd_image_decoder</code> 变体，不能将其行为混入默认 SVD 的 temporal decoder 讨论。</p>
+  <p><a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/models/diffusion.py#L105-L150" target="_blank" rel="noopener">冻结 first stage 与分帧编码/解码 ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/autoencoding/temporal_ae.py#L84-L105" target="_blank" rel="noopener">AE3DConv ↗</a> · <a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/autoencoding/temporal_ae.py#L291-L348" target="_blank" rel="noopener">VideoDecoder 的 time_mode ↗</a></p>
+</section>
+
+<section class="doc-block" id="repository-call-chain">
+  <h2>10. 官方仓库调用链、依赖与适用边界</h2>
+  <p>从 <code>scripts/sampling/simple_video_sample.py</code> 入口开始：<code>load_model</code> 读取 <code>scripts/sampling/configs/svd.yaml</code> 或 <code>svd_xt.yaml</code>，通过 <code>instantiate_from_config</code> 构建 <code>DiffusionEngine</code>；后者装载 VideoUNet、Denoiser、GeneralConditioner、first-stage autoencoder、sampler，并从 safetensors 恢复参数。之后 <code>get_batch</code> 组装条件，conditioner 产出 vector/crossattn/concat，最后 sampler 调用 denoiser 和 OpenAIWrapper 进入 VideoUNet。</p>
+  <p>这条调用链说明配置文件是网络定义的一部分，而不只是训练超参数。仅替换 checkpoint 而继续使用另一版本配置，可能造成条件键、帧数或 guidance 范围不匹配。环境需要 PyTorch/torchvision、PyTorch Lightning、OmegaConf、einops、open_clip、transformers、kornia、safetensors、xFormers（配置路径下）、OpenCV、imageio、Fire、rembg 及内容检测依赖等；具体版本须按仓库要求文件核对。权重和模型许可也需单独确认。</p>
+  <div class="doc-warning"><strong>本地核验范围：</strong>本文阅读的是固定提交的静态源码和论文，不声称安装以上依赖、加载 safetensors 或验证实际显存。该固定提交晚于 SVD 初版发布，包含很多后续模型；引用行号均固定到上述完整 SHA，避免 main 分支变化破坏证据。</div>
+  <p>与 DiT 相比，SVD 是卷积/注意力混合 U-Net，而非全 Transformer token 去噪器；与逐帧图像扩散相比，它在所有生成阶段显式混合时间信息；与视频自回归相比，它不逐帧采样，能双向协调一段视频，却需要一次容纳整段 latent。与相机控制方法相比，基础 SVD 的 motion bucket 只是数据驱动的粗粒度先验，不提供可验证的几何轨迹。</p>
+  <p>主要限制来自固定短片长度、单图歧义、长时一致性、遮挡后的身份与几何变化，以及高分辨率全帧注意力的计算/显存。参考图不自然、非训练分辨率、极端 fps 或 motion bucket 都可能造成分布外结果。解码器能减少闪烁但不能修复 U-Net 已生成的错误运动；更大的 CFG 也不是无条件改善质量。</p>
+</section>
+
+<section class="doc-block" id="verification-checklist">
+  <h2>11. 复现检查清单：先测接口与数值，再讨论视觉质量</h2>
+  <ol>
+    <li><strong>形状验收：</strong>以 B=1、T=14、H=576、W=1024 检查视频 latent 为 14×4×72×128，参考 latent 复制后同样为 14×4×72×128，wrapper 拼接后为 14×8×72×128，网络输出回到 14×4×72×128。SVD-XT 只将 T 改为 25。</li>
+    <li><strong>条件键：</strong>检查 CLIP 输出在展开前为 B×1×1024，展开后为 (B·T)×1×1024；三个标量各产生 256 维 vector，拼接为 B×768。uc 的 crossattn 与 concat 为零，但 fps、motion、cond_aug 不应被误清零。</li>
+    <li><strong>参考噪声：</strong>固定 torch 随机数，分别验证 cond_frames_without_noise 未改变，而 cond_frames 恰为 image+cond_aug·ε。若要复现论文训练，还应测试 logσ∼N(−3,0.5²) 的采样和 VAE mode 编码，不要仅运行发布时的固定 0.02 路径。</li>
+    <li><strong>轴变换：</strong>构造能识别 b,t,h,w 的递增张量，测试 <code>(b t) s c ↔ (b s) t c</code> 往返完全一致；检查时间位置编码随帧索引变化而同一帧不同空间位置共享。VideoResBlock 的输入输出形状也必须一致。</li>
+    <li><strong>EDM 预条件：</strong>对一组 σ 检查四个系数的广播，并用任意 mock F 验证 D=c_skip·Z+c_out·F(c_in·Z,c_noise)。特别确认 U-Net 输出不是直接当 epsilon，score 使用 (D−Z)/σ²。</li>
+    <li><strong>离散化与积分：</strong>验证 σ 从 700 递减至 0.002，末尾恰有 0，rho=7；用固定 denoiser 手算一个 Euler 步。测试默认无 churn 时不消耗额外高斯扰动，最终零 σ 不发生除零。</li>
+    <li><strong>逐帧引导：</strong>断言 14 帧的 scale 从 1.0 等距到 2.5，25 帧 XT 从 1.5 到 3.0；用不同 uc/c mock 验证合并顺序是 uc 在前、c 在后，并检查还原后的 (B·T) 帧顺序未交换。</li>
+    <li><strong>解码与输出：</strong>确认 decode 前除 0.18215，<code>decoding_t</code> 分组求和覆盖全部帧且不改变采样 T。对 chunk 边界记录时间卷积感受野差异；输出 RGB 需做 [-1,1]→[0,1] 和 uint8 转换，写视频时明确容器 fps，而不是依赖 fps_id。</li>
+    <li><strong>论文级训练复现：</strong>另行核对三阶段数据、批次、学习率、P<sub>mean</sub>/P<sub>std</sub>、EMA 和条件 dropout；不要把推理 YAML 当作训练配置。没有 LVD 数据与足够算力时，只能宣称模块级复现或加载官方权重，不能宣称复现论文完整结果。</li>
+  </ol>
+  <div class="doc-note"><p>除大规模视觉评估外，上述大部分检查可用小张量、mock conditioner 和手工答案完成，不需要执行 SVD。本文未运行这些测试；它们是面向后续实现的验收建议。</p></div>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>12. 原文、项目与已核验源码</h2>
+  <ul>
+    <li><a href="https://arxiv.org/abs/2311.15127" target="_blank" rel="noopener">论文：Stable Video Diffusion: Scaling Latent Video Diffusion Models to Large Datasets ↗</a>，重点为第 2、3、4 节及附录 D.1–D.4。</li>
+    <li><a href="https://github.com/Stability-AI/generative-models/tree/e8cd657656fa5d61688191730d0e03242bf4ed44" target="_blank" rel="noopener">官方 Stability-AI/generative-models 固定提交 e8cd657656 ↗</a>；<a href="https://huggingface.co/stabilityai/stable-video-diffusion-img2vid" target="_blank" rel="noopener">SVD 模型页 ↗</a>；<a href="https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt" target="_blank" rel="noopener">SVD-XT 模型页 ↗</a>。</li>
+    <li>已实际阅读：<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/simple_video_sample.py" target="_blank" rel="noopener">simple_video_sample.py</a>、<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/configs/svd.yaml" target="_blank" rel="noopener">svd.yaml</a>、<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/scripts/sampling/configs/svd_xt.yaml" target="_blank" rel="noopener">svd_xt.yaml</a>、<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/models/diffusion.py" target="_blank" rel="noopener">models/diffusion.py</a>、<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/diffusionmodules/video_model.py" target="_blank" rel="noopener">video_model.py</a>、<a href="https://github.com/Stability-AI/generative-models/blob/e8cd657656fa5d61688191730d0e03242bf4ed44/sgm/modules/video_attention.py" target="_blank" rel="noopener">video_attention.py</a> 及文内链接的 denoiser、loss、guider、sampler、conditioner、decoder 文件。</li>
+  </ul>
+  <p>代码块为保持可读性省略了类型标注、部分异常处理和无关分支，标注为“节选”；所有关键操作均可在对应固定提交中追溯。</p>
+  <p><a href="#top">返回顶部 ↑</a> · <a href="../categories/video-generation.html">继续阅读视频生成</a></p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/video-generation.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

@@ -1,0 +1,961 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="CogVideoX：文本到视频扩散 Transformer：原理、详细结构、训练推理与代码精读。"><title>CogVideoX：文本到视频扩散 Transformer｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="cogvideox 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>CogVideoX：3D 因果 VAE 与文本—视频联合扩散 Transformer</h1>
+  <p class="doc-subtitle">逐层拆解时空压缩、T5 条件、3D-RoPE、Expert AdaLN、全注意力、v-prediction 与采样</p>
+  <p class="reading-note">精读依据：arXiv:2408.06072v3（2025-03-26）与官方 THUDM/CogVideo 固定提交 <a href="https://github.com/THUDM/CogVideo/tree/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2">7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2</a>（2025-11-04）。该快照同时含 CogVideoX 1.0、1.5、SAT 与 diffusers 接口，本文逐项标明版本；未安装依赖或运行模型。</p>
+  <div class="paper-meta"><span>2B / 5B</span><a href="https://arxiv.org/abs/2408.06072">论文</a><a href="https://github.com/THUDM/CogVideo">官方仓库</a><a href="https://yzy-thu.github.io/CogVideoX-demo/">项目演示</a></div>
+  <nav class="paper-nav" aria-label="页面导航"><a href="../index.html">← 论文精读首页</a><a href="../categories/video-generation.html">所属分类：视频生成</a></nav>
+</header>
+
+<section class="doc-block" id="task">
+  <h2>1. 任务与整体数据流：生成的是压缩视频潜变量，不是逐帧独立图片</h2>
+  <p class="lead">CogVideoX 的输入是文本提示，文生视频输出是一段在空间和时间上共同建模的视频；图生视频变体额外输入一张条件图像。它不是让图像扩散模型逐帧采样再插帧，而是先用 3D 因果 VAE 将视频压缩成时空 latent，再在该空间运行扩散 Transformer。训练时把文本与视频潜变量分别编码为 token 序列，沿序列维拼接后送入同一组 expert Transformer blocks，最终只保留视频部分并 unpatchify，由 VAE decoder 还原像素视频。</p>
+  <p>这一路径同时处理三个瓶颈。第一，像素视频数据量大，时空压缩缩短去噪序列；第二，文本与视觉的数值分布不同，简单共享 LayerNorm 可能掩盖模态差异；第三，分离的空间注意力和时间注意力只能通过中间 token 间接传递大运动信息。对应的工程解法分别是 3D 因果 VAE、按模态调制的 Expert AdaLN、覆盖全部文本和时空视频 token 的联合注意力。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="CogVideoX 的 3D VAE 与文本视频联合 DiT"><rect x="15" y="35" width="185" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="107.5" y="67" text-anchor="middle" class="svg-title">文本提示</text><text x="107.5" y="92" text-anchor="middle" class="svg-small">T5 语义特征</text><rect x="15" y="185" width="185" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="107.5" y="217" text-anchor="middle" class="svg-title">视频</text><text x="107.5" y="242" text-anchor="middle" class="svg-small">3D 因果 VAE 压缩</text><rect x="295" y="95" width="215" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="402.5" y="127" text-anchor="middle" class="svg-title">统一 Transformer</text><text x="402.5" y="152" text-anchor="middle" class="svg-small">文本与视频 token 联合</text><rect x="590" y="95" width="205" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="692.5" y="127" text-anchor="middle" class="svg-title">去噪 / patch 输出</text><text x="692.5" y="152" text-anchor="middle" class="svg-small">恢复视频 latent</text><rect x="875" y="95" width="185" height="76" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="967.5" y="127" text-anchor="middle" class="svg-title">3D VAE 解码</text><text x="967.5" y="152" text-anchor="middle" class="svg-small">输出连续视频</text><path d="M200 73 H245 V133 H295" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M200 223 H245 V157 H295" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M510 133 H590" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M795 133 H875" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：CogVideoX 将文本语义与压缩视频 token 放入同一扩散 Transformer。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+  <p>论文描述的最终系统可在 768×1360、16 fps 下生成最长 10 秒的视频，但官方开源初代 2B/5B 与后续 1.5 的默认规格并不相同。初代 5B 的配置为 49 帧、480×720，通常按 8 fps 输出；1.5 默认 81 帧、768×1360，按 16 fps 输出。因此“CogVideoX 默认都生成 10 秒”是错误概括，必须同时写明模型代际与采样配置。</p>
+  <div class="doc-note"><p><strong>代码阅读约定：</strong>网络本体采用 <code>[B,T,C,H,W]</code> 表示视频 latent，VAE 接口常用 <code>[B,C,F,H,W]</code>；T/F 都表示时间长度，但在不同文件中的轴顺序不同。本文写形状时保留该顺序，避免把通道维误当时间维。</p></div>
+</section>
+
+<section class="doc-block" id="vae">
+  <h2>2. 3D 因果 VAE：时空压缩、后验采样与首帧特殊处理</h2>
+  <p>对视频 x∈[−1,1]<sup>B×3×F×H×W</sup>，编码器由 3D ResNet 阶段组成，前两个下采样阶段同时压缩时间和空间，后续只做空间下采样，总压缩为 8×8×4。官方 5B 配置的 <code>ch_mult=[1,2,2,4]</code>、每级三个残差块、<code>attn_resolutions=[]</code>、z_channels=16；编码器最后输出 32 通道，经对角高斯 regularizer 拆成均值和 log-variance。decoder 对称上采样回到 3 通道 RGB。</p>
+  <div class="math-scroll"><div class="math">q<sub>φ</sub>(z|x)=N(μ<sub>φ</sub>(x), diag(σ²<sub>φ</sub>(x)))；　z=μ<sub>φ</sub>+σ<sub>φ</sub>⊙ε， ε∼N(0,I)；　F<sub>z</sub>=(F−1)/4+1<span class="equation-number">(1)</span></div></div>
+  <p>“4 倍时间压缩”不是简单写成 F/4。代码把首帧单独保留，对余下帧做 stride-2 平均池化两次，所以 F=49 对应 13 个 latent 时间位置，F=81 对应 21 个。这也解释 README 中初代要求 8N+1、1.5 要求 16N+1：后者还在 Transformer 中使用时间 patch q=2。VAE 本身无注意力，论文报告其分辨率泛化较好，但更多帧需要专门做长视频微调。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · vae_modules/cp_enc_dec.py</span><pre><code># 时间下采样：首帧保留，其余帧两两池化
+if self.compress_time and x.shape[2] &gt; 1:
+    h, w = x.shape[-2:]
+    x = rearrange(x, "b c t h w -> (b h w) c t")
+    if get_context_parallel_rank() == 0 and fake_cp:
+        x_first, x_rest = x[..., 0], x[..., 1:]
+        x_rest = torch.nn.functional.avg_pool1d(x_rest, kernel_size=2, stride=2)
+        x = torch.cat([x_first[..., None], x_rest], dim=-1)
+        x = rearrange(x, "(b h w) c t -> b c t h w", h=h, w=w)
+
+# 后验 regularizer（vae_modules/regularizers.py）
+self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
+self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
+self.std = torch.exp(0.5 * self.logvar)
+z = self.mean + self.std * torch.randn_like(self.mean)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/vae_modules/cp_enc_dec.py#L582-L635">DownSample3D</a> 与 <a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/vae_modules/regularizers.py#L10-L110">DiagonalGaussianRegularizer</a>。为节选可读性，源码的分 32 通道池化循环在上例写成等价单次池化。</p>
+  <p>VAE 训练先在 256×256、17 帧视频上开始，随机 8 或 16 fps；之后借助时间上下文并行在 161 帧上微调。损失是 L1 重建、LPIPS 和 KL 的加权组合，数千步后引入 3D discriminator 的 GAN loss。论文没有给出这些项的完整数值权重，不应自行补齐。编码 latent 还需乘模型的 scaling_factor：SAT 5B 配置是 0.7，diffusers 微调代码从 <code>vae.config.scaling_factor</code> 读取，因此缩放不能在不同模型间硬编码复用。</p>
+</section>
+
+<section class="doc-block" id="causal-parallel">
+  <h2>3. 因果卷积与时间上下文并行：当前块只看历史，不看未来</h2>
+  <p>普通对称 padding 的时间卷积会让第 t 帧依赖未来帧；CogVideoX 的时间核大小为 k 时，将 k−1 个 padding 全部放在序列开头，空间方向仍使用左右对称 padding。这样第 t 个输出只读取不超过 t 的输入，首块用复制首帧补历史。这个“因果”是 VAE 的感受野约束，不意味着 DiT 内部使用自回归 causal mask；相反，DiT 使用双向联合注意力。</p>
+  <div class="math-scroll"><div class="math">y<sub>t</sub> = Σ<sub>τ=0…k−1</sub> W<sub>τ</sub> x<sub>t−k+1+τ</sub>；　x<sub>s&lt;0</sub> := x<sub>0</sub>　⇒　y<sub>t</sub> 不依赖 x<sub>&gt;t</sub><span class="equation-number">(2)</span></div></div>
+  <p>上下文并行按时间切片后，每个 rank 不能只拿自己的局部片段做卷积，否则边界会缺失历史。实现中的 <code>_pass_from_previous_rank</code> 用非阻塞 isend/irecv 从前一个 rank 接收 k−1 帧，并在卷积后参与计算；反向传播通过自定义 autograd function 把相应历史梯度送回。论文因此将通信描述为每段只传 k−1 长度的 halo，而不是复制全部视频。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 时间 halo 与因果 padding</span><pre><code>if cp_rank &lt; cp_world_size - 1:
+    req_send = torch.distributed.isend(
+        input_[-kernel_size + 1:].contiguous(), send_rank, group=group
+    )
+if cp_rank &gt; 0:
+    recv_buffer = torch.empty_like(input_[-kernel_size + 1:]).contiguous()
+    req_recv = torch.distributed.irecv(recv_buffer, recv_rank, group=group)
+if cp_rank == 0:
+    input_ = torch.cat([input_[:1]] * (kernel_size - 1) + [input_], dim=0)
+else:
+    req_recv.wait()
+    input_ = torch.cat([recv_buffer, input_], dim=0)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/vae_modules/cp_enc_dec.py#L178-L221">halo 传递</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/vae_modules/cp_enc_dec.py#L339-L408">ContextParallelCausalConv3d.forward</a>。</p>
+  <p>仓库还支持“fake CP”：单进程分时间块解码，同时把边界 cache 暂存到 CPU，用来模拟跨块历史而不建立分布式组。它是显存优化，不应误解为自动改变了视频总帧数或丢弃了首帧。真正的分布式 CP 和分块 cache 都必须在边界测试中比较，否则最隐蔽的错误往往表现为每段接缝处闪变。</p>
+</section>
+
+<section class="doc-block" id="text-patch">
+  <h2>4. T5 文本编码与 video patchify：把两个模态排成一条序列</h2>
+  <p>官方 5B 配置使用冻结的 T5-v1.1-XXL encoder，初代文本长度 226（1.5 为 224），输出维度 4096。tokenizer 截断或 padding 到固定长度，T5 只保留 last_hidden_state，不使用 decoder。DiT 的 <code>text_proj</code> 将每个 4096 维 token 线性投影到 3072 维；视频 latent 则按时间 q、高宽 p 的三维 patch 展平，再线性投影到同一个 hidden size。论文的一般 token 数为 (T/q)(H/p)(W/p)，官方初代 5B 的 q=1、p=2。</p>
+  <div class="math-scroll"><div class="math">z<sub>text</sub> = W<sub>t</sub> T5(x<sub>text</sub>) ∈ ℝ<sup>226×d</sup>；　z<sub>vision</sub> = W<sub>v</sub> Patch<sub>q,p,p</sub>(z) ∈ ℝ<sup>(T/q)(H/p)(W/p)×d</sup><span class="equation-number">(3)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · dit_video_concat.py：patch 和文本拼接</span><pre><code>emb = rearrange(images, "b t c h w -> b (t h w) c")
+emb = rearrange(
+    emb,
+    "b (t o h p w q) c -> b (t h w) (c o p q)",
+    t=kwargs["rope_T"], h=kwargs["rope_H"], w=kwargs["rope_W"],
+    o=self.patch_size[0], p=self.patch_size[1], q=self.patch_size[2],
+)
+emb = self.proj(emb)
+if self.text_proj is not None:
+    text_emb = self.text_proj(kwargs["encoder_outputs"])
+    emb = torch.cat((text_emb, emb), dim=1)  # text tokens 在前</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/dit_video_concat.py#L21-L52">ImagePatchEmbeddingMixin</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/encoders/modules.py#L239-L283">FrozenT5Embedder</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/configs/cogvideox_5b.yaml#L22-L78">5B 网络及文本配置</a>。</p>
+  <p>这里的 patchify 没有 3D 卷积下采样：它只是重排每个 patch 内的 C·q·p·p 个数再做 Linear。最终输出端对称地 unpatchify 为视频 latent，并抛弃文本 token。论文还规定 q&gt;1 时在序列开始重复首帧以兼容图像和视频；diffusers 微调器实现为前置 <code>F % patch_size_t</code> 个首帧副本。实现者必须选用与实际 checkpoint 一致的规则，不能只凭 latent 形状猜测 pad 数。</p>
+  <p>为了让 classifier-free guidance 可学习，SAT conditioner 配置 ucg_rate=0.1，将部分训练文本 embedding 置零。推理时空文本也走同一个冻结 T5，而不是简单使用全零 token id；这点与最终无条件特征的实际分布有关。</p>
+</section>
+
+<section class="doc-block" id="rope-attention">
+  <h2>5. 3D-RoPE 与联合全注意力：坐标相对性直接作用于 Q/K</h2>
+  <p>每个视频 token 用三元坐标 (t,h,w) 标记。论文将每个 attention head 的通道按时间 2/8、空间高 3/8、空间宽 3/8 分配给三组一维 RoPE；5B 有 48 个头、hidden size 3072，因此每头 64 维，对应 16/24/24 维。对每个坐标轴分别生成频率，通过广播构造 [T,H,W,d<sub>head</sub>] 的 sin/cos，最后展平成视频 token 顺序。</p>
+  <div class="math-scroll"><div class="math">RoPE(q<sub>t,h,w</sub>) = [R(t)q<sub>t</sub> ; R(h)q<sub>h</sub> ; R(w)q<sub>w</sub>]；　R(θ)(a,b)=(a cosθ−b sinθ, a sinθ+b cosθ)<span class="equation-number">(4)</span></div></div>
+  <p>源码只旋转视频部分的 Q 和 K，文本 Q/K 原样保留，V 默认不旋转。注意力随后将文本与视频放在同一矩阵中，所有 token 都能读取其他 token。论文的“3D full attention”不是把 T,H,W 三轴拆成三次注意力，而是对展平后的 T·H·W 个视觉位置直接进行全连接注意力，并同时纳入文本。大运动对象不必借助背景 token 中转信息。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · Rotary3DPositionEmbeddingMixin</span><pre><code>dim_t = hidden_size_head // 4
+dim_h = hidden_size_head // 8 * 3
+dim_w = hidden_size_head // 8 * 3
+
+# attention_fn：文本部分跳过 RoPE，视频 Q/K 应用三维旋转
+query_layer = torch.cat((
+    query_layer[:, :, :kwargs["text_length"]],
+    self.rotary(query_layer[:, :, kwargs["text_length"]:], **kwargs),
+), dim=2)
+key_layer = torch.cat((
+    key_layer[:, :, :kwargs["text_length"]],
+    self.rotary(key_layer[:, :, kwargs["text_length"]:], **kwargs),
+), dim=2)
+return attention_fn_default(query_layer, key_layer, value_layer, attention_mask, **kwargs)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/dit_video_concat.py#L248-L407">3D-RoPE 频率、旋转及 attention hook</a>。</p>
+  <p>多分辨率训练时，代码取预计算坐标表的前缀 <code>[:rope_T,:rope_H,:rope_W]</code>，而非把固定坐标缩放至目标分辨率。论文把这一选择称为 extrapolation：保留像素间相对步长和局部细节。它也意味着位置表必须覆盖目标形状；超出范围不会自动获得有效的视频位置编码。初代 2B 是例外：官方配置采用 3D sincos 而非 RoPE。</p>
+</section>
+
+<section class="doc-block" id="expert-adaln">
+  <h2>6. Expert Adaptive LayerNorm：共享联合计算，分开调制两种模态</h2>
+  <p>时间步经过 sinusoidal embedding 与两层 MLP，得到 e(t)。每层的 <code>adaLN_modulation</code> 将其映射为 12d 个量：视频与文本各有一组 attention 的 shift/scale/gate 和 MLP 的 shift/scale/gate。注意力前，两个模态分别做 LayerNorm 和各自的调制，再拼回一个序列；输出后切开，用各自的 gate 控制残差。MLP 前重复同样过程。这样既避免两套完整 MMDiT 的参数开销，又不强迫文本和图像共享同一组统计校正。</p>
+  <div class="math-scroll"><div class="math">h̃<sub>m</sub><sup>attn</sup> = LN(h<sub>m</sub>) ⊙ (1+s<sub>m</sub><sup>attn</sup>(t)) + b<sub>m</sub><sup>attn</sup>(t)， m∈{text,video}<br>h<sub>m</sub> ← h<sub>m</sub> + g<sub>m</sub><sup>attn</sup>(t) ⊙ Split<sub>m</sub>(Attn([h̃<sub>text</sub>; h̃<sub>video</sub>]))<span class="equation-number">(5)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · AdaLNMixin.layer_forward</span><pre><code>(shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp,
+ text_shift_msa, text_scale_msa, text_gate_msa,
+ text_shift_mlp, text_scale_mlp, text_gate_mlp,
+) = adaLN_modulation(kwargs["emb"]).chunk(12, dim=1)
+
+img_attention_input = modulate(layer.input_layernorm(img_hidden_states),
+                               shift_msa, scale_msa)
+text_attention_input = modulate(layer.input_layernorm(text_hidden_states),
+                                text_shift_msa, text_scale_msa)
+attention_input = torch.cat((text_attention_input, img_attention_input), dim=1)
+attention_output = layer.attention(attention_input, mask, **kwargs)
+img_hidden_states = img_hidden_states + gate_msa.unsqueeze(1) * attention_output[:, text_length:]
+text_hidden_states = text_hidden_states + text_gate_msa.unsqueeze(1) * attention_output[:, :text_length]</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/dit_video_concat.py#L508-L655">AdaLNMixin：12 路调制、残差和 QK-LayerNorm</a>。上面将源码预先 unsqueeze 的 gate 在表达式中展开展示，语义相同。</p>
+  <p>官方 5B 有 42 层，hidden=3072，时间 embedding MLP 输出 512，再由每层投影到 12×3072。Q/K 在 attention 前还各有一层 head-dim LayerNorm。最终层只取视频 token，经 shift/scale 和 Linear 输出 patch 内的 16·q·p·p 个数。初始化时 adaLN 最后一个 Linear 的权重和 bias 置零，使调制与 gate 从稳定起点学习。</p>
+</section>
+
+<section class="doc-block" id="training-objective">
+  <h2>7. 扩散训练目标：v-prediction、zero-SNR 与显式均匀时间步采样</h2>
+  <p>设干净、缩放后的 latent 为 x<sub>0</sub>，从训练噪声日程取 a<sub>t</sub>=√ᾱ<sub>t</sub>，b<sub>t</sub>=√(1−ᾱ<sub>t</sub>)，加噪 x<sub>t</sub>=a<sub>t</sub>x<sub>0</sub>+b<sub>t</sub>ε。模型采用 v-prediction，目标 v<sub>t</sub>=a<sub>t</sub>ε−b<sub>t</sub>x<sub>0</sub>。SAT 的 <code>VideoScaling</code> 返回 c_skip=a、c_out=−b，因此 denoiser 输出 x̂<sub>0</sub>=a x<sub>t</sub>−b v<sub>θ</sub>；代码损失表面比较 x̂<sub>0</sub> 和 x<sub>0</sub>，同时乘权重 1/b²，恰好对应未加权的 v 均方误差。</p>
+  <div class="math-scroll"><div class="math">x̂<sub>0</sub>=a<sub>t</sub>x<sub>t</sub>−b<sub>t</sub>v<sub>θ</sub>；　(1/b<sub>t</sub>²)||x̂<sub>0</sub>−x<sub>0</sub>||² = ||v<sub>θ</sub>−(a<sub>t</sub>ε−b<sub>t</sub>x<sub>0</sub>)||²<span class="equation-number">(6)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · VideoDiffusionLoss</span><pre><code>alphas_cumprod_sqrt, idx = self.sigma_sampler(input.shape[0], return_idx=True)
+noise = torch.randn_like(input)
+noised_input = input.float() * append_dims(alphas_cumprod_sqrt, input.ndim) \
+    + noise * append_dims((1 - alphas_cumprod_sqrt**2) ** 0.5, input.ndim)
+model_output = denoiser(network, noised_input, alphas_cumprod_sqrt, cond, **additional_model_inputs)
+w = append_dims(1 / (1 - alphas_cumprod_sqrt**2), input.ndim)  # v-pred
+return torch.mean((w * (model_output - target) ** 2).reshape(target.shape[0], -1), 1)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/diffusionmodules/loss.py#L69-L135">VideoDiffusionLoss</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/diffusionmodules/denoiser_scaling.py#L62-L70">VideoScaling</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/diffusionmodules/discretizer.py#L76-L135">ZeroSNRDDPMDiscretization</a>。</p>
+  <p>zero-SNR 实现从线性 β 日程计算 ᾱ，再将首尾缩放，使终端信噪比趋于零。显式均匀采样把 1000 个 timestep 区间分给数据并行 rank，各自只在自己的子区间均匀取样，减少一个全局 batch 内噪声水平的随机聚集。实际 <code>DiscreteSampling</code> 还有 group_num，且 world_size≤8 时关闭该策略；因此小规模 LoRA 示例中的逐样本 <code>randint</code> 不能冒充完整预训练算法。</p>
+  <p>完整的训练步骤是：编码并冻结 VAE latent 与 T5 特征；按 rank 采样 t 和 ε；构造 x<sub>t</sub>；联合 DiT 输出 v；转成 x̂<sub>0</sub> 后加权计算 MSE；只更新可训练参数。SAT 的 <code>not_trainable_prefixes=["first_stage_model","conditioner"]</code> 以及参数冻结逻辑确保 VAE 与文本编码器不参与去噪训练。</p>
+</section>
+
+<section class="doc-block" id="data-progressive">
+  <h2>8. 数据与渐进训练：Frame Pack 解决变长，分辨率课程控制成本</h2>
+  <p>论文的训练数据经过镜头切分和质量过滤后约有 3500 万个单镜头片段，平均约 6 秒，另用 LAION-5B 与 COYO-700M 中筛选的 20 亿图像辅助训练。过滤不仅看清晰度，还排除剪辑、运动不连贯、讲座、大段文字、录屏和相机抖动；光流和美学分数阈值会动态调整。短 caption 则通过 CogVLM 逐帧描述、GPT-4 汇总，再蒸馏到 LLaMA2 与端到端 CogVLM2-Caption，以覆盖动作、镜头和时序变化。</p>
+  <p>Multi-Resolution Frame Pack 将不同帧数、不同分辨率的样本 pack 到固定 token 总量的 batch 中，而不是一律截长弃短或大量 zero-padding。每个样本有自己的三维 RoPE 坐标，打包后需要样本级注意力隔离；不能把拼接边界当作同一场景中的相邻视频。图像作为单帧视频加入，重复首帧规则使其与视频 patch 对齐。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>最大分辨率</th><th>最长时长</th><th>batch size</th><th>训练步数</th></tr></thead><tbody>
+    <tr><td>1</td><td>256×384</td><td>6 秒</td><td>2000</td><td>400k</td></tr>
+    <tr><td>2</td><td>480×720</td><td>6 秒</td><td>1000</td><td>220k</td></tr>
+    <tr><td>3</td><td>768×1360</td><td>10 秒</td><td>250</td><td>120k</td></tr>
+    <tr><td>4：高质量微调</td><td>768×1360</td><td>10 秒</td><td>100</td><td>10k</td></tr>
+  </tbody></table></div>
+  <p>这些数字来自论文附录表 5，不是单卡微调教程的推荐值。优化器为 Adam，β₁=0.9、β₂=0.95、ε=10<sup>−8</sup>，weight decay=10<sup>−4</sup>，梯度裁剪 1.0，余弦学习率衰减。论文附录报告的训练精度为 BF16；仓库 README 对初代 2B 推理仍推荐 FP16，并对其余模型推荐 BF16。最终 20% 更高质量数据用于去除水印和字幕，但作者也观察到语义能力轻微下降；所以“更高美学质量”与“更强指令跟随”并非总能同步改善。</p>
+</section>
+
+<section class="doc-block" id="sampling">
+  <h2>9. 采样与推理：从噪声 latent 到视频的完整反向过程</h2>
+  <p>推理首先把提示词扩展成详细英文描述，再用冻结 T5 得到条件与空提示的无条件 embedding。采样器创建与目标视频 latent 相同形状的高斯噪声，从高噪声向低噪声迭代。SAT 5B 默认 <code>VPSDEDPMPP2MSampler</code>、50 步、DynamicCFG，配置 scale=6、exp=5。每一步 DiT 根据 x<sub>t</sub>、t 与文本联合注意力预测 v，再得到 denoised latent，求解器更新 x；最后除以 scaling factor 并调用 VAE decoder。</p>
+  <div class="math-scroll"><div class="math">x̂<sub>0</sub><sup>cfg</sup> = x̂<sub>0,u</sub> + s(k) (x̂<sub>0,c</sub>−x̂<sub>0,u</sub>)；　s(k)=1+s[1−cos(π(k/S)<sup>e</sup>)]/2<span class="equation-number">(7)</span></div></div>
+  <p>动态 guidance 不是恒定 6：按上式从接近 1 增至 7。它把有条件与无条件输入拼成双 batch 一次前向，因而会显著增加 DiT 计算。DPM 求解器还使用上一次 denoised 估计构造二阶多步更新，不能用单个 Euler 公式替代官方采样细节。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · inference/cli_demo.py（未运行）</span><pre><code>pipe = CogVideoXPipeline.from_pretrained(model_path, torch_dtype=torch.bfloat16)
+pipe.scheduler = CogVideoXDPMScheduler.from_config(
+    pipe.scheduler.config, timestep_spacing="trailing"
+)
+pipe.enable_sequential_cpu_offload()
+pipe.vae.enable_slicing()
+pipe.vae.enable_tiling()
+frames = pipe(
+    height=height, width=width, prompt=prompt,
+    num_videos_per_prompt=1, num_inference_steps=50,
+    num_frames=num_frames, use_dynamic_cfg=True,
+    guidance_scale=6.0,
+    generator=torch.Generator().manual_seed(42),
+).frames[0]
+export_to_video(frames, "./output.mp4", fps=16)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/inference/cli_demo.py#L40-L195">官方 diffusers CLI</a>；SAT 采样器见 <a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/diffusionmodules/sampling.py#L687-L814">VPSDEDPMPP2MSampler</a>，动态 CFG 见 <a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/sgm/modules/diffusionmodules/guiders.py#L24-L77">guiders.py</a>。</p>
+  <p>主要参数包括 num_frames、height/width、步数、guidance scale、seed、dtype 和 fps。帧数、时长与 fps 必须共同说明，改变导出 fps 不等于 DiT 学到了不同运动速度。CPU offload、VAE slicing/tiling 降峰值显存但增加传输或边界处理成本；官方注释也提示 DDIM 通常推荐用于 2B，DPM 用于 5B。固定 seed 只在相同软硬件、调度器和配置下才有可比性。</p>
+</section>
+
+<section class="doc-block" id="finetune-repo">
+  <h2>10. 仓库结构与微调调用链：论文预训练不等同于开源 LoRA 脚本</h2>
+  <p>固定提交中，<code>sat/dit_video_concat.py</code> 是核心 DiT，<code>sat/vae_modules/</code> 是因果 VAE，<code>sat/diffusion_video.py</code> 负责第一阶段编码、冻结和训练/采样连接，<code>sat/sgm/modules/</code> 包含 conditioner、loss、discretizer 与 sampler。<code>inference/cli_demo.py</code> 是 diffusers 推理入口，<code>finetune/</code> 则提供 Accelerate/DeepSpeed 的 LoRA 与 SFT。它们共享模型概念，但不是一份从头复现全部预训练数据和 Frame Pack 基础设施的单一脚本。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · finetune/models/cogvideox_t2v/lora_trainer.py</span><pre><code>latent_dist = vae.encode(video).latent_dist
+latent = latent_dist.sample() * vae.config.scaling_factor
+# latent 从 [B,C,F,H,W] 转成 [B,F,C,H,W]
+latent = latent.permute(0, 2, 1, 3, 4)
+latent_added_noise = scheduler.add_noise(latent, noise, timesteps)
+predicted = transformer(
+    hidden_states=latent_added_noise,
+    encoder_hidden_states=prompt_embedding,
+    timestep=timesteps, image_rotary_emb=rotary_emb,
+    return_dict=False,
+)[0]
+latent_pred = scheduler.get_velocity(predicted, latent_added_noise, timesteps)
+loss = torch.mean((weights * (latent_pred - latent) ** 2).reshape(batch_size, -1), dim=1)</code></pre></div>
+  <p class="file-ref"><a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/finetune/models/cogvideox_t2v/lora_trainer.py#L22-L225">T2V trainer 的组件加载、T5/VAE 编码、RoPE 与 loss</a>；冻结策略见 <a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/finetune/trainer.py#L185-L271">finetune/trainer.py</a>。</p>
+  <p>微调脚本先离线预计算 latent 和 prompt embedding，再卸载 VAE/T5。LoRA 模式冻结所有原参数，只对默认 target modules <code>to_q,to_k,to_v,to_out.0</code> 注入 adapter；SFT 模式训练整个 transformer。可训练参数被转回 FP32，其余推理组件采用指定混合精度，支持 gradient checkpointing 和 ZeRO。默认 rank=128、lora_alpha=64，学习率默认 2×10<sup>−5</sup>，这些是仓库微调设置，不是论文数十亿参数预训练的复现配方。</p>
+  <p>依赖方面，pyproject 要求 Python≥3.8、torch≥2.5.1、diffusers≥0.32.2、transformers≥4.46.3，训练还需 decord、deepspeed、peft 等；当前 requirements.txt 有更高的下限。SAT 还依赖 SwissArmyTransformer，位置表构造含 <code>.cuda()</code>，并非开箱即用的纯 CPU 模型。本文只阅读这些文件，没有安装或运行。</p>
+</section>
+
+<section class="doc-block" id="cost-limits">
+  <h2>11. 计算成本、版本差异与局限</h2>
+  <p>联合全注意力的序列长度 L=L<sub>text</sub>+(T/q)(H/p)(W/p)，标准注意力的成对分数规模为 O(L²d)。FlashAttention 降低显式注意力矩阵的内存和 IO，却没有把理论 pairwise 计算变成线性。初代 5B 在 49 帧、480×720 下，VAE latent 为 13×60×90，p=2、q=1 后有 13×30×30=11,700 个视觉 token，再加 226 个文本 token；长视频高分辨率课程的序列长度会继续迅速增长。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>项目</th><th>论文/官方依据</th><th>解读边界</th></tr></thead><tbody>
+    <tr><td>VAE 压缩</td><td>8×8×4，16 latent channels，首帧独立</td><td>减少 DiT token，但重建误差限制最终保真度</td></tr>
+    <tr><td>Expert AdaLN</td><td>同序列注意力，两个模态各 6 个调制参数组</td><td>比双塔 MMDiT 更省参数，不是两个完全独立网络</td></tr>
+    <tr><td>3D full attention</td><td>所有时空视觉 token 与文本共同注意力</td><td>支持直接跨帧交互，但长序列昂贵</td></tr>
+    <tr><td>显式均匀采样</td><td>各数据并行组使用不重叠 timestep 区间</td><td>减少 batch 噪声水平偏斜，不等于推理步数均匀</td></tr>
+  </tbody></table></div>
+  <p>论文附录在 H800、BF16、50 步下报告：5B 的 480×720、6 秒为 113 秒和 26GB，768×1360、5 秒为 500 秒和 76GB；2B 对应为 49 秒/18GB 与 220 秒/53GB。它们不是本机测试，也不代表开启 diffusers sequential offload 后的消费级显卡速度。仓库 README 的另一组优化推理数据使用不同实现与优化，不能直接混表比较。</p>
+  <p>局限首先是训练数据偏差与 caption 幻觉会进入文本条件；其次是冻结 T5 并不天然理解精确数量、复杂物理或任意语言，官方说明提示词主要为英文。VAE 时间压缩会损失高速细节，联合注意力不能凭空保证真实物理。长时一致性还受训练最长时长、位置坐标范围和视频分块边界影响。高质量微调甚至可能牺牲部分语义能力，评估应分别报告指令跟随、动态程度与视觉质量。</p>
+  <div class="doc-warning"><strong>版本陷阱：</strong>论文表 6 同时列出 2B 的 sinusoidal 与 5B 的 RoPE；固定仓库默认 CLI 指向 1.5，SAT README 说明当前分支重点支持 1.5，初代模型应参考 v1.0 release。复现时必须固定模型权重、代码提交和 scheduler，而不是只写“CogVideoX-5B”。</div>
+</section>
+
+<section class="doc-block" id="reproduce">
+  <h2>12. 实现检查清单与单元测试建议</h2>
+  <ul class="checklist">
+    <li><strong>VAE 形状：</strong>测试 F=1、17、49、81，验证 F<sub>z</sub>=(F−1)/4+1，空间每轴除以 8，后验输出均值与 logvar 通道各为 16；检查 scaling 在 encode/decode 两端互逆。</li>
+    <li><strong>因果性：</strong>固定前 t 帧，只扰动未来帧，断言第 t 帧及之前的 encoder 输出不变；对单进程、fake CP 和多 rank halo 做同输入数值比较，重点看块边界。</li>
+    <li><strong>patch/unpatch：</strong>用每通道不同编号的 latent 验证 [B,T,C,H,W] 重排及逆变换完全还原；q=2 时分别测试首帧补齐数和 RoPE 时间网格的一致性。</li>
+    <li><strong>T5 接口：</strong>检查 padding/truncation 长度、attention mask、4096→d 投影以及无条件特征生成路径；不要把 T5 decoder 输出误当 last_hidden_state。</li>
+    <li><strong>3D-RoPE：</strong>验证时间/高/宽通道为 1/4、3/8、3/8，文本 Q/K 不变；相同相对位移的 token 对应具有预期旋转关系，超出预计算坐标表应显式报错。</li>
+    <li><strong>Expert AdaLN：</strong>分别把文本和视频调制置零，检查对应残差和尺度变化；验证 attention 与 MLP 之后按原 text_length 精确切分，没有把文本输出送入 unpatchify。</li>
+    <li><strong>扩散恒等式：</strong>随机生成 a,b,x,ε，检查 v=aε−bx、x̂₀=a x<sub>t</sub>−bv 和加权 MSE 等价；zero-SNR 首尾及 scheduler timestep 顺序要单独断言。</li>
+    <li><strong>采样与微调：</strong>固定 toy scheduler 检查首步一阶、后续二阶与末步无噪声分支；LoRA 测试只允许 adapter 参数产生梯度，SFT 则确认 VAE/T5 仍冻结。</li>
+    <li><strong>系统验证：</strong>分别记录文本编码、50 步 DiT、VAE 解码的时间与峰值显存；报告 offload/tiling、精度、GPU 和批量，不能把其中某一步冒充总推理时间。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>13. 原文、官方项目与源码出处</h2>
+  <ul class="doc-sources">
+    <li>论文：Yang et al., <a href="https://arxiv.org/abs/2408.06072">CogVideoX: Text-to-Video Diffusion Models with An Expert Transformer</a>，本文核读 v3 正文及训练、I2V、caption 附录。</li>
+    <li>官方仓库：<a href="https://github.com/THUDM/CogVideo/tree/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2">THUDM/CogVideo @ 7a1af71545</a>；<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/README_zh.md">模型版本、显存和输入规格说明</a>；<a href="https://yzy-thu.github.io/CogVideoX-demo/">官方演示页</a>。</li>
+    <li>核心实现：<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/dit_video_concat.py">联合 DiT、RoPE、AdaLN</a>、<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/vae_modules/cp_enc_dec.py">3D 因果 VAE 与 CP</a>、<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/diffusion_video.py">SAT 数据流</a>、<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/finetune/models/cogvideox_t2v/lora_trainer.py">diffusers 微调实现</a>。</li>
+    <li>权重与依赖需按官方 <a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/sat/README_zh.md">SAT README</a>、<a href="https://github.com/THUDM/CogVideo/blob/7a1af7154511e0ce4e4be8d62faa8c5e5a3532d2/pyproject.toml">pyproject.toml</a> 和对应模型许可证核对；本文没有将第三方 diffusers 内部源码标成该仓库自有文件。</li>
+  </ul>
+  <p class="reading-note">范围声明：代码块来自上述已核读本地快照，部分仅省略不相关分支或为排版合并表达式。未下载权重、未安装环境、未进行训练或推理；所有性能数字均标明来自论文或官方文档。</p>
+  <nav class="paper-nav"><a href="#top">回到顶部</a><a href="../index.html">论文精读首页</a><a href="../categories/video-generation.html">所属分类</a></nav>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/video-generation.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>

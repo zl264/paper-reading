@@ -1,0 +1,925 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="DDPM：去噪扩散概率模型：原理、详细结构、训练推理与代码精读。"><title>DDPM：去噪扩散概率模型｜深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="ddpm 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>DDPM：从变分链到噪声预测与迭代采样</h1>
+  <p class="doc-subtitle">Denoising Diffusion Probabilistic Models（2020）：固定前向加噪、高斯后验、ELBO 的噪声损失化简、时间条件 U-Net，以及 hojonathanho/diffusion 的实际调用链。</p>
+  <p class="reading-note">依据 Ho、Jain、Abbeel 原文 v2 与官方 TensorFlow 仓库固定提交 1e0dceb3b3495bbe19116a5e1b3596cd0706c543。DDIM 部分另依据 Song、Meng、Ermon 的 2010.02502v4；该算法不在上述 DDPM 仓库中，文中伪代码明确标为教学实现。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/generative-foundations.html">所属分类：生成模型基础</a></div>
+  <div class="paper-meta"><a href="https://arxiv.org/abs/2006.11239">DDPM 原文</a><a href="https://github.com/hojonathanho/diffusion/tree/1e0dceb3b3495bbe19116a5e1b3596cd0706c543">固定版本官方源码</a><a href="https://arxiv.org/abs/2010.02502">DDIM 后续论文</a></div>
+</header>
+
+<section class="doc-block" id="formulation">
+  <h2>一、问题设定：把生成拆成一千个可学习的高斯反向转移</h2>
+  <p class="lead">DDPM 处理的是无条件图像密度建模：x<sub>0</sub>∼q(x<sub>0</sub>) 是一张真实图像，x<sub>1</sub>,…,x<sub>T</sub> 与它同维，而不是一个较小的语义向量。模型从 p(x<sub>T</sub>)=N(0,I) 出发，经马尔可夫链逐步得到 x<sub>0</sub>。与只训练一个 x→z 编码器的 VAE 不同，这里前向近似后验 q(x<sub>1:T</sub>|x<sub>0</sub>) 被固定为逐渐加噪的链，学习集中在反向去噪器。</p>
+  <div class="math-scroll"><div class="math">p<sub>θ</sub>(x<sub>0:T</sub>) = p(x<sub>T</sub>) Π<sub>t=1</sub><sup>T</sup> p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>),　p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>) = N(μ<sub>θ</sub>(x<sub>t</sub>,t), Σ<sub>θ</sub>(x<sub>t</sub>,t))<span class="equation-number">(1)</span></div></div>
+  <p>输入是带噪图像 x<sub>t</sub> 和整数时间 t，网络输出与图像同形的预测噪声 ε<sub>θ</sub>；实际生成输出是完整图像，而不是低维特征。T 次转移共享一套参数，时间嵌入告诉网络当前噪声水平。相比自回归模型按像素顺序展开，它按噪声尺度展开；相比 GAN 的生成器—判别器博弈，它只需回归加噪时已知的目标。代价是原始采样需要顺序执行 T 次网络。</p>
+  <p>论文使用 CIFAR10 32×32、CelebA-HQ 与 LSUN 256×256，图像整数 {0,…,255} 线性缩放到 [−1,1]。缩放的目的是让网络输入与标准高斯先验尺度相容。代码张量顺序为 NHWC；论文的 t∈{1,…,T} 在 Python/NumPy 数组索引中对应 t<sub>code</sub>=t−1∈{0,…,T−1}，以下推导用论文索引，源码段落另作说明。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 320" role="img" aria-label="DDPM 前向加噪与反向去噪"><rect x="20" y="40" width="200" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="120.0" y="72" text-anchor="middle" class="svg-title">clean x₀</text><text x="120.0" y="97" text-anchor="middle" class="svg-small">真实图像 latent</text><rect x="305" y="40" width="220" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="415.0" y="72" text-anchor="middle" class="svg-title">前向 q(x_t|x_{t−1})</text><text x="415.0" y="97" text-anchor="middle" class="svg-small">固定高斯加噪</text><rect x="620" y="40" width="205" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="722.5" y="72" text-anchor="middle" class="svg-title">带噪 x_t</text><text x="722.5" y="97" text-anchor="middle" class="svg-small">任意时间步</text><rect x="910" y="40" width="155" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="987.5" y="72" text-anchor="middle" class="svg-title">训练目标</text><text x="987.5" y="97" text-anchor="middle" class="svg-small">预测 ε</text><path d="M220 78 H305" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M525 78 H620" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M825 78 H910" fill="none" stroke="#788493" stroke-width="1.6"/><rect x="170" y="205" width="215" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="277.5" y="237" text-anchor="middle" class="svg-title">U-Net εθ</text><text x="277.5" y="262" text-anchor="middle" class="svg-small">x_t、t、条件</text><rect x="500" y="205" width="250" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="625.0" y="237" text-anchor="middle" class="svg-title">反向 pθ(x_{t−1}|x_t)</text><text x="625.0" y="262" text-anchor="middle" class="svg-small">逐层去噪直到 x₀</text><path d="M722 116 V165 H278 V205" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M385 243 H500" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：训练在任意噪声步回归噪声；推理沿反向链迭代。</strong><span>依据论文机制与公开代码重新绘制；模块形状用于说明数据流，而非照搬论文插图。</span></p>
+</section>
+
+<section class="doc-block" id="forward-posterior">
+  <h2>二、前向过程、任意步加噪与可解高斯后验</h2>
+  <p>令 β<sub>t</sub>∈(0,1) 为预先给定的方差计划，α<sub>t</sub>=1−β<sub>t</sub>，ᾱ<sub>t</sub>=Π<sub>s=1</sub><sup>t</sup>α<sub>s</sub>。每个前向节点把上一幅图略微缩小并添加独立高斯：</p>
+  <div class="math-scroll"><div class="math">q(x<sub>t</sub>|x<sub>t−1</sub>) = N(√α<sub>t</sub> x<sub>t−1</sub>, β<sub>t</sub>I),　q(x<sub>1:T</sub>|x<sub>0</sub>) = Π<sub>t=1</sub><sup>T</sup>q(x<sub>t</sub>|x<sub>t−1</sub>)<span class="equation-number">(2)</span></div></div>
+  <p>把 ε<sub>s</sub> 相互独立地代入递推，均值的系数连乘，方差相加，得到任意一步的闭式边缘。这个性质省去训练时逐节点模拟整条链：</p>
+  <div class="math-scroll"><div class="math">q(x<sub>t</sub>|x<sub>0</sub>) = N(√ᾱ<sub>t</sub>x<sub>0</sub>, (1−ᾱ<sub>t</sub>)I),　x<sub>t</sub> = √ᾱ<sub>t</sub>x<sub>0</sub> + √(1−ᾱ<sub>t</sub>)ε,　ε∼N(0,I)<span class="equation-number">(3)</span></div></div>
+  <p>只条件于 x<sub>t</sub> 时，逆向前向后验通常不可解；再条件于真实 x<sub>0</sub>，两个高斯密度的指数都是 x<sub>t−1</sub> 的二次式，乘积仍为高斯。比较二次项和一次项可得：</p>
+  <div class="math-scroll"><div class="math">q(x<sub>t−1</sub>|x<sub>t</sub>,x<sub>0</sub>) = N(μ̃<sub>t</sub>(x<sub>t</sub>,x<sub>0</sub>), β̃<sub>t</sub>I)<span class="equation-number">(4)</span></div></div>
+  <div class="math-scroll"><div class="math">μ̃<sub>t</sub> = [β<sub>t</sub>√ᾱ<sub>t−1</sub>/(1−ᾱ<sub>t</sub>)]x<sub>0</sub> + [√α<sub>t</sub>(1−ᾱ<sub>t−1</sub>)/(1−ᾱ<sub>t</sub>)]x<sub>t</sub>,　β̃<sub>t</sub> = β<sub>t</sub>(1−ᾱ<sub>t−1</sub>)/(1−ᾱ<sub>t</sub>)<span class="equation-number">(5)</span></div></div>
+  <p>这两个系数分别乘真实干净图像和当前带噪图像。β̃<sub>1</sub>=0 是因为已知 x<sub>0</sub> 后，q(x<sub>0</sub>|x<sub>1</sub>,x<sub>0</sub>) 退化为确定分布；对 KL 取对数时不能直接把 0 送入 log，源码对此使用了替换或截断。若训练损失目标直接取 ε，则必须把加噪时同一份 ε 保留下来，不能再抽一份。</p>
+</section>
+
+<section class="doc-block" id="elbo-noise">
+  <h2>三、ELBO 如何逐项化为噪声回归</h2>
+  <p>从 log p<sub>θ</sub>(x<sub>0</sub>)≥E<sub>q</sub>[log p<sub>θ</sub>(x<sub>0:T</sub>)−log q(x<sub>1:T</sub>|x<sub>0</sub>)] 出发，对负下界展开，并用 q(x<sub>t</sub>|x<sub>t−1</sub>,x<sub>0</sub>)=q(x<sub>t−1</sub>|x<sub>t</sub>,x<sub>0</sub>)q(x<sub>t</sub>|x<sub>0</sub>)/q(x<sub>t−1</sub>|x<sub>0</sub>) 重新组合相邻项，可得到：</p>
+  <div class="math-scroll"><div class="math">L = E<sub>q</sub>[L<sub>T</sub> + Σ<sub>t&gt;1</sub>L<sub>t−1</sub> + L<sub>0</sub>]<span class="equation-number">(6)</span></div></div>
+  <div class="math-scroll"><div class="math">L<sub>T</sub>=D<sub>KL</sub>(q(x<sub>T</sub>|x<sub>0</sub>)‖p(x<sub>T</sub>));　L<sub>t−1</sub>=D<sub>KL</sub>(q(x<sub>t−1</sub>|x<sub>t</sub>,x<sub>0</sub>)‖p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>));　L<sub>0</sub>=−log p<sub>θ</sub>(x<sub>0</sub>|x<sub>1</sub>)<span class="equation-number">(7)</span></div></div>
+  <p>β 固定时 L<sub>T</sub> 不依赖 θ，可从训练目标删除；t&gt;1 的项都是高斯间 KL。若模型方差固定为 σ<sub>t</sub>²I，则除与 θ 无关的常数 C 外，KL 变成均值平方误差。代入式 (5)，再以 x<sub>0</sub>=(x<sub>t</sub>−√(1−ᾱ<sub>t</sub>)ε)/√ᾱ<sub>t</sub> 消去 x<sub>0</sub>，得到：</p>
+  <div class="math-scroll"><div class="math">L<sub>t−1</sub>−C = E[ (1/(2σ<sub>t</sub>²)) ‖(1/√α<sub>t</sub>)(x<sub>t</sub>−β<sub>t</sub>ε/√(1−ᾱ<sub>t</sub>))−μ<sub>θ</sub>(x<sub>t</sub>,t)‖² ]<span class="equation-number">(8)</span></div></div>
+  <p>因此一个自然参数化是 μ<sub>θ</sub>=(x<sub>t</sub>−β<sub>t</sub>ε<sub>θ</sub>/√(1−ᾱ<sub>t</sub>))/√α<sub>t</sub>。代入后，均值误差就转化为噪声误差：</p>
+  <div class="math-scroll"><div class="math">L<sub>t−1</sub>−C = E[ β<sub>t</sub>² / (2σ<sub>t</sub>²α<sub>t</sub>(1−ᾱ<sub>t</sub>)) · ‖ε−ε<sub>θ</sub>(x<sub>t</sub>,t)‖² ]<span class="equation-number">(9)</span></div></div>
+  <p>DDPM 的实际简化目标 L<sub>simple</sub>=E<sub>t,x0,ε</sub>[‖ε−ε<sub>θ</sub>(√ᾱ<sub>t</sub>x<sub>0</sub>+√(1−ᾱ<sub>t</sub>)ε,t)‖²] 去掉式 (9) 前面的时间相关系数，并均匀抽 t。它是重加权后的变分目标，不是逐项等价于原始 ELBO；论文报告它改善样本质量，而真正 VLB 训练的码长更好。t=1 的 L<sub>0</sub> 在简化目标中近似为密度乘 bin 宽度，完整离散似然则需要在 1/255 宽度的区间积分高斯。</p>
+  <div class="doc-warning"><strong>不要把“MSE 训练”与“精确最大化数据似然”画等号。</strong>源码同时提供 <code>loss_type='kl'</code> 与 <code>'mse'</code> 路径；CIFAR 默认选未加权 MSE。评估 bits/dim 还单独计算 KL、离散解码 NLL 和先验项，而不是把 MSE 直接解释成 log-likelihood。</div>
+</section>
+
+<section class="doc-block" id="variance">
+  <h2>四、方差不是噪声幅度：固定 β、β̃ 与可学习分支</h2>
+  <p>前向 β<sub>t</sub> 控制 q(x<sub>t</sub>|x<sub>t−1</sub>) 的新增方差；β̃<sub>t</sub> 是已知 x<sub>0</sub> 后逆推 x<sub>t−1</sub> 的后验方差；σ<sub>t</sub>² 是模型实际反向转移 p<sub>θ</sub>(x<sub>t−1</sub>|x<sub>t</sub>) 使用的方差。三者相关但不是同一个量。论文实验固定 σ<sub>t</sub>²=β<sub>t</sub> 或 β̃<sub>t</sub>，结果相近；前者对应数据坐标为独立标准高斯的极端情形，后者对应数据确定于一点的极端情形。</p>
+  <div class="math-scroll"><div class="math">x<sub>t−1</sub> = μ<sub>θ</sub>(x<sub>t</sub>,t) + σ<sub>t</sub>z = (1/√α<sub>t</sub>)[x<sub>t</sub>−(β<sub>t</sub>/√(1−ᾱ<sub>t</sub>))ε<sub>θ</sub>(x<sub>t</sub>,t)] + σ<sub>t</sub>z<span class="equation-number">(10)</span></div></div>
+  <p>t&gt;1 时 z∼N(0,I)，最后一步不添噪声。预测 ε 后，另一种完全一致的均值计算是先求 x̂<sub>0</sub>=(x<sub>t</sub>−√(1−ᾱ<sub>t</sub>)ε<sub>θ</sub>)/√ᾱ<sub>t</sub>，再把 x̂<sub>0</sub> 代入 μ̃<sub>t</sub>(x<sub>t</sub>,x̂<sub>0</sub>)。官方 CIFAR 路径采用后者，并将 x̂<sub>0</sub> 裁剪到 [−1,1]；这个裁剪影响实际采样均值，不能省略后仍声称逐操作一致。</p>
+  <p>在 <code>diffusion_utils_2.py</code> 中，<code>model_var_type='fixedlarge'</code> 把反向方差设为 β<sub>t</sub>，<code>'fixedsmall'</code> 设为 β̃<sub>t</sub>；<code>'learned'</code> 要求网络输出通道翻倍，一半作均值参数、一半作 log variance。CIFAR 入口默认 <code>eps/fixedlarge/mse</code>，即预测噪声、固定 β、未加权 MSE；这与论文实验的选择一致。旧版 <code>diffusion_utils.py</code> 被 LSUN/CelebA-HQ 入口调用，则只实现噪声预测并用 β̃ 采样，阅读时不能混为同一条配置。</p>
+</section>
+
+<section class="doc-block" id="network">
+  <h2>五、时间嵌入、残差块、自注意力与 U-Net 形状</h2>
+  <p>官方 <a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/nn.py#L90-L109">nn.py</a> 生成 sinusoidal 时间嵌入：对维度一半计算频率，指数步长含 log(10000)，把 t 乘频率后拼接 sin 和 cos，得到 [B,ch]。U-Net 再将 ch 维映射到 4ch，经 Swish 和第二层 dense，最终时间向量 temb 为 [B,4ch]。它不是学习到的 t 查表，也不是额外图像 token。</p>
+  <p>每个 <a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py#L37-L63">残差块</a> 的顺序为 GroupNorm→Swish→3×3 conv→加入时间投影→GroupNorm→Swish→dropout→3×3 conv，再加残差。时间向量经 dense 后 reshape/广播为 [B,1,1,C<sub>out</sub>]；通道变化时 shortcut 用 3×3 conv 或 1×1 NIN。第二个卷积、attention 输出投影和最终输出卷积采用 <code>init_scale=0</code> 的近零初始化，让初始残差分支较小。</p>
+  <p>自注意力仅在空间边长属于 <code>attn_resolutions</code> 时启用。q,k,v 都是 1×1 投影；对 NHWC，q/k 的点积缩放到 [B,H,W,H,W]，每个位置关注同一张特征图的所有 HW 位置，softmax 后聚合 v 并残差相加。它不是跨 batch 或跨时间注意力，复杂度随 HW 的平方增长。</p>
+  <div class="code-block"><span class="code-label">官方源码 · models/unet.py · L97–118</span><pre><code>with tf.variable_scope(name, reuse=tf.AUTO_REUSE):
+    # Timestep embedding
+    with tf.variable_scope('temb'):
+      temb = nn.get_timestep_embedding(t, ch)
+      temb = nn.dense(temb, name='dense0', num_units=ch * 4)
+      temb = nn.dense(nonlinearity(temb), name='dense1', num_units=ch * 4)
+      assert temb.shape == [B, ch * 4]
+
+    # Downsampling
+    hs = [nn.conv2d(x, name='conv_in', num_units=ch)]
+    for i_level in range(num_resolutions):
+      with tf.variable_scope('down_{}'.format(i_level)):
+        # Residual blocks for this resolution
+        for i_block in range(num_res_blocks):
+          h = resnet_block(
+            hs[-1], name='block_{}'.format(i_block), temb=temb, out_ch=ch * ch_mult[i_level], dropout=dropout)
+          if h.shape[1] in attn_resolutions:
+            h = attn_block(h, name='attn_{}'.format(i_block), temb=temb)
+          hs.append(h)
+        # Downsample
+        if i_level != num_resolutions - 1:
+          hs.append(downsample(hs[-1], name='downsample', with_conv=resamp_with_conv))</code></pre></div>
+  <p>CIFAR 使用 <code>ch=128, ch_mult=(1,2,2,2), num_res_blocks=2</code>，空间尺度为 32→16→8→4，通道为 128→256→256→256；仅 16×16 处加注意力。中间是残差—注意力—残差；上采样每级有 <code>num_res_blocks+1</code> 个块，用 <code>tf.concat([h, hs.pop()], axis=-1)</code> 拼回对应下采样特征，最后 GroupNorm、Swish、卷积输出 3 通道（可学习方差时为 6）。256×256 配置为六尺度、<code>ch_mult=(1,1,2,2,4,4)</code>，对应通道最高 512；论文分别给出 35.7M 与 114M 参数。</p>
+</section>
+
+<section class="doc-block" id="official-training">
+  <h2>六、官方源码调用链：系数、训练损失与优化器</h2>
+  <p>以 CIFAR 为例，入口 <a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/scripts/run_cifar.py">scripts/run_cifar.py</a> 的 <code>train()</code> 建立 β 计划，构造 <code>Model</code>，再调用 <code>tpu_utils.run_training</code>。数据经 <code>normalize_data(x)=x/127.5−1</code> 后进入 <code>Model.train_fn</code>：随机翻转，独立为每个 batch 元素抽整数 t，调用 <code>GaussianDiffusion2.training_losses</code>，最后对 batch 取均值。这条调用链是 <code>run_cifar.train → run_training/model_fn → Model.train_fn → q_sample + denoise_fn → unet.model → meanflat(MSE)</code>。</p>
+  <div class="code-block"><span class="code-label">官方源码 · diffusion_tf/diffusion_utils_2.py · L58–81</span><pre><code>self.betas = betas = betas.astype(np.float64)
+assert (betas &gt; 0).all() and (betas &lt;= 1).all()
+timesteps, = betas.shape
+self.num_timesteps = int(timesteps)
+
+alphas = 1. - betas
+self.alphas_cumprod = np.cumprod(alphas, axis=0)
+self.alphas_cumprod_prev = np.append(1., self.alphas_cumprod[:-1])
+
+self.sqrt_alphas_cumprod = np.sqrt(self.alphas_cumprod)
+self.sqrt_one_minus_alphas_cumprod = np.sqrt(1. - self.alphas_cumprod)
+self.log_one_minus_alphas_cumprod = np.log(1. - self.alphas_cumprod)
+self.sqrt_recip_alphas_cumprod = np.sqrt(1. / self.alphas_cumprod)
+self.sqrt_recipm1_alphas_cumprod = np.sqrt(1. / self.alphas_cumprod - 1)
+
+# calculations for posterior q(x_{t-1} | x_t, x_0)
+self.posterior_variance = betas * (1. - self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+self.posterior_log_variance_clipped = np.log(np.append(self.posterior_variance[1], self.posterior_variance[1:]))
+self.posterior_mean_coef1 = betas * np.sqrt(self.alphas_cumprod_prev) / (1. - self.alphas_cumprod)
+self.posterior_mean_coef2 = (1. - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1. - self.alphas_cumprod)</code></pre></div>
+  <p><code>_extract</code> 用 <code>tf.gather(a,t)</code> 取每个样本的标量，再 reshape 成 [B,1,1,1]，故系数能广播到 NHWC。下面的 <code>q_sample</code> 正是式 (3)：<code>noise</code> 参数既参与加噪又作为 <code>eps</code> 的回归目标。<code>nn.meanflat</code> 对 H,W,C 求均值，随后入口再对 batch 求均值；不是对整个四维张量直接 sum。</p>
+  <div class="code-block"><span class="code-label">官方源码 · diffusion_tf/diffusion_utils_2.py · L274–304</span><pre><code>def training_losses(self, denoise_fn, x_start, t, noise=None):
+  assert t.shape == [x_start.shape[0]]
+  if noise is None:
+    noise = tf.random_normal(shape=x_start.shape, dtype=x_start.dtype)
+  x_t = self.q_sample(x_start=x_start, t=t, noise=noise)
+
+  if self.loss_type == 'kl':
+    losses = self._vb_terms_bpd(
+      denoise_fn=denoise_fn, x_start=x_start, x_t=x_t, t=t,
+      clip_denoised=False, return_pred_xstart=False)
+  elif self.loss_type == 'mse':
+    assert self.model_var_type != 'learned'
+    target = {
+      'xprev': self.q_posterior_mean_variance(x_start=x_start, x_t=x_t, t=t)[0],
+      'xstart': x_start,
+      'eps': noise
+    }[self.model_mean_type]
+    model_output = denoise_fn(x_t, t)
+    losses = nn.meanflat(tf.squared_difference(target, model_output))
+  else:
+    raise NotImplementedError(self.loss_type)
+  return losses</code></pre></div>
+  <p>为便于聚焦控制流，上段省略形状断言和尾部的 <code>return</code> 前断言，没有替换核心运算。完整函数见<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L274-L304">固定版本 L274–304</a>。</p>
+  <p>CIFAR 默认 T=1000，β 从 10<sup>−4</sup> 线性增至 0.02，Adam、batch=128、lr=2×10<sup>−4</sup>、5000 步 warmup、全局梯度范数裁剪 1、dropout=0.1；论文另说明 EMA decay=0.9999。大图为 batch=64、lr=2×10<sup>−5</sup>、dropout=0。没有冻结一半 U-Net 或额外判别器损失。仓库 README 指明 TensorFlow 1.15、Python 3.5、TPU v3-8 和 GCS 数据路径；本文没有安装这些旧依赖，也没有运行训练。</p>
+</section>
+
+<section class="doc-block" id="official-sampling">
+  <h2>七、官方反向采样：从 x̂₀ 到高斯转移</h2>
+  <p>CIFAR 的 <code>p_mean_variance</code> 首先执行 ε<sub>θ</sub>(x,t)，通过 <code>_predict_xstart_from_eps</code> 得到 x̂<sub>0</sub>，再裁剪；随后调用 <code>q_posterior_mean_variance</code> 计算 μ̃。固定大方差时实际用于采样的 log variance 是 log β<sub>t</sub>，但为 t=0 的对数 KL 计算另行替换首项。最后的 <code>nonzero_mask</code> 确保代码索引 0 不再加噪。</p>
+  <div class="code-block"><span class="code-label">官方源码 · diffusion_tf/diffusion_utils_2.py · L186–219</span><pre><code>def p_sample(self, denoise_fn, *, x, t, noise_fn, clip_denoised=True, return_pred_xstart: bool):
+  model_mean, _, model_log_variance, pred_xstart = self.p_mean_variance(
+    denoise_fn, x=x, t=t, clip_denoised=clip_denoised, return_pred_xstart=True)
+  noise = noise_fn(shape=x.shape, dtype=x.dtype)
+  # no noise when t == 0
+  nonzero_mask = tf.reshape(1 - tf.cast(tf.equal(t, 0), tf.float32),
+                            [x.shape[0]] + [1] * (len(x.shape) - 1))
+  sample = model_mean + nonzero_mask * tf.exp(0.5 * model_log_variance) * noise
+  return (sample, pred_xstart) if return_pred_xstart else sample
+
+def p_sample_loop(self, denoise_fn, *, shape, noise_fn=tf.random_normal):
+  i_0 = tf.constant(self.num_timesteps - 1, dtype=tf.int32)
+  img_0 = noise_fn(shape=shape, dtype=tf.float32)
+  _, img_final = tf.while_loop(
+    cond=lambda i_, _: tf.greater_equal(i_, 0),
+    body=lambda i_, img_: [
+      i_ - 1,
+      self.p_sample(
+        denoise_fn=denoise_fn, x=img_, t=tf.fill([shape[0]], i_),
+        noise_fn=noise_fn, return_pred_xstart=False)
+    ],
+    loop_vars=[i_0, img_0], shape_invariants=[i_0.shape, img_0.shape],
+    back_prop=False
+  )
+  return img_final</code></pre></div>
+  <p>上段省略少量输入/输出形状断言；完整版本见 <a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L186-L219">L186–219</a>。注意变量名 <code>img_0</code> 实际是初始噪声，并非最后图像。<code>tf.while_loop</code> 从 T−1 到 0，<code>back_prop=False</code>，每次调用同一个去噪器但填入不同 t；不能并行跳过中间状态。仓库也提供 progressive 版本记录 x̂<sub>0</sub>，旧版还提供轨迹和插值接口。</p>
+  <p><code>calc_bpd_loop</code> 是另一条评估调用链：对每个 t 加噪，t=0 用离散高斯 NLL，其余用真实后验与模型转移间 KL，再加 prior KL。<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/utils.py#L116-L133">discretized_gaussian_log_likelihood</a> 用近似标准正态 CDF 计算 ±1/255 区间概率，对 ±1 两端使用单侧尾部。评估默认使用 EMA 权重，这与训练时更新 θ 的路径不同。</p>
+</section>
+
+<section class="doc-block" id="ddim">
+  <h2>八、DDIM：同一噪声模型，不同反向随机性</h2>
+  <p>DDIM 来自 Song、Meng、Ermon 的后续论文，不属于 2020 年 DDPM 原文，也不存在于所核验的 hojonathanho 仓库。它构造一族条件于 x<sub>0</sub> 的非马尔可夫推断分布，但保持每个 q(x<sub>t</sub>|x<sub>0</sub>) 边缘与 DDPM 相同。因训练只依赖这些边缘的加噪形式，同一个 ε<sub>θ</sub> 可以复用而无需重新训练。</p>
+  <p>以下用 ᾱ 表示 DDPM 的累积系数；DDIM 原论文把同类累积量写作 α。给定当前步 t 与前一步 s（完整链中 s=t−1，跳步时 s=τ<sub>i−1</sub>），先计算 x̂<sub>0</sub>，再定义：</p>
+  <div class="math-scroll"><div class="math">x̂<sub>0</sub>=(x<sub>t</sub>−√(1−ᾱ<sub>t</sub>)ε<sub>θ</sub>(x<sub>t</sub>,t))/√ᾱ<sub>t</sub>,　σ<sub>t,s</sub>(η)=η√[(1−ᾱ<sub>s</sub>)/(1−ᾱ<sub>t</sub>)]√(1−ᾱ<sub>t</sub>/ᾱ<sub>s</sub>)<span class="equation-number">(11)</span></div></div>
+  <div class="math-scroll"><div class="math">x<sub>s</sub> = √ᾱ<sub>s</sub>x̂<sub>0</sub> + √(1−ᾱ<sub>s</sub>−σ<sub>t,s</sub>²)ε<sub>θ</sub>(x<sub>t</sub>,t) + σ<sub>t,s</sub>z,　z∼N(0,I)<span class="equation-number">(12)</span></div></div>
+  <p>η=1 时得到 DDPM 对应的马尔可夫随机生成过程；η=0 时随机项消失，得到 DDIM 的确定映射。固定初始 x<sub>T</sub> 后，确定映射使插值和重建更可控，但不意味着网络误差消失。可在递增子序列 τ⊂{1,…,T} 上采样，从 τ 的末端逆向走到起点，从而减少网络调用；跳步改变了近似与更新，不应承诺任意少步都保持同样质量。</p>
+  <div class="code-block"><span class="code-label">教学伪代码 · 非 DDPM/DDIM 官方源码</span><pre><code># 仅说明 DDIM 论文式 (12)；不是 hojonathanho/diffusion 中的函数。
+# tau 为递增的一基论文时间索引；abar 是零基数组，abar[k-1] 对应 ᾱ_k。
+# x 已在 tau[-1] 处初始化为标准高斯。
+for i in reversed(range(1, len(tau))):
+    t, s = tau[i], tau[i - 1]
+    a_t = abar[t - 1]
+    a_s = abar[s - 1] if s &gt; 0 else 1.0  # 约定 ᾱ_0=1
+    eps = denoise(x, t - 1)               # 网络与数组均使用零基索引
+    x0 = (x - sqrt(1 - a_t) * eps) / sqrt(a_t)
+    sigma = eta * sqrt((1 - a_s) / (1 - a_t) * (1 - a_t / a_s))
+    direction = sqrt(1 - a_s - sigma**2) * eps
+    x = sqrt(a_s) * x0 + direction + sigma * randn_like(x)
+return x</code></pre></div>
+  <p>这段伪代码已显式转换一基论文时间与零基数组索引，但刻意不处理框架特有的图构建、clip、batch 广播和 τ 终点之后的最后一步，不能直接当作上游复现脚本。要接入已训练 DDPM，应使用训练时同一份 β/ᾱ、时间索引和 [−1,1] 数据约定，并分别记录 η、轨迹长度和初始种子。DDIM 不是通过“把 DDPM 的 σ 随便设零”就自动得到所有性质的通用最优采样器。</p>
+</section>
+
+<section class="doc-block" id="costs-limits">
+  <h2>九、成本、实验结论与真实边界</h2>
+  <p>训练每张图只需随机一个 t 和一次去噪器前向，避免完整 T 步反向链；但采样默认要 T 次串行 U-Net。论文在 TPU v3-8 上报告：CIFAR batch 128、800k steps 约 10.6 小时，256 张采样 17 秒；256×256 模型 batch 64，128 张采样 300 秒。这是原文特定硬件与实现的观测，不是本地测量，也不能直接换算到任意 GPU。</p>
+  <p>显存来自多尺度激活、残差中间值、上采样 skip concat 与注意力矩阵。16×16 自注意力的单样本权重已是 256×256 项；空间 HW 增大时平方增长，这是高分辨率成本的重要来源。训练还要保留反向传播激活，而采样 <code>back_prop=False</code> 不构造反向图，两者显存不可直接比较。论文训练时 EMA 还维护一份滑动平均参数。</p>
+  <p>原论文报告 CIFAR 的 L<sub>simple</sub> 配置 FID 3.17、IS 9.46，同时承认对数似然不具竞争力；固定方差真实 VLB 的码长略好但样本质量较差。这说明 MSE、FID 与 NLL 是不同目标，不能互相替代。原模型是无条件图像模型，没有文本编码器、classifier-free guidance、latent VAE、级联超分辨率或视频时间维。把后续 Stable Diffusion 的组件投射到这份代码上会得到错误架构图。</p>
+  <p>与 VAE 的关系也应准确表述：DDPM 可视为潜变量与数据同维、层级很长的变分模型，但其 q 固定；它没有 VAE 那种可学习且低维的摊销编码器。DDIM 改变生成过程而非训练网络；跳步是速度/质量权衡，不是 DDPM 官方默认循环的原有选项。</p>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>十、复现清单与单元测试建议</h2>
+  <ul class="checklist"><li>固定 SHA <code>1e0dceb3b3495bbe19116a5e1b3596cd0706c543</code>，区分 CIFAR 的 <code>GaussianDiffusion2</code> 与大图的 <code>GaussianDiffusion</code>，记录 model_mean_type/model_var_type/loss_type。</li><li>用纯 NumPy 对照 β→α→ᾱ、两个 posterior mean 系数和 β̃；检查 β̃<sub>1</sub>=0，且 log 方差首项不会产生 NaN。</li><li>固定 x<sub>0</sub>、t、ε，手算式 (3)，与 <code>q_sample</code> 比较；用同一 ε 计算 <code>_predict_xstart_from_eps</code>，应还原 x<sub>0</sub>，再检查裁剪仅在采样路径发生。</li><li>从 q(x<sub>t−1</sub>|x<sub>0</sub>) 和 q(x<sub>t</sub>|x<sub>t−1</sub>) 的指数配方法独立推导 μ̃、β̃，与小 T 的数值高斯积分或已知公式比较。</li><li>令 denoise_fn 返回零，检查训练目标在 <code>eps</code> 模式等于 ε² 的空间均值；检查每个样本可拥有不同 t，且系数广播为 [B,1,1,1]。</li><li>构造小的 NHWC 张量，验证 32→16→8→4 的下采样、skip 栈最终为空、输出通道与输入通道一致；对注意力单独验证每个位置权重和为 1。</li><li>DDPM 采样用固定 RNG，验证调用 t 的顺序为 T−1…0、最后不加噪；比较 μ̃(x<sub>t</sub>,x̂<sub>0</sub>) 与式 (10) 的代数一致性。</li><li>对 DDIM 教学实现，验证 η=0 时相同初始状态及种子产生完全相同轨迹；η=1 且完整相邻时间步时，核对与所选 DDPM 方差约定的代数关系，而非只比较图像。</li><li>检查数据严格映射到 [−1,1]，FID 使用论文规定的样本数/参考集；不将 MSE 当作 bits/dim，不省略 EMA 后声称复现表格。</li></ul>
+  <p>仓库还要求旧版 TF1.15、TensorFlow Probability 0.8、TensorFlow Datasets 2.1.0 等，脚本默认访问 GCS 与 TPU。这些兼容性、鉴权和数据准备不是本文已解决的事项。以上均为静态源码阅读后的测试建议，未运行模型或安装依赖。</p>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>十一、原始资料与精确文件索引</h2>
+  <ul class="doc-sources"><li>Ho, J., Jain, A., Abbeel, P. <a href="https://arxiv.org/abs/2006.11239">Denoising Diffusion Probabilistic Models</a>，本地读取 v2（2020-12-16）；重点为 §2–3、算法 1/2、附录 A/B。</li><li>官方实现 <a href="https://github.com/hojonathanho/diffusion/tree/1e0dceb3b3495bbe19116a5e1b3596cd0706c543">hojonathanho/diffusion</a>，固定 SHA <code>1e0dceb3b3495bbe19116a5e1b3596cd0706c543</code>，本地依据为 <code>deep_dive_references/repos/ddpm/commit.json</code> 和已解压源码。</li><li><a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/scripts/run_cifar.py#L132-L164">run_cifar.py</a> 配置与训练入口；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L42-L347">diffusion_utils_2.py</a> 加噪、VLB、MSE、采样；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py">models/unet.py</a> 网络；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/tpu_utils/tpu_utils.py#L64-L180">tpu_utils.py</a> 归一化、优化与 EMA。</li><li>Song, J., Meng, C., Ermon, S. <a href="https://arxiv.org/abs/2010.02502">Denoising Diffusion Implicit Models</a>，核对 v4 的 §3–4、式 (6)–(12)。DDIM 代码块为本文教学伪代码，不是 hojonathanho 源文件。</li></ul>
+  <p>论文、官方 TensorFlow 源码和教学扩展已在标题及段首分别标记。除原论文明确报告的实验数字外，没有新增性能声明或未经执行的复现结论。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>
