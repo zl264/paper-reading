@@ -932,7 +932,29 @@ def test(epoch):
   <p>若要验证“训练有效”而非仅“能运行”，需预先约定随机种子的多次运行、每样本 ELBO、重建与 KL 分开报告，并区分随机后验重建和 μ 重建。源码没有提供模型断言、指标报告或训练结果文件，所以这些是实现者需要补充的验证，不是已执行测试。</p>
 </section>
 
-<section class="doc-block" id="sources">
+<section class="doc-block" id="tutorial-merge"><h2>合并教程：从自编码器、两条 ELBO 路线到进阶变体</h2>
+<p>合并了原 VAE 入门教程中对学习路线和常见误区的说明：自编码器的隐向量只是一个确定点，VAE 的输出是输入相关的分布；重构项与 KL 项不是互相独立的两条训练目标，而来自同一个 ELBO。对于初读者，可以先沿“确定 AE → 后验分布 → 重参数化 → ELBO → 先验生成”阅读，再进入源码。</p>
+<p><strong>两条等价理解 ELBO 的路线：</strong>一条从 log p(x) 减去并加回 log q(z|x)，显式留下后验 KL；另一条用 Jensen 不等式，由 log E_q[p(x,z)/q(z|x)] ≥ E_q log[p(x,z)/q(z|x)] 得到下界。前者更容易看出误差来自后验近似，后者更容易看出它为何是“下界”。二者并非不同损失。</p>
+<p>已有教程中的进阶讨论也被纳入：后验坍缩表现为 q(z|x) 接近先验、重构几乎忽略 z；β-VAE 将 KL 乘 β，增强正则却可能牺牲重构；VQ-VAE 把连续后验换成离散码本，因此不能直接沿用本文的高斯 KL。Stable Diffusion 的 AutoencoderKL 虽沿用 VAE 结构，却主要充当感知压缩器，其 KL 正则权重与训练目标并不等同于本页的 MNIST 示例。</p>
+<div class="code-block"><span class="code-label">教学补充 · CNN 编码器/解码器接口（非原论文源码）</span><pre><code>class ConvVAE(nn.Module):
+    def __init__(self, latent_dim=32):
+        super().__init__()
+        self.encoder=nn.Sequential(
+            nn.Conv2d(1,32,4,2,1),nn.ReLU(),   # 28 -&gt; 14
+            nn.Conv2d(32,64,4,2,1),nn.ReLU(), # 14 -&gt; 7
+            nn.Flatten())
+        self.mu=nn.Linear(64*7*7,latent_dim)
+        self.logvar=nn.Linear(64*7*7,latent_dim)
+        self.to_image=nn.Linear(latent_dim,64*7*7)
+        self.decoder=nn.Sequential(
+            nn.ConvTranspose2d(64,32,4,2,1),nn.ReLU(),
+            nn.ConvTranspose2d(32,1,4,2,1),nn.Sigmoid())
+    def forward(self,x):
+        h=self.encoder(x)
+        mu,logvar=self.mu(h),self.logvar(h)
+        z=mu+torch.randn_like(mu)*torch.exp(.5*logvar)
+        return self.decoder(self.to_image(z).reshape(-1,64,7,7)),mu,logvar
+# 这是理解空间特征扩展的教学例子，不属于原论文或 pytorch/examples。</code></pre></div></section><section class="doc-block" id="sources">
   <h2>十、原始资料与代码定位</h2>
   <ul class="doc-sources"><li>Kingma, D. P. &amp; Welling, M. <a href="https://arxiv.org/abs/1312.6114">Auto-Encoding Variational Bayes</a>，本文读取本地 arXiv v11（2022-12-10）；核心见 §2.2–2.4、§3、§5、附录 B 与 C。</li><li>PyTorch 官方示例 <a href="https://github.com/pytorch/examples/tree/acc295dc7b90714f1bf47f06004fc19a7fe235c4/vae">pytorch/examples/vae</a>，完整提交 SHA <code>acc295dc7b90714f1bf47f06004fc19a7fe235c4</code>。本地依据为 <code>deep_dive_references/repos/vae/commit.json</code> 与解压目录中的 <code>vae/main.py</code>、README、requirements。</li><li>源码定位：<a href="https://github.com/pytorch/examples/blob/acc295dc7b90714f1bf47f06004fc19a7fe235c4/vae/main.py#L46-L72">VAE 类</a>、<a href="https://github.com/pytorch/examples/blob/acc295dc7b90714f1bf47f06004fc19a7fe235c4/vae/main.py#L79-L89">解析 KL 与 BCE</a>、<a href="https://github.com/pytorch/examples/blob/acc295dc7b90714f1bf47f06004fc19a7fe235c4/vae/main.py#L92-L129">训练/测试</a>、<a href="https://github.com/pytorch/examples/blob/acc295dc7b90714f1bf47f06004fc19a7fe235c4/vae/main.py#L131-L140">先验采样</a>。</li></ul>
   <p>所有“官方源码”均指 PyTorch 项目维护的示例，未标为论文作者官方实现。文中教学解释与任何新增测试建议都不属于上游文件；未运行模型，未声称复现论文指标。</p>

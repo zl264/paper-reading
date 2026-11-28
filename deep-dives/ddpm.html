@@ -915,7 +915,33 @@ return x</code></pre></div>
   <p>仓库还要求旧版 TF1.15、TensorFlow Probability 0.8、TensorFlow Datasets 2.1.0 等，脚本默认访问 GCS 与 TPU。这些兼容性、鉴权和数据准备不是本文已解决的事项。以上均为静态源码阅读后的测试建议，未运行模型或安装依赖。</p>
 </section>
 
-<section class="doc-block" id="sources">
+<section class="doc-block" id="tutorial-merge"><h2>合并教程：从直觉推导到从零训练/采样骨架</h2>
+<p>合并原入门教程的推导路线：先理解前向链为何可以一步采样任意 x_t，再推导真实后验 q(x_{t−1}|x_t,x_0)，最后将网络均值改写为噪声预测。这样可以避免把“训练时从任意 t 取样本”误解为“推理时也只需一步”。</p>
+<p><strong>概率目标为什么最终看起来像 MSE：</strong>对真实后验与反向高斯的 KL 逐项求和，代入由 x_t 和 ε 表示的 x_0，再比较均值；噪声预测 μ_θ 中的系数与数据/调度有关。原论文采用简化的等权目标提升样本质量，不能将“去掉权重”误写成严格等价于原始变分下界。</p>
+<p>教程中关于 U-Net 的直觉也纳入：下采样提取大结构、上采样恢复细节，跳跃连接保留局部内容；时间步 embedding 经 ResBlock 注入，低分辨率 self-attention 负责较大范围的像素关系。官方实现可改用不同预测类型、采样器或方差方案，但这些变化必须与训练配置一致。</p>
+<div class="code-block"><span class="code-label">教学补充 · 从零 DDPM 训练步与推理循环（非官方源码）</span><pre><code># 约定 beta 按数组零基索引，公式中的 t=1..T 需映射到 t-1。
+betas=torch.linspace(1e-4,.02,T)
+alpha=1-betas
+abar=torch.cumprod(alpha,0)
+
+def train_step(x0):
+    t=torch.randint(0,T,(x0.shape[0],))
+    eps=torch.randn_like(x0)
+    a=abar[t].sqrt().view(-1,1,1,1)
+    b=(1-abar[t]).sqrt().view(-1,1,1,1)
+    xt=a*x0+b*eps
+    return F.mse_loss(model(xt,t),eps)
+
+@torch.no_grad()
+def reverse_loop(model,shape):
+    x=torch.randn(shape)
+    for i in reversed(range(T)):
+        t=torch.full((shape[0],),i,dtype=torch.long)
+        eps=model(x,t)
+        mean=(x-betas[i]/torch.sqrt(1-abar[i])*eps)/torch.sqrt(alpha[i])
+        x=mean if i==0 else mean+torch.sqrt(betas[i])*torch.randn_like(x)
+    return x
+# 仅作算法骨架；生产实现还需 EMA、条件、正确设备/dtype、方差与数值稳定处理。</code></pre></div></section><section class="doc-block" id="sources">
   <h2>十一、原始资料与精确文件索引</h2>
   <ul class="doc-sources"><li>Ho, J., Jain, A., Abbeel, P. <a href="https://arxiv.org/abs/2006.11239">Denoising Diffusion Probabilistic Models</a>，本地读取 v2（2020-12-16）；重点为 §2–3、算法 1/2、附录 A/B。</li><li>官方实现 <a href="https://github.com/hojonathanho/diffusion/tree/1e0dceb3b3495bbe19116a5e1b3596cd0706c543">hojonathanho/diffusion</a>，固定 SHA <code>1e0dceb3b3495bbe19116a5e1b3596cd0706c543</code>，本地依据为 <code>deep_dive_references/repos/ddpm/commit.json</code> 和已解压源码。</li><li><a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/scripts/run_cifar.py#L132-L164">run_cifar.py</a> 配置与训练入口；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/diffusion_utils_2.py#L42-L347">diffusion_utils_2.py</a> 加噪、VLB、MSE、采样；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/models/unet.py">models/unet.py</a> 网络；<a href="https://github.com/hojonathanho/diffusion/blob/1e0dceb3b3495bbe19116a5e1b3596cd0706c543/diffusion_tf/tpu_utils/tpu_utils.py#L64-L180">tpu_utils.py</a> 归一化、优化与 EMA。</li><li>Song, J., Meng, C., Ermon, S. <a href="https://arxiv.org/abs/2010.02502">Denoising Diffusion Implicit Models</a>，核对 v4 的 §3–4、式 (6)–(12)。DDIM 代码块为本文教学伪代码，不是 hojonathanho 源文件。</li></ul>
   <p>论文、官方 TensorFlow 源码和教学扩展已在标题及段首分别标记。除原论文明确报告的实验数字外，没有新增性能声明或未经执行的复现结论。</p>

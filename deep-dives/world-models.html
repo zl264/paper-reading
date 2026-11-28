@@ -738,7 +738,7 @@ a:hover {
 
 <section class="doc-block" id="vae-vision">
   <h2>2. V：卷积 VAE 如何压缩帧，以及 KL 在这里为何有用</h2>
-  <p>原始帧先缩放到 64×64，每个 RGB 通道归一化到 [0,1]。编码器依次使用 32、64、128、256 通道的卷积，卷积核为 4、步长为 2，激活为 ReLU，空间尺寸由 64 依次降为 32、16、8、4。代码随后将特征展平为 2×2×256；这一点依赖框架的卷积尺寸与 padding 行为，不宜在现代重实现中只按公式想当然地省略检查。展平特征分别经过全连接层得到 μ 与 log σ²，重参数化采样 <em>z=μ+σ⊙ε</em>，其中 <em>ε∼N(0,I)</em>。CarRacing 的 z 为 32 维，Doom 为 64 维。</p>
+  <p>原始帧先缩放到 64×64，每个 RGB 通道归一化到 [0,1]。编码器依次使用 32、64、128、256 通道的卷积，卷积核为 4、步长为 2，激活为 ReLU。源码没有显式传 padding，TensorFlow 1.x 的 <code>tf.layers.conv2d</code> 默认 <code>valid</code>，按 floor((n−4)/2)+1 得空间尺寸 64→31→14→6→2，因此代码最后将特征展平为 2×2×256。现代重实现若默认采用 same，会得到另一组空间尺寸，不能只改框架而不同时检查展平尺寸与解码器。展平特征分别经过全连接层得到 μ 与 log σ²，重参数化采样 <em>z=μ+σ⊙ε</em>，其中 <em>ε∼N(0,I)</em>。CarRacing 的 z 为 32 维，Doom 为 64 维。</p>
   <div class="math-scroll"><div class="math">q<sub>φ</sub>(z|x)=N(μ<sub>φ</sub>(x), diag(σ²<sub>φ</sub>(x)))，z=μ+exp(½ log σ²)⊙ε<span class="equation-number">(1)</span></div></div>
   <p>解码器先把 z 映射到 1024 个数并重排，再通过四层转置卷积恢复到 64×64×3，输出使用 sigmoid。优化目标由逐帧重建误差与标准正态先验的 KL 散度组成。对 mini-batch 中每帧求和空间与通道，再对 batch 求均值：</p>
   <div class="math-scroll"><div class="math">L<sub>V</sub>(x)=||x−x̂||²₂ + max[−½∑<sub>j</sub>(1+log σ²<sub>j</sub>−μ²<sub>j</sub>−σ²<sub>j</sub>), δN<sub>z</sub>]<span class="equation-number">(2)</span></div></div>
@@ -768,12 +768,12 @@ self.loss = self.r_loss + tf.reduce_mean(self.kl_loss)</code></pre></div>
 
 <section class="doc-block" id="mdn-rnn-memory">
   <h2>3. M：MDN-RNN 预测的是条件分布，不是一个均值向量</h2>
-  <p>单帧 VAE 不知道车辆运动方向、火球是否即将出现，也不知道同一当前帧之后是否会发生离散事件。M 用 LSTM 汇总历史，并在每个时间步输出下一潜向量的混合高斯密度。设混合数为 K，潜向量维度为 N<sub>z</sub>，第 k 个分量的权重、均值和对数标准差分别为 π<sub>t,k</sub>、μ<sub>t,k</sub>、s<sub>t,k</sub>：</p>
+  <p>单帧 VAE 不知道车辆运动方向、火球是否即将出现，也不知道同一当前帧之后是否会发生离散事件。M 用 LSTM 汇总历史，并在每个时间步输出下一潜向量的混合高斯密度。设混合数为 K，潜向量维度为 N<sub>z</sub>；下式先用论文层面的联合混合高斯说明多峰预测，第 k 个分量的权重、均值和对数标准差分别为 π<sub>t,k</sub>、μ<sub>t,k</sub>、s<sub>t,k</sub>。随后会单独说明公开代码进一步把混合权重也分解到各潜维度。</p>
   <div class="math-scroll"><div class="math">p(z<sub>t+1</sub>|a<sub>t</sub>,z<sub>t</sub>,h<sub>t</sub>)=∑<sub>k=1…K</sub>π<sub>t,k</sub>∏<sub>j=1…Nz</sub>N(z<sub>t+1,j</sub>;μ<sub>t,k,j</sub>,exp(2s<sub>t,k,j</sub>))<span class="equation-number">(3)</span></div></div>
   <p>这里采用分量内各维独立的<strong>对角</strong>高斯，没有预测不同 z 维度之间的相关系数 ρ。CarRacing 使用 K=5、LSTM 隐藏宽度 256、z 维度 32，因此每个样本的 MDN 输出是 5×32×3=480 个数；Doom 的 LSTM 宽度为 512，z 为 64 维，另有终止预测。混合模型可以表示“怪物发射火球”和“不发射”这类离散模式，而单高斯往往把多个未来平均成一个不真实的折中。</p>
   <p>训练输入和标签是错位一步的序列：输入为 [z<sub>t</sub>,a<sub>t</sub>]，标签为 z<sub>t+1</sub>。这属于 teacher forcing，因为历史 z 来自真实观测的 VAE 编码，而不是模型自己前一步生成的 z。每个 batch 构造时从已存储的 μ、log σ² 重新采样 z，避免 M 死记某一次 VAE 采样。其损失是观测标签在预测混合密度下的负对数似然：</p>
   <div class="math-scroll"><div class="math">L<sub>M</sub>=−E[∑<sub>j</sub> log ∑<sub>k</sub> π<sub>t,k,j</sub> N(z<sub>t+1,j</sub>;μ<sub>t,k,j</sub>,σ²<sub>t,k,j</sub>)]<span class="equation-number">(4)</span></div></div>
-  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/rnn/rnn.py#L120-L160">官方源码节选 · carracing/rnn/rnn.py</a></span><pre><code>NOUT = OUTWIDTH * KMIX * 3
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/rnn/rnn.py#L120-L160">官方源码节选 · carracing/rnn/rnn.py</a>；相同计算在源文件中写作两层嵌套 reduce_mean</span><pre><code>NOUT = OUTWIDTH * KMIX * 3
 output, last_state = tf.nn.dynamic_rnn(
     cell, self.input_x, initial_state=self.initial_state,
     time_major=False, swap_memory=True, dtype=tf.float32, scope="RNN")
@@ -795,7 +795,7 @@ nll = -tf.reduce_mean(tf.reduce_logsumexp(v, 1, keepdims=True))</code></pre></di
   <h2>4. C 与 CMA-ES：867 个参数为何足以驾驶</h2>
   <p>论文将控制器刻意设计为线性映射。CarRacing 的 C 接收 32 维 z 与 256 维 LSTM 输出 h，拼接后为 288 维，映射到转向、油门和刹车三个动作，权重与偏置合计 288×3+3=867。Doom 同时使用 LSTM 的 c 与 h，因此输入是 64+512+512=1088，输出一个连续标量，论文表中控制器参数数为 1088（该表未计偏置；源码相应 Doom 控制器以无偏置形式实现）。</p>
   <div class="math-scroll"><div class="math">a<sub>t</sub>=W<sub>c</sub>[z<sub>t</sub>;h<sub>t</sub>]+b<sub>c</sub>，θ<sub>C</sub>←argmax<sub>θ</sub> E<sub>ξ</sub>[∑<sub>t</sub>r<sub>t</sub>]<span class="equation-number">(5)</span></div></div>
-  <p>小搜索空间让 CMA-ES 可以直接优化控制器，不需要对奖励或环境求梯度，也不要求 V、M 的预测图可微地传回 C。CMA-ES 用多层高斯搜索分布产生候选参数，根据累计奖励排序，更新均值、步长与协方差。协方差使搜索方向能随参数之间的相关性调整，但它并非“免费训练大网络”：论文指出其适合最多几千个参数的解空间，而不应拿它直接进化数百万参数的 VAE。</p>
+  <p>小搜索空间让 CMA-ES 可以直接优化控制器，不需要对奖励或环境求梯度，也不要求 V、M 的预测图可微地传回 C。CMA-ES 用多元高斯搜索分布产生候选参数，根据累计奖励排序，更新均值、步长与协方差。协方差使搜索方向能随参数之间的相关性调整，但它并非“免费训练大网络”：论文指出其适合最多几千个参数的解空间，而不应拿它直接进化数百万参数的 VAE。</p>
   <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/model.py#L98-L118">官方源码节选 · carracing/model.py</a></span><pre><code>def get_action(self, z):
     # CarRacing 的 EXP_MODE=MODE_ZH，特征是 [z, state.h]
     h = rnn_output(self.state, z, EXP_MODE)
@@ -853,7 +853,7 @@ nll = -tf.reduce_mean(tf.reduce_logsumexp(v, 1, keepdims=True))</code></pre></di
   <p>梦境环境不再需要真实环境每一步渲染图像。先从保存的初始帧 μ、logvar 中抽一个 z，随后每一步将当前 z、用户或控制器选择的 a 与 M 的隐藏状态送入 MDN-RNN。对每个潜维度，先根据温度调整混合 logits 并抽分量 k，再在选中的高斯中采样。温度 τ 同时进入混合权重和分量内高斯噪声：</p>
   <div class="math-scroll"><div class="math">π′<sub>k,j</sub>=softmax(log π<sub>k,j</sub>/τ)，k<sub>j</sub>∼Categorical(π′<sub>:,j</sub>)，z′<sub>j</sub>=μ<sub>kj,j</sub>+σ<sub>kj,j</sub>√τ ε<sub>j</sub><span class="equation-number">(6)</span></div></div>
   <p>τ→0 时混合选择更尖锐且噪声变小，梦境接近确定性；τ 增大则未来更随机。源码 CarRacing 的 <code>dream_env.py</code> 默认 τ=0.7，Doom 的 <code>doomrnn.py</code> 默认 <code>TEMPERATURE=1.25</code>，而论文 Doom 主实验报告 τ=1.15。数值差异说明“照搬当前脚本”与“复现论文表格”是两种不同目标。</p>
-  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/dream_env.py#L70-L118">官方源码节选 · carracing/dream_env.py</a></span><pre><code>input_x = np.concatenate(
+  <div class="code-block"><span class="code-label"><a href="https://github.com/hardmaru/WorldModelsExperiments/blob/fd982b9691a941b52c6addbde29bc801ca6202c8/carracing/dream_env.py#L70-L118">官方源码节选 · carracing/dream_env.py</a>；源文件局部变量 prev_x 在此改名为 prev_z</span><pre><code>input_x = np.concatenate(
     (prev_z, action.reshape(1, 1, 3)), axis=2)
 feed = {s_model.input_x: input_x,
         s_model.initial_state: self.agent.state}

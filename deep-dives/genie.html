@@ -776,7 +776,7 @@ def quantize_teaching(encoded, codebook):
     quantized_st = encoded + (quantized - encoded).detach()
     return indices, quantized, quantized_st
 # 正式实现还需 VQ 辅助损失、视频 ST encoder/decoder、重建与码本管理</code></pre></div>
-  <p>主 tokenizer 以 AdamW 训练 300k steps，warmup 10k，weight decay 10⁻⁴，β₁=β₂=0.9。附录表中 max_lr 与 min_lr 均写为 3e-4，尽管正文提到 cosine decay；复现报告应保留这个原文事实，不要擅自补出最小学习率。tokenizer 先独立训练，之后为 dynamics 提供离散目标和推理解码器。</p>
+  <p>主 tokenizer 以 AdamW 训练 300k steps，warmup 10k，weight decay 10⁻⁴，β₁=β₂=0.9。正文称使用 cosine decay，但附录表 8 将 max_lr 与 min_lr 都列为 3e-4；这种写法与衰减到更低学习率的通常理解存在歧义，复现报告应保留原文事实，不要擅自补出最小学习率。tokenizer 先独立训练，之后为 dynamics 提供离散目标和推理解码器。</p>
 </section>
 
 <section class="doc-block" id="latent-action-model">
@@ -825,7 +825,7 @@ loss = cross_entropy(
   <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>输入与冻结关系</th><th>主要目标</th><th>论文设置</th></tr></thead><tbody>
   <tr><td>先训练 Video Tokenizer</td><td>视频；独立 VQ-VAE</td><td>视频重建 + VQ 目标</td><td>300k steps，AdamW，1024 codes</td></tr>
   <tr><td>再联合训练 LAM 与 Dynamics</td><td>LAM 从像素；Dynamics 从固定 tokenizer 的 token</td><td>LAM 重建；Dynamics 下一 token CE</td><td>16 帧序列，LAM 8 codes，动作 stop-grad 到 Dynamics</td></tr>
-  <tr><td>主 Genie 动态模型</td><td>过滤 Platformers</td><td>规模化动态预测</td><td>10.1B，512 batch，125k steps，942B tokens（三组件合计口径）</td></tr>
+  <tr><td>主 Genie 动态模型</td><td>过滤 Platformers</td><td>规模化动态预测</td><td>主模型训练设置：batch 512、125k steps、256 TPUv5p；论文称三个组件合计训练/处理 942B tokens。</td></tr>
   </tbody></table></div>
   <p>“联合训练”不是说三个网络从零端到端一起更新，也不是 tokenizer 在动态训练时继续变。正确顺序是先训练并固定 tokenizer，再让 LAM 与 dynamics 并行优化各自目标；dynamics 对 LAM 的 embedding 停止梯度。动态优化器附录给 max_lr=3e-5、min_lr=3e-6、β₁=β₂=0.9、weight decay=1e-4、warmup 5k。</p>
   <p>为验证领域通用性，论文还把 RT1 的约 130k robot demonstrations、额外模拟数据和先前工作的 209k 真实机器人 episodes 合并为 Robotics 视频数据，明确不使用其中的动作标签。2.5B 模型在该数据上得到测试 FVD 82.7，并展示一致的上、下、左等潜在动作。它是另一套数据与模型实验，不应与 Platformers 的 11B 主模型或网络视频规模混为一次训练。</p>
@@ -838,16 +838,18 @@ loss = cross_entropy(
   <div class="code-block"><span class="code-label">教学伪代码 · 非官方源码（逐帧交互与 25 步 MaskGIT）</span><pre><code>z_prompt = video_tokenizer.encode(prompt_frames)
 z_history = z_prompt
 frames = list(prompt_frames)
-for user_action_id in action_stream:             # 整数 0..7
+for user_action_id in action_stream:             # 主实验整数 0..7
     a = latent_action_codebook[user_action_id]   # 不运行 LAM encoder
     z_next = MASK_TOKEN_GRID
     for step in range(25):
-        logits = dynamics(z_history, a, partially_masked=z_next)
+        # 当前 step 条件为“已有帧历史 + 本帧动作 + 部分可见的新帧”
+        logits = dynamics(z_history, a, current_frame_tokens=z_next)
         probs = softmax(logits / 2.0)            # 主模型 temperature=2
         z_next = maskgit_update(z_next, probs, step)
         # 正式实现需按 MaskGIT 置信度/掩码调度逐步确定 token
-    z_history = append_generated(z_history, z_next)
-    frames.append(video_tokenizer.decode(z_history))
+    frames.append(video_tokenizer.decode(z_next))
+    # 下一步同时扩展一帧生成 token 和这一步的用户动作；保留时间对齐
+    z_history = append_step(z_history, z_next, a)
 return frames</code></pre></div>
   <p>这段伪代码表达接口而非可直接运行的官方推理器。<code>maskgit_update</code> 的置信度重掩码策略、上下文窗口截断、时间位置和多 prompt 帧处理必须另行实现。主模型每帧采用 25 MaskGIT steps、temperature 2 的随机采样；附录的小 CoinRun 示例则 temperature 1.0、同样 25 steps。温度更高增加采样多样性，也可能降低一致性；动作 ID 只提供条件，不能强制保证精确结果。</p>
   <p>为了量化“动作是否真的影响生成”，论文定义 Δ<sub>t</sub>PSNR。先让 LAM 从真实视频推断动作并生成 x̂<sub>t</sub>，再随机从 categorical 分布抽动作生成 x̂′<sub>t</sub>，两者都与真实帧 x<sub>t</sub> 比 PSNR：</p>
@@ -880,7 +882,7 @@ return frames</code></pre></div>
 
 <section class="doc-block" id="limits-compute-and-tests">
   <h2>10. 局限、计算成本与实现检查清单</h2>
-  <p><strong>长时记忆与幻觉。</strong>论文明确只有 16 帧记忆，在 10 FPS 数据设置下对应很短的上下文；长时离开再返回、物体永久性和关卡状态都难以保证。自回归 transformer 会生成不合理未来，错误还会进入下一步历史。与显式游戏引擎不同，模型没有硬约束碰撞、库存、分数和地图持久性，视觉相似不能代替这些性质。</p>
+  <p><strong>长时记忆与幻觉。</strong>论文明确只有 16 帧记忆，在 10 FPS 数据设置下对应很短的上下文；长时离开再返回、物体永久性和关卡状态都难以保证。自回归 transformer 会生成不合理未来，错误还可能进入后续生成的条件历史。与显式游戏引擎不同，模型没有硬约束碰撞、库存、分数和地图持久性，视觉相似不能代替这些性质。</p>
   <p><strong>速度与成本。</strong>主模型约 1 FPS，离实时交互仍有距离；每帧 25 次 MaskGIT 迭代、大 transformer 和视频解码都产生推理开销。训练主 dynamics 的论文报告为 6.6×10²² FLOPs、256 TPUv5p、125k steps；scale 表中最大 2.7B 实验也使用 256 TPUv3、16 天。不能用单 GPU 附录案例的一周成本去描述主 11B 模型。显存除参数外还包括时空注意力、optimizer states、视频 batch 和 ZeRO/tensor 分片通信，论文没有给所有硬件上一个可直接套用的显存数字。</p>
   <p><strong>动作与评价。</strong>动作码本小有利于人类探索，却限制控制表达；码本大可能提升重建但削弱可玩性。LAM 可能把不可控背景变化也吸收到动作中，ΔPSNR 只检验推断动作相对随机动作更接近真实轨迹，并不证明因果可控。跨域 BC 还依赖 200 个真实动作样本建立映射，不应宣称零适配。FVD 和短时 PSNR 无法覆盖长期可玩性、重访一致性与真实任务完成率。</p>
   <p><strong>可执行的测试清单。</strong>（1）ST 空间注意力测试：同一时间不同位置可通信，不同帧不通信；时间注意力对打乱未来帧的当前输出不变，验证 causal mask。（2）tokenizer 测试：固定码本时最近邻索引与暴力距离一致，straight-through 前向取量化值、反向梯度能到编码器，token ID 全部在 [0,1024)。（3）LAM 泄漏测试：修改 x<sub>t+1</sub> 应改变推断动作，但不能通过 decoder 的额外目标帧通道绕开动作；推理仅给动作 ID 就能查码本。</p>
@@ -894,10 +896,10 @@ return frames</code></pre></div>
     <li><a href="https://sites.google.com/view/genie-2024/home">Genie 作者官方项目页</a>，论文原文明确链接此网站，用于查看动作轨迹与不同 prompt 的演示。演示不是可下载模型或开源仓库。</li>
     <li><a href="https://arxiv.org/abs/1706.03762">Vaswani 等：Attention Is All You Need</a>；<a href="https://arxiv.org/abs/2010.11929">Dosovitskiy 等：An Image Is Worth 16×16 Words（ViT）</a>，为 transformer 与视觉 patch 表征背景。</li>
     <li><a href="https://arxiv.org/abs/1711.00937">van den Oord 等：Neural Discrete Representation Learning（VQ-VAE）</a>；<a href="https://arxiv.org/abs/2202.04200">Chang 等：MaskGIT</a>，分别为离散量化和迭代 masked token 采样基础。</li>
-    <li><a href="https://arxiv.org/abs/2211.09800">Villegas 等：Phenaki / C-ViViT</a>；<a href="https://arxiv.org/abs/2001.02908">Xu 等：Spatial-Temporal Transformer Networks</a>，用于论文中的视频 tokenizer 和 ST 注意力比较背景。</li>
-    <li><a href="https://arxiv.org/abs/1911.08217">Cobbe 等：Leveraging Procedural Generation to Benchmark Reinforcement Learning（Procgen/CoinRun）</a>；<a href="https://arxiv.org/abs/2212.06817">Brohan 等：RT-1</a>，对应附录复现与 Robotics 数据来源。</li>
+    <li><a href="https://arxiv.org/abs/2210.02399">Villegas 等：Phenaki / C-ViViT</a>；<a href="https://arxiv.org/abs/2001.02908">Xu 等：Spatial-Temporal Transformer Networks</a>，用于论文中的视频 tokenizer 和 ST 注意力比较背景。</li>
+    <li><a href="https://arxiv.org/abs/1912.01588">Cobbe 等：Leveraging Procedural Generation to Benchmark Reinforcement Learning（Procgen/CoinRun）</a>；<a href="https://arxiv.org/abs/2212.06817">Brohan 等：RT-1</a>，对应附录复现与 Robotics 数据来源。</li>
   </ul>
-  <div class="doc-note"><p><strong>代码声明：</strong>本文 4 个代码块均为根据论文公式与数据流撰写的教学实现/伪代码，未复制或冒充任何官方源码；没有运行这些代码，也没有安装依赖、训练或推理。若读者采用第三方 Genie 复现，应单列其仓库、作者、提交与许可，并与 Google DeepMind 原论文分栏核对。</p></div>
+  <div class="doc-note"><p><strong>代码声明：</strong>本文 5 个代码块均为根据论文公式与数据流撰写的教学实现/伪代码，未复制或冒充任何官方源码；没有运行这些代码，也没有安装依赖、训练或推理。若读者采用第三方 Genie 复现，应单列其仓库、作者、提交与许可，并与 Google DeepMind 原论文分栏核对。</p></div>
   <p>资料核验日期：2026-11-28。这里的“未核实到完整官方源码”限定于本次所读官方论文和项目入口，不声称互联网上不存在第三方实现；模型 checkpoints 与主训练数据集未发布则是论文的明确声明。</p>
 </section>
 <section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/world-models.html">所属分类</a></div></section></main>
