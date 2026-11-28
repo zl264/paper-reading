@@ -52,9 +52,10 @@ a:hover {
 }
 
 .doc-page {
-  width: min(780px, calc(100vw - 48px));
-  margin: 0 auto;
-  padding: 72px 0 96px;
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
 }
 
 .doc-title {
@@ -205,6 +206,8 @@ a:hover {
 }
 
 .mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -212,7 +215,6 @@ a:hover {
 }
 
 .mermaid {
-  min-width: 680px;
   margin: 0;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -220,8 +222,8 @@ a:hover {
 
 .mermaid svg {
   display: block;
-  width: 100%;
-  max-width: none;
+  width: auto;
+  max-width: 100%;
   height: auto;
 }
 
@@ -444,6 +446,8 @@ a:hover {
 }
 
 .table-scroll {
+  width: fit-content;
+  max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -451,8 +455,8 @@ a:hover {
 }
 
 .doc-data-table {
-  width: 100%;
-  min-width: 720px;
+  width: auto;
+  min-width: 0;
   border-collapse: collapse;
   font-size: 14px;
   line-height: 1.45;
@@ -536,96 +540,66 @@ a:hover {
 
 .toc-rail {
   position: fixed;
-  left: 18px;
-  top: 50%;
+  top: 0;
+  left: 0;
+  bottom: 0;
   z-index: 10;
-  width: 320px;
-  transform: translateY(-50%);
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
 }
 
-.toc-lines {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 28px;
-  padding: 8px 5px;
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
 }
 
-.toc-line {
-  position: relative;
+.toc-rail a {
   display: block;
-  width: 18px;
-  height: 8px;
-  color: #c3c6cd;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
 }
 
-.toc-line::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 18px;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translateY(-50%);
-}
-
-.toc-line.active,
-.toc-line:hover {
-  color: var(--ink);
-}
-
-.toc-popup {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 310px;
-  padding: 12px;
-  border: 1px solid var(--line-strong);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 16px 36px rgba(35, 37, 42, 0.13);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-50%) translateX(-4px);
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-
-.toc-rail:hover .toc-popup,
-.toc-rail:focus-within .toc-popup {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(-50%) translateX(0);
-}
-
-.toc-popup a {
-  display: block;
-  padding: 7px 9px;
-  border-radius: 6px;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.toc-popup a:hover,
-.toc-popup a.active {
-  background: var(--soft);
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
   text-decoration: none;
 }
 
-@media (max-width: 1040px) {
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
   .toc-rail {
     display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
   }
 }
 
 @media (max-width: 820px) {
   .doc-page {
-    width: min(100vw - 32px, 780px);
+    width: 100%;
     padding-top: 44px;
   }
 
@@ -670,7 +644,7 @@ a:hover {
 
 @media (max-width: 560px) {
   .doc-page {
-    width: min(100vw - 24px, 780px);
+    width: 100%;
   }
 
   .doc-title h1 {
@@ -702,7 +676,7 @@ a:hover {
   }
 }
 
-</style>
+  </style>
   <style>
     .doc-page { --code-bg: #151922; }
     .doc-block h3 { margin: 30px 0 10px; color: var(--ink); font-size: 18px; line-height: 1.45; }
@@ -744,7 +718,24 @@ a:hover {
       .code-block { break-inside: avoid; }
       .math-scroll { overflow: visible; }
     }
-  </style>
+  
+    /* SolarWM layout applied to the full-length guide. */
+    .doc-page {
+      width: calc(100% - 284px);
+      max-width: 1520px;
+      margin: 0 0 0 284px;
+      padding: 56px 56px 80px;
+    }
+    .doc-block h3 { font-size: 19px; line-height: 1.45; }
+    .table-scroll { width: fit-content; max-width: 100%; }
+    .doc-data-table { width: 100%; }
+    .publication-nav { display:flex; flex-wrap:wrap; gap:10px; margin-top:20px; font-size:13px; }
+    .publication-nav a { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    @media(max-width:1180px) {
+      .toc-rail { display:none; }
+      .doc-page { width:100%; margin-left:0; padding:40px 22px 60px; }
+    }
+    </style>
 </head>
 <body>
   <nav class="toc-rail" aria-label="文档目录"></nav>
@@ -754,7 +745,7 @@ a:hover {
       <p class="doc-subtitle">把一个噪声点连续地“推”成真实数据，看似需要解复杂的生成问题；Flow Matching 把它转化成训练时可以逐点计算的向量场回归。</p>
       <p class="lead">这份教程面向已经接触过基础深度学习、但不一定熟悉常微分方程或扩散模型的读者。我们会从直觉出发，依次建立连续归一化流、概率路径、Flow Matching（FM）与 Conditional Flow Matching（CFM）的数学框架，再落到速度网络、训练循环、ODE 采样器和完整 PyTorch 示例。</p>
       <p class="reading-note">阅读约定：全文统一令 <span class="mi">t = 0</span> 表示噪声端、<span class="mi">t = 1</span> 表示数据端。不同论文可能采用相反方向，迁移公式时首先要核对时间方向。公式使用原生 HTML 排版，图解和脚本均在本地，下载整个文件夹后可离线阅读。</p>
-    </header>
+    <div class="publication-nav"><a href="index.html">← 论文精读首页</a><a href="categories/generative-foundations.html">所属分类：生成模型与基础架构</a></div></header>
 
     <div class="doc-callout">
       <strong>先记住一句话</strong>
