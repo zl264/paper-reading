@@ -1,0 +1,735 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ShotDirector：参数化运镜与多镜头转场｜论文深度精读</title><style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+   .doc-page{max-width:1520px}.doc-block h3{margin:28px 0 10px;font-size:19px}.reading-note{color:var(--muted);font-size:14px}.lead{font-size:17px}.paper-nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:13px}.math-scroll{width:fit-content;max-width:100%;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;margin:14px 0}.math{padding:13px 16px;width:max-content;font-family:"Cambria Math",Cambria,serif;font-size:17px;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0;background:#151922;border-radius:14px;overflow:hidden}.code-block pre{padding:47px 20px 20px;overflow:auto;max-width:100%;color:#e5e7eb;font-size:13px;line-height:1.65}.code-label{position:absolute;top:12px;left:18px;color:#9aa4b2;font-size:12px}.copy-code{position:absolute;right:9px;top:8px;background:#202633;color:#cbd5e1;border:1px solid #3a4352;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}.table-frame{width:100%;overflow:auto;border:1px solid var(--line);border-radius:14px}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px}.doc-data-table th,.doc-data-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.doc-data-table th{background:var(--soft)}.doc-warning{padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;margin:20px 0}.diagram-frame{padding:18px;overflow:auto;border:1px solid var(--line);border-radius:14px}.figure-svg{width:100%;min-width:650px;height:auto}.svg-title{font-size:16px;font-weight:600;fill:#2f302d}.svg-small{font-size:12px;fill:#5c6470}.figure-caption{color:var(--muted);font-size:14px}.file-ref{font-size:13px;color:#526d8c;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0}.checklist li{padding-left:23px;position:relative;margin:8px 0}.checklist li:before{content:'✓';position:absolute;left:0;color:#0f766e}@media print{.toc-rail,.copy-code{display:none}.doc-page{margin:0;width:100%;max-width:none}}</style></head><body><nav class="toc-rail"></nav><main class="doc-page"><header class="doc-title" id="top"><h1>ShotDirector：参数化运镜与多镜头转场</h1><p class="doc-subtitle">ShotDirector 将低层镜头一致性与电影转场设计分开。</p><p class="reading-note">依据 <a href="https://arxiv.org/abs/2512.10286">arXiv:2512.10286</a> 原文与公开资料阅读。本页代码为解释机制的教学实现/伪代码，未标为官方源码；未执行模型训练或推理。</p><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/video-generation.html">所属分类：视频生成与时空一致性</a></div></header>
+<section class="doc-block" id="problem"><h2>1. 任务与核心问题</h2><p>ShotDirector 将低层镜头一致性与电影转场设计分开。</p><p>6-DoF 相机、分层镜头 prompt、shot-aware mask 与多镜头生成。。视频模型不仅需要图像质量，还要处理时序、内容和条件的同步；不能把单帧指标当成完整视频能力。</p><div class="doc-note"><p><strong>范围提醒：</strong>原论文与后续版本可能采用不同骨干、训练数据或推理配置。本页聚焦标题对应工作，不将后续功能混入原始方法。</p></div></section>
+<section class="doc-block" id="principle"><h2>2. 原理与条件建模</h2><p>ShotDirector 将低层镜头一致性与电影转场设计分开。 6-DoF 相机、分层镜头 prompt、shot-aware mask 与多镜头生成。。可将条件视频生成概括为：</p><div class="math-scroll"><div class="math">x<sub>1:T</sub> ∼ p<sub>θ</sub>(x<sub>1:T</sub> | c<sub>content</sub>,c<sub>motion</sub>,h<sub>history</sub>)<span class="equation-number">(1)</span></div></div><p>其中 content、motion 与 history 的具体形式依方法不同。需要明确它是否逐帧自回归、是否同时生成整段、是否使用外部几何或历史，以及训练与推理时这些信息是否相同。</p></section>
+<section class="doc-block" id="architecture"><h2>3. 详细结构与数据流</h2><p>6-DoF 相机、分层镜头 prompt、shot-aware mask 与多镜头生成。。实现时先把输入视频转换为 latent/token，再经过时间或跨视角交互，最后通过相应解码器输出帧。每一阶段的帧数、空间分辨率和条件来源必须一致。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>组件</th><th>输入</th><th>输出与检查点</th></tr></thead><tbody><tr><td>编码/压缩</td><td>RGB、文本、参考图或历史</td><td>视频 latent/token；空间和时间压缩率</td></tr><tr><td>时空/条件交互</td><td>noisy token、条件、mask/cache</td><td>交换时间与内容信息，避免未来泄漏</td></tr><tr><td>预测与解码</td><td>去噪状态或下一帧分布</td><td>噪声/速度/token，再经 VAE 或像素头</td></tr></tbody></table></div><div class="diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 250" role="img" aria-label="ShotDirector：参数化运镜与多镜头转场 的数据流"><rect x="20" y="70" width="225" height="85" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="132" y="107" text-anchor="middle" class="svg-title">视频 / 文本 / 控制条件</text><text x="132" y="134" text-anchor="middle" class="svg-small">输入与历史状态</text><path d="M245 112 H375" stroke="#788493"/><rect x="380" y="70" width="250" height="85" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="505" y="107" text-anchor="middle" class="svg-title">时空生成与条件融合</text><text x="505" y="134" text-anchor="middle" class="svg-small">ShotDirector</text><path d="M630 112 H755" stroke="#788493"/><rect x="760" y="70" width="220" height="85" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="870" y="107" text-anchor="middle" class="svg-title">输出视频 / 评价</text><text x="870" y="134" text-anchor="middle" class="svg-small">质量、同步、时延</text></svg></div></section>
+<section class="doc-block" id="implementation"><h2>4. 具体实现：核心计算代码</h2><p>下面的代码突出论文机制的输入、状态和输出，不是完整官方训练框架。真实实现还需模型权重、VAE/tokenizer、条件预处理、分布式训练与评估。</p><div class="code-block"><span class="code-label">教学实现 / 伪代码 · 非官方源码</span><pre><code># 教学实现 · 非官方源码：按镜头组织条件
+for shot in storyboard:
+    camera = camera_encoder(shot.six_dof_poses,shot.intrinsics)
+    prompt = hierarchical_prompt(shot.action,shot.cinematic_transition)
+    mask = shot_aware_mask(shot.time_interval)
+    tokens = video_dit(tokens,camera,prompt,mask)
+# 转场条件不是简单的文本拼接，需明确镜头边界。</code></pre></div></section>
+<section class="doc-block" id="training"><h2>5. 训练与推理算法</h2><ol><li>构造同步的视频、文本/运动/历史条件，先验证时间对齐。</li><li>根据方法训练扩散、token 或自回归目标；区分 teacher forcing 与模型自身历史。</li><li>推理按同一控制接口输入，逐段或整段采样；注意条件切换、随机种子和缓存更新。</li><li>输出前分别检查画面质量、时序一致性、条件遵循和实际延迟。</li></ol><div class="code-block"><span class="code-label">教学检查 · 非官方源码</span><pre><code># 最小训练/推理检查
+assert video.shape[time_dim] == condition.shape[time_dim]
+assert torch.isfinite(loss)
+loss.backward()
+assert any(p.grad is not None for p in trainable_modules)
+# 若使用因果 cache，检查当前 chunk 无法读取未来帧。
+# 若使用 CFG，明确负分支保留哪些条件。</code></pre></div></section>
+<section class="doc-block" id="comparison"><h2>6. 与相关方法的区别</h2><p>本工作的主要技术边界是：6-DoF 相机、分层镜头 prompt、shot-aware mask 与多镜头生成。。它不应与只做文本到视频的模型、只控制相机的模型或纯逐场景 3D 重建混为一谈。比较时应固定骨干、帧数、分辨率和评价指标。</p></section>
+<section class="doc-block" id="limits"><h2>7. 局限、成本与复现检查</h2><ul class="checklist"><li>长时误差、动作幅度、身份保持和跨镜头/跨视角一致性需分别评价。</li><li>推理速度必须说明硬件、采样步数、视频长度、VAE 与缓存成本。</li><li>公开代码缺失时，不应声称已核验官方训练源码；教学实现只用于理解。</li><li>数据版权、人物肖像、驾驶/医疗数据的适用范围需要单独核对。</li></ul></section>
+<section class="doc-block doc-sources" id="sources"><h2>8. 原文与来源</h2><ul><li><a href="https://arxiv.org/abs/2512.10286">论文与版本记录</a></li><li><a href="https://arxiv.org/html/2512.10286">论文 HTML：结构、公式与实验</a></li></ul><p>本页为中文技术阅读笔记，不声称执行论文训练或性能复现。</p></section><section class="doc-block"><h2>返回分类</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/video-generation.html">生成模型与基础架构</a></div></section></main><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.querySelector('.toc-rail'),ts=[...document.querySelectorAll('section[id]')].filter(x=>x.querySelector('h2'));if(nav){const title=document.createElement('div');title.className='toc-title';title.textContent='代表论文深度精读';const links=ts.map(t=>{let a=document.createElement('a');a.href='#'+t.id;a.textContent=t.querySelector('h2').textContent;a.dataset.target=t.id;return a});nav.replaceChildren(title,...links);const obs=new IntersectionObserver(es=>{let v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)links.forEach(a=>a.classList.toggle('active',a.dataset.target===v.target.id))},{rootMargin:'-12% 0px -68% 0px'});ts.forEach(t=>obs.observe(t))}document.querySelectorAll('.code-block').forEach(b=>{let c=b.querySelector('code'),btn=document.createElement('button');btn.textContent='复制';btn.className='copy-code';b.appendChild(btn);btn.onclick=async()=>{try{await navigator.clipboard.writeText(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='请手动复制'}setTimeout(()=>btn.textContent='复制',1600);}});});</script></body></html>
