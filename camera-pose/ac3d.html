@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="从频谱和中间层 probing 出发，解释为何相机应重点在去噪早期与前 8/32 个 block 控制，并加入静止相机动态数据。"><title>AC3D：低频控制、少层注入与动态数据去偏｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="ac3d 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top"><h1>AC3D：从第一性原理改进 DiT 的相机控制</h1><p class="doc-subtitle">低频运动、层级 probing、早期去噪与动态数据去偏</p>
+<div class="paper-nav"><a href="index.html">← 返回 12 篇论文索引</a><a href="guide.html">综合技术导读</a></div>
+<div class="paper-meta"><a href="https://arxiv.org/abs/2411.18673">arXiv:2411.18673</a><a href="https://snap-research.github.io/ac3d/">项目页</a><span>骨干：11.5B VDiT / CogVideoX 实验</span><span>前 8 / 32 层注入</span><span>轻量相机 DiT</span></div>
+<p class="reading-note">本文依据官方 arXiv 论文 <strong>2411.18673v4（2024-11-27）</strong> 及项目页整理；未将项目页或论文补充代码等同于完整官方实现。下文教学代码均为本文依据论文机制编写的<strong>讲解用实现，非官方源码</strong>，未运行训练或生成，也不据此报告实测性能。</p></header><div class="doc-callout"><strong>这不是“又一个 Plücker adapter”</strong><p>AC3D 主要回答三个为什么：为什么训练很久仍然运镜不足？为什么控制增强后画质变差？为什么输入相机后物体容易不动？它分别用噪声调度、层级选择、静止相机动态数据回应。</p></div><section class="doc-block" id="frequency"><h2>1. 相机运动为什么是低频问题</h2><p>相机平移和旋转往往引起整幅画面的平滑位移与透视变化，首先决定粗结构；纹理、边缘等高频细节在去噪后期逐步形成。如果训练平均分配各噪声尺度，网络可能没有足够机会学习“大结构运动”，而后期强条件又会干扰纹理。</p><p>AC3D 将训练噪声从标准 logit-normal 改为偏向 [0.6,1] 的截断正态，均值约 0.8、标准差 0.075；推理也只在前 40% 去噪区间启用相机。这里的时间方向按该论文 rectified-flow 定义理解：越接近 1 越噪。</p><div class="math-scroll"><div class="math">t ∼ TruncNormal(μ=0.8, σ=0.075, interval=[0.6,1])<span class="equation-number">(1)</span></div></div><p>这不是简单地“少训练后期”，而是把控制学习集中到最适合决定全局运动的阶段。迁移到其他 scheduler 时必须先核对 t 的方向和含义。</p></section><section class="doc-block" id="conditioning"><h2>2. 轻量相机支路与时间压缩</h2><p>输入包含每帧 4×4 相机矩阵与 3×3 内参，采用 VD3D 风格 Plücker。全卷积 encoder 将射线场与视频 token 空间对齐；对 4× 时间压缩，使用因果一维卷积把每像素 F×6 射线序列转为 (F//4)×32。</p><p>轻量 DiT-XS 相机支路为 128 维、4 头，视频 token 对 camera token 做 cross-attention，形成反馈。相机支路不接收文本、分辨率等 context，减少它利用文本捷径猜运动的可能。</p><div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 295" role="img" aria-label="AC3D 的少层、早期注入"><rect x="12" y="32" width="205" height="80" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="114.5" y="64" text-anchor="middle" class="svg-title">Plücker 序列</text><text x="114.5" y="89" text-anchor="middle" class="svg-small">F×6 → F/4×32</text><rect x="12" y="182" width="205" height="80" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="114.5" y="214" text-anchor="middle" class="svg-title">噪声视频 latent</text><text x="114.5" y="239" text-anchor="middle" class="svg-small">冻结的 VDiT 主干</text><rect x="307" y="32" width="240" height="80" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="427.0" y="64" text-anchor="middle" class="svg-title">轻量 Camera DiT</text><text x="427.0" y="89" text-anchor="middle" class="svg-small">128 维 / 4 头 / 无文本</text><rect x="307" y="182" width="240" height="80" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="427.0" y="214" text-anchor="middle" class="svg-title">主 DiT 32 blocks</text><text x="427.0" y="239" text-anchor="middle" class="svg-small">只在前 8 块读取相机</text><rect x="647" y="32" width="180" height="80" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="737.0" y="64" text-anchor="middle" class="svg-title">早期高噪声</text><text x="737.0" y="89" text-anchor="middle" class="svg-small">决定低频全局运动</text><rect x="647" y="182" width="180" height="80" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="737.0" y="214" text-anchor="middle" class="svg-title">后期去噪</text><text x="737.0" y="239" text-anchor="middle" class="svg-small">关闭相机，恢复细节</text><rect x="917" y="104" width="150" height="86" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="992.0" y="136" text-anchor="middle" class="svg-title">输出视频</text><text x="992.0" y="161" text-anchor="middle" class="svg-small">动态 + 轨迹遵循</text><path d="M217 72 H307" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M217 222 H307" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M547 72 H597 V137 H917" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M547 222 H917" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M827 72 H917" fill="none" stroke="#788493" stroke-width="1.6"/><text x="730" y="148" text-anchor="middle" class="svg-small">t≥0.6 时启用相机</text></svg></div><p class="figure-caption"><strong>图 1：AC3D 不是均匀地向所有层强加相机。</strong><span>频谱分析促使训练偏向高噪声；中间层 probing 促使只在前 8 层注入；动态静止相机数据解除主体冻结偏差。</span></p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：因果时间相机编码</span><pre><code>class CausalCameraTimeEncoder(nn.Module):
+    def __init__(self, in_channels=6, out_channels=32, ratio=4):
+        super().__init__()
+        self.ratio = ratio
+        self.conv = nn.Conv1d(in_channels, out_channels,
+                              kernel_size=ratio, stride=ratio)
+
+    def forward(self, rays):
+        # rays: [B,H,W,F,6]；保持像素网格，分别压缩时间。
+        B,H,W,F,C = rays.shape
+        x = rays.permute(0,1,2,4,3).reshape(B*H*W,C,F)
+        x = self.conv(x)                         # [BHW,32,F/ratio]
+        return x.reshape(B,H,W,32,F//self.ratio).permute(0,4,3,1,2)
+# 因果 padding、边界首帧及精确输出布局应按真实 VAE 时间定义补齐。</code></pre></div></section><section class="doc-block" id="layers"><h2>3. 为什么只在前 8 个 block 注入</h2><p>作者 probing 无条件 VDiT 的中间表征，发现模型本身已经隐式包含相机信息，而且只有部分层保留明显的位姿信号。全层持续注入外部位姿可能覆盖模型中层的既有表达，造成视觉质量下降。</p><p>最终 AC3D 只在最前 8/32 块前加入相机反馈，让早期层确定视角与全局结构，后续层主要恢复视频细节。这个“8”是该 11.5B 骨干的分析结果，不是所有 DiT 的固定最优值。</p><div class="math-scroll"><div class="math">h<sub>l+1</sub> = DiTBlock<sub>l</sub>(h<sub>l</sub> + 1[l&lt;8]·CameraFeedback<sub>l</sub>(h<sub>l</sub>,c))<span class="equation-number">(2)</span></div></div><div class="code-block"><span class="code-label">讲解用伪代码 · 非官方源码：层级与时刻共同控制</span><pre><code>for layer_id, block in enumerate(main_dit.blocks):
+    if layer_id &lt; 8 and timestep &gt;= 0.6:
+        camera_state = camera_dit.blocks[layer_id](camera_state)
+        feedback = cross_attention(
+            query=video_tokens, key=camera_state, value=camera_state)
+        video_tokens = video_tokens + feedback
+    video_tokens = block(video_tokens, text_context)
+# 训练时 timestep 分布与推理开关需一致；
+# 无文本 camera context 是避免条件捷径的设计选择。</code></pre></div></section><section class="doc-block" id="debias"><h2>4. 静止相机 + 动态物体：拆掉数据捷径</h2><p>RealEstate10K 等位姿数据多为静态场景。若只有相机变化的视频才带位姿条件，模型可能学到“有相机输入 → 所有像素只按背景几何移动”，从而压制真实物体动态。</p><p>AC3D 将 65K RealEstate10K 与 20K 动态场景/静止相机视频结合，并令相机条件始终开启。静止相机提供了明确的负例：即使位姿不变，物体仍可运动。这比简单增加更多静态机位数据更直接地改变条件分布。</p><p>冻结主干、rectified-flow 训练，最终 6K steps；文本与相机使用独立 CFG 方向。可以用下式概括其双条件引导：</p><div class="math-scroll"><div class="math">e = (1+w<sub>y</sub>+w<sub>c</sub>)s(t,c) − w<sub>y</sub>s(c) − w<sub>c</sub>s(t)<span class="equation-number">(3)</span></div></div></section><section class="doc-block" id="evaluation"><h2>5. 评价与尺度处理</h2><p>相机精度通常从生成视频重新估计轨迹再与目标比较。SfM 的平移存在尺度模糊，论文使用 metric depth 对 SfM 平移做尺度校准。因而“TransErr”不一定是没有尺度对齐的绝对米制误差；比较不同论文时要核查其标定协议。</p><p>论文说明 256² 训练可零样本泛化更高分辨率，但这不代表所有分辨率和所有长宽比都有相同相机精度。原始 VAE 时间压缩和 RoPE 仍需一致。</p></section><section class="doc-block" id="limits"><h2>6. 局限与迁移建议</h2><ul><li>没有显式 3D cache，回看同一场景仍可能漂移。</li><li>静止相机动态数据解决一种伪相关，不自动完成任意物体与相机的独立控制。</li><li>前 8 层和高噪声区间是骨干相关超参数，不应硬编码到新模型。</li><li>相机支路、反馈 attention 与多条件 CFG 增加训练和推理成本。</li></ul><p>迁移时建议先训练一个小型 pose probe，读取各层特征预测位姿，再决定注入层；用频谱或运动幅度随时间变化确认何时控制最有效。</p></section><section class="doc-block" id="takeaway"><h2>7. 实践路线</h2><ol><li>复现一个基础 Plücker DiT baseline，记录轨迹与画质。</li><li>只改训练/推理时间调度，观察大运动是否改善。</li><li>逐层扫描注入位置，不假设越多越好。</li><li>加入静止相机动态视频，检查人物/物体是否恢复运动。</li><li>最后引入独立 camera CFG，并测量额外前向成本。</li></ol></section><section class="doc-block" id="worked-example"><h2>附录 A：把诊断转化为可测实验</h2><p>频谱诊断可将相邻帧流场/图像变化做傅里叶变换，观察相机诱导运动是否集中于低频。工程上更简单的代理指标是：在不同去噪时刻开启或关闭相机，测输出相机轨迹误差与纹理指标的变化。若后期开启只降低画质而几乎不改善轨迹，说明主要控制应放在早期。</p><p>层级 probing 可冻结各层特征，训练一个轻量回归器预测当前位姿；若某些中间层已经能准确恢复相机，则重复强注入未必有益。对 32 层主干可扫描前 2、4、8、16、32 层，记录控制误差、动态幅度与视觉质量，而不是机械选择 8。</p><p>数据去偏的最小实验是：使用同一动态场景，渲染静止相机与运动相机两个版本。如果静止相机输入也生成静止人物，则问题更多在生成先验；如果只有带非零位姿输入才冻结人物，则说明模型利用了相机条件的伪相关。论文的 20K 静止相机动态数据正是为后者设计。</p></section><section class="doc-block" id="source-code-walkthrough"><h2>附录 B：模块级代码逐段阅读</h2><p>下面的 2 段代码将该论文的条件表示、张量变换与融合接口连成可读的 PyTorch 结构。它们是<strong>依据论文机制编写的教学实现，非官方源码</strong>；目的是把每个模块的输入、输出和训练位置说清楚，不宣称与原模型逐行等价。实际模型仍需要相应的 VAE、位置编码、mask、scheduler、预训练权重和数据处理。</p></section><section class="doc-block" id="implementation-code-1"><h2>代码 1：CameraFeedback</h2><div class="code-block"><span class="code-label">CameraFeedback · 轻量支路与前 8 层反馈（讲解用实现，非官方源码）</span><pre><code>class CameraFeedback(nn.Module):
+    def __init__(self, video_dim=4096, camera_dim=128, heads=4):
+        super().__init__()
+        self.query = nn.Linear(video_dim,camera_dim)
+        self.key = nn.Linear(camera_dim,camera_dim)
+        self.value = nn.Linear(camera_dim,camera_dim)
+        self.attn = nn.MultiheadAttention(camera_dim,heads,batch_first=True)
+        self.out = nn.Linear(camera_dim,video_dim)
+        nn.init.zeros_(self.out.weight)
+        nn.init.zeros_(self.out.bias)
+
+    def forward(self, video_tokens, camera_tokens):
+        # 主干 video 维与轻量 camera 维不必相同。
+        q = self.query(video_tokens)
+        k,v = self.key(camera_tokens),self.value(camera_tokens)
+        feedback,_ = self.attn(q,k,v)
+        return self.out(feedback)
+
+# 在主循环中：
+for layer, block in enumerate(main_vdit.blocks):
+    if layer &lt; 8 and timestep &gt;= 0.6:
+        cam_state = camera_dit[layer](cam_state)   # 不含文本 context
+        video_tokens = video_tokens + feedback[layer](video_tokens,cam_state)
+    video_tokens = block(video_tokens,text_context)
+# 不在后 24 层继续读取相机；这是 AC3D 特定骨干的选择。</code></pre></div></section><section class="doc-block" id="implementation-code-2"><h2>代码 2：高噪声训练与双条件 guidance（讲解用实现，非官方源码）</h2><div class="code-block"><span class="code-label">高噪声训练与双条件 guidance（讲解用实现，非官方源码）</span><pre><code># 训练：均值 0.8、标准差 0.075，截断在 [0.6,1]。
+t = sample_truncated_normal(mean=.8,std=.075,low=.6,high=1.,size=(B,))
+noise = torch.randn_like(clean)
+noisy = (1-t_view)*clean + t_view*noise
+velocity_target = noise-clean
+velocity_pred = ac3d_model(noisy,t,text,plucker,
+                           camera_layers=8)
+loss = (velocity_pred-velocity_target).square().mean()
+
+# 推理：s_tc 为文本+相机，s_t 为只文本，s_c 为只相机。
+# 空条件张量按训练定义置零，不自动等价于“重复首帧”。
+s_tc = model(noisy,t,text,camera)
+s_t  = model(noisy,t,text,null_camera)
+s_c  = model(noisy,t,null_text,camera)
+direction = (1+w_text+w_camera)*s_tc - w_text*s_c - w_camera*s_t
+# 变量名对应论文 Eq.6，须结合其条件记号理解。</code></pre></div></section><section class="doc-block" id="tensor-contract"><h2>附录 C：端到端张量与条件合同</h2><p>下表把整篇论文从用户输入到输出的计算路径放在一处。形状用于说明信息怎样对齐；若论文未公开完整源码，它是依据论文结构的实现参考，而不是对未公开代码的逐行声明。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>数据 / 形状</th><th>必须满足的约束</th></tr></thead><tbody><tr><td>时间压缩</td><td>因果 1D conv：F×6→F/4×32</td><td>不是简单每四帧丢弃</td></tr><tr><td>支路</td><td>128 维、4 头 DiT-XS</td><td>不读文本/分辨率 context</td></tr><tr><td>融合</td><td>主 VDiT 前 8/32 块</td><td>video query 读取 camera K/V</td></tr><tr><td>输出</td><td>文本+相机双 CFG</td><td>画质与动态需共同评价</td></tr></tbody></table></div></section>
+<section class="doc-block" id="algorithm-training"><h2>附录 D：训练算法与梯度路径</h2><p>冻结 11.5B VDiT 主干，训练轻量相机支路及反馈层，采用 rectified-flow 目标。数据为 65K RealEstate10K 加 20K 静止相机动态内容，最终约 6K steps。训练噪声采用截断正态而不是普通 logit-normal；文本与相机 dropout 使独立 CFG 可行。</p><p><strong>读代码时的关注点：</strong>代码 1 展示 4096 维主 token 如何 query 128 维相机支路，再通过零初始化输出映射回主干；代码 2 展示高噪声 flow 训练与双条件 guidance。它是机制级教学实现，不包含 AC3D 完整相机 encoder、probe 或基座 RoPE。</p></section>
+<section class="doc-block" id="algorithm-inference"><h2>附录 E：显式位姿推理流程</h2><p>先由 Plücker 构造 camera token，逐层经轻量 DiT-XS 更新；仅在前 8 块且高噪声早期将 camera feedback 加进视频 token。后期 24 块不再强加相机。推理采用文本和相机的不同 guidance 权重，需与训练空条件定义一致。</p><p>推理前要明确：位姿是 c2w 还是 w2c、是否首帧相对、K 是否像素单位、帧率是否经过 VAE 压缩，以及 unconditional 分支采用哪一种空相机。只把这些数值变成合法 shape 不足以保证几何正确。</p></section>
+<section class="doc-block" id="implementation-tests"><h2>附录 F：代码级验证清单</h2><ul class="checklist"><li>先核对 flow 时间 t 的方向，不能套用到相反定义的 scheduler。</li><li>扫描前 2/4/8/16/32 层，不把 8 当普适最优。</li><li>加入静止相机动态样本，检查人物是否仍被冻结。</li><li>SfM 平移尺度需校准，指标协议必须写清楚。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与进一步核对</h2><ul class="source-links"><li><a href="https://arxiv.org/abs/2411.18673">arXiv:2411.18673：论文与版本记录</a>；<a href="https://arxiv.org/html/2411.18673">论文 HTML 全文</a>。</li><li><a href="https://snap-research.github.io/ac3d/">作者项目页：方法演示与公开资源</a>。</li></ul><p class="source-scope">本文写作时核对了本地保存的论文原文。没有可确认的官方完整实现，因此不虚构仓库文件、参数默认值或训练日志；如需生产使用，请按项目页的最新发布说明复核。</p></section><section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="i2vcontrol-camera.html">← I2VControl-Camera：投影点轨迹与主体运动强度</a><a href="cinemaster.html">下一篇：CineMaster：3D 布局与相机轨迹的导演式控制 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

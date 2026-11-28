@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="用动态点云负责确定性视角变换，源视频 reference token 提供外观与动作；通过双重再投影构造动态训练数据。"><title>TrajectoryCrafter：动态点云与双流条件扩散｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="trajectorycrafter 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top"><h1>TrajectoryCrafter：用动态点云改变单目视频的相机轨迹</h1><p class="doc-subtitle">确定性重投影、双流条件与源视频参考注意力</p>
+<div class="paper-nav"><a href="index.html">← 返回 12 篇论文索引</a><a href="guide.html">综合技术导读</a></div>
+<div class="paper-meta"><a href="https://arxiv.org/abs/2503.05638">arXiv:2503.05638</a><a href="https://TrajectoryCrafter.github.io">项目页</a><span>骨干：CogVideoX-Fun-5B</span><span>任务：单目动态视频重定向</span><span>双流：View + Reference</span></div>
+<p class="reading-note">本文依据官方 arXiv 论文 <strong>2503.05638v1（2025-03-07）</strong> 及项目页整理；未将项目页或论文补充代码等同于完整官方实现。下文教学代码均为本文依据论文机制编写的<strong>讲解用实现，非官方源码</strong>，未运行训练或生成，也不据此报告实测性能。</p></header><div class="doc-callout"><strong>和 ReCamMaster 的任务相似，结构不同</strong><p>TrajectoryCrafter 先用深度把源视频投影到目标机位，扩散模型看到粗糙的新视角；再从源视频 reference token 中读取细节。ReCamMaster 公开 Wan 版则直接拼接干净源 latent 与带噪目标 latent，通过全时空注意力完成重渲染。</p></div><section class="doc-block" id="view-transform"><h2>1. 确定性视角变换</h2><p>源帧 Iᵢˢ 与深度 Dᵢˢ 在内参 K 下反投影为动态点云 Pᵢ。根据源相机与目标相机的相对变换 Tᵢʳ，把三维点重新投影为目标视角 Iᵢʳ，同时输出可见性 mask。</p><div class="math-scroll"><div class="math">P<sub>i</sub>=Φ<sup>−1</sup>([I<sub>i</sub><sup>s</sup>,D<sub>i</sub><sup>s</sup>],K)<span class="equation-number">(1)</span></div></div><div class="math-scroll"><div class="math">I<sub>i</sub><sup>r</sup>,M<sub>i</sub><sup>r</sup>=Φ(T<sub>i</sub><sup>r</sup>P<sub>i</sub>,K)<span class="equation-number">(2)</span></div></div><p>这一步由相机位姿直接决定，网络不必从 RT 学投影。但单目深度不是真值：动态前景、遮挡边界和反光区域会出现错点，重投影只能作为条件而非最终答案。</p><div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 310" role="img" aria-label="TrajectoryCrafter 双流重定向"><rect x="15" y="26" width="195" height="80" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="112.5" y="58" text-anchor="middle" class="svg-title">源视频 + 深度</text><text x="112.5" y="83" text-anchor="middle" class="svg-small">动态点云 Pᵢ</text><rect x="15" y="190" width="195" height="80" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="112.5" y="222" text-anchor="middle" class="svg-title">目标相机轨迹</text><text x="112.5" y="247" text-anchor="middle" class="svg-small">相对变换 Tᵢʳ</text><rect x="300" y="26" width="215" height="80" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="407.5" y="58" text-anchor="middle" class="svg-title">重投影与 mask</text><text x="407.5" y="83" text-anchor="middle" class="svg-small">view tokens</text><rect x="300" y="190" width="215" height="80" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="407.5" y="222" text-anchor="middle" class="svg-title">源视频 VAE</text><text x="407.5" y="247" text-anchor="middle" class="svg-small">reference tokens</text><rect x="610" y="26" width="210" height="80" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="715.0" y="58" text-anchor="middle" class="svg-title">View DiT</text><text x="715.0" y="83" text-anchor="middle" class="svg-small">文本 + 渲染图条件</text><rect x="610" y="190" width="210" height="80" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="715.0" y="222" text-anchor="middle" class="svg-title">Ref-DiT</text><text x="715.0" y="247" text-anchor="middle" class="svg-small">Q=view；K/V=reference</text><rect x="915" y="108" width="150" height="80" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="990.0" y="140" text-anchor="middle" class="svg-title">目标新视角</text><text x="990.0" y="165" text-anchor="middle" class="svg-small">保留动作同步</text><path d="M210 66 H300" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M210 230 H300" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M515 66 H610" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M515 230 H610" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M820 66 H915" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M820 230 H915" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：几何决定“从哪里看”，源视频参考决定“内容是什么”。</strong><span>view token 提供目标机位可见结构；reference token 补充未被准确重建的外观与动态。</span></p></section><section class="doc-block" id="dual-stream"><h2>2. 双流条件：View tokens 与 Reference tokens</h2><p>view 流接收目标视角渲染图与 mask，经 VAE 后与 noisy target latent 通道拼接，再 patchify 成 token；文本 token 与 view token 拼接进主 DiT。</p><p>reference 流将源视频单独编码为 reference tokens。在继承的 DiT blocks 之间插入 Ref-DiT：text/view 先做 3D attention，再以 view 为 query、reference 为 key/value 做 cross-attention。</p><div class="math-scroll"><div class="math">H<sub>view</sub>′ = H<sub>view</sub> + CrossAttn(Q=H<sub>view</sub>, K=H<sub>source</sub>, V=H<sub>source</sub>)<span class="equation-number">(3)</span></div></div><p>这种结构把“目标位姿下哪些区域已有几何”与“源视频中的外观/动作是什么”分开。与只做点云 inpainting 相比，它能从原视频补回更清晰内容；与 ReCamMaster 的全 token self-attention 相比，它使用更明确的参考 cross-attention。</p><div class="code-block"><span class="code-label">讲解用伪代码 · 非官方源码：双流条件 forward</span><pre><code>render_latent = vae.encode(torch.cat([warped_rgb, warp_mask],dim=1))
+view_tokens = patchify(torch.cat([noisy_target, render_latent],dim=1))
+reference_tokens = source_reference_encoder(vae.encode(source_video))
+for block, ref_block in zip(main_dit_blocks, ref_dit_blocks):
+    view_tokens = block(view_tokens, text_tokens)
+    view_tokens = ref_block.spatial_temporal(view_tokens, text_tokens)
+    view_tokens = view_tokens + ref_block.cross_attention(
+        q=view_tokens, k=reference_tokens, v=reference_tokens)
+# 教学代码省略了 RoPE、mask、时间位置和具体 patch 通道；
+# 不能把名称相同的伪模块视为官方 CogVideoX 实现。</code></pre></div></section><section class="doc-block" id="double-reprojection"><h2>3. 双重再投影：从普通单目视频构造训练条件</h2><p>真实同步动态多机位数据很难获得。论文对单目视频随机选相对变换 ΔT，先投影到新视角，再用 ΔT⁻¹ 投影回原机位。由于遮挡与出界，返回的渲染会有孔洞；原始视频则可作为目标。</p><div class="math-scroll"><div class="math">V<sup>warp</sup> = Render(DepthCloud(V), ΔT<sup>−1</sup>ΔT) ≈ V，但有遮挡空洞<span class="equation-number">(4)</span></div></div><p>这样从 60K OpenVid 动态数据制造“带缺陷的条件—原目标”配对，结合 120K DL3DV / RealEstate10K 静态三元组。注意 ΔT⁻¹ΔT 在代数上为单位阵，但离散深度重投影并不无损；正是遮挡和采样产生训练所需 mask。</p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：双重再投影数据构造</span><pre><code>points = unproject(source_rgb, source_depth, K, source_w2c)
+new_view, new_mask = render(points, delta_T @ source_w2c, K)
+# 用新视角深度/点云再投回原相机，而非简单把 RGB 连续 warp。
+returned_view, returned_mask = render(
+    unproject(new_view, new_depth, K, delta_T @ source_w2c),
+    source_w2c, K)
+condition = torch.cat([returned_view, returned_mask], dim=0)
+target = source_rgb
+# 目标位姿在训练中为“回到原机位”；mask 提供缺失区域监督。</code></pre></div></section><section class="doc-block" id="training"><h2>4. 两阶段训练为什么这样安排</h2><ol><li><strong>阶段一：</strong>使用全部动态/静态数据，训练 DiT 与 Ref-DiT 的 3D attention，冻结 cross-attention，暂不注入 reference。先让 view 流学会根据渲染和 mask 完成目标。</li><li><strong>阶段二：</strong>仅用多视角静态三元组，训练 Ref-DiT cross-attention 和 patch embedding，其余冻结。让参考流学习从源图读取内容，同时避免动态伪配对干扰。</li></ol><p>损失沿用视频噪声回归，而不是额外把点云渲染误差作为最终视频损失。该策略利用已有单目与静态数据，但并不能彻底消除真实动态几何错误。</p></section><section class="doc-block" id="inference"><h2>5. 推理：从用户轨迹到目标视频</h2><ol><li>估计源视频逐帧深度和源位姿，构造动态点云。</li><li>把用户目标位姿转换为相对源相机的变换，渲染 RGB 与 mask。</li><li>分别准备 view tokens 和 source reference tokens。</li><li>在多个扩散步中，主 DiT 负责视频生成，Ref-DiT 负责读取源内容。</li><li>VAE 解码目标 latent；检查遮挡边界、动作同步与目标轨迹精度。</li></ol></section><section class="doc-block" id="limitations"><h2>6. 局限与选型</h2><ul><li>单目深度误差在大角度下被放大，尤其是动态前景与遮挡边界。</li><li>源视频只观测一个窄视角，完全未知区域不能靠 reference 恢复真实内容。</li><li>双流注意力增加序列读取与显存开销；结果依赖训练数据的视角分布。</li><li>如果只需要静态单图探索，GEN3C 的持久 cache 更直接；如果强调动态源内容同步，可比较 ReCamMaster 与本文双流方案。</li></ul></section><section class="doc-block" id="checklist"><h2>7. 实现检查</h2><ul class="checklist"><li>区分源/目标 w2c 与相对变换 Tᵢʳ 的方向。</li><li>重投影时保留 z-buffer 与有效 mask，避免前后表面混叠。</li><li>source reference 的时间轴必须与目标动作时刻同步。</li><li>双重再投影应真实经过深度与离散渲染，不是数学上直接恒等。</li><li>分别测试小角度、极端视角、动态遮挡和未知背面。</li></ul></section><section class="doc-block" id="worked-example"><h2>附录 A：重投影、参考流与 mask 的对齐</h2><p>对每个源时刻 i，深度 Dᵢˢ 与该时刻 RGB 一起反投影为动态点云，因此点云不仅是静态背景，也包含人物运动后的瞬时位置。Tᵢʳ 必须是“从源 i 到目标 i”的相机变换；若误用目标 0 或源 0，会让动作时刻与相机轨迹错位。</p><p>渲染时使用 z-buffer 或等价可见性处理，记录空洞 mask。view token 和 reference token 的时间索引都对应同一 i，Ref-DiT 才能把源人物动作转移到目标位置。mask 的空间下采样也要与 noisy latent 的 patch 大小一致。</p><p>在双重再投影训练中，从新视角回到原视角时必须估计/保存新视角深度，并经过真实离散投影。只在数学上把 ΔT 与逆矩阵相乘得到 I、但不执行渲染，不会产生任何训练用遮挡空洞。这个细节决定了数据构造是否有效。</p></section><section class="doc-block" id="source-code-walkthrough"><h2>附录 B：模块级代码逐段阅读</h2><p>下面的 2 段代码将该论文的条件表示、张量变换与融合接口连成可读的 PyTorch 结构。它们是<strong>依据论文机制编写的教学实现，非官方源码</strong>；目的是把每个模块的输入、输出和训练位置说清楚，不宣称与原模型逐行等价。实际模型仍需要相应的 VAE、位置编码、mask、scheduler、预训练权重和数据处理。</p></section><section class="doc-block" id="implementation-code-1"><h2>代码 1：ViewConditionEncoder</h2><div class="code-block"><span class="code-label">ViewConditionEncoder · 渲染图与 mask 进入 view tokens（讲解用实现，非官方源码）</span><pre><code>class ViewConditionEncoder(nn.Module):
+    def __init__(self, vae, latent_channels=16, dim=3072):
+        super().__init__()
+        self.vae = vae
+        # 渲染 RGB latent + mask latent + 带噪目标 latent。
+        self.patch = nn.Conv3d(latent_channels*3,dim,
+                              kernel_size=(1,2,2),stride=(1,2,2))
+    def forward(self, target_noisy, rendered_rgb, render_mask):
+        rendered = self.vae.encode(rendered_rgb).latent
+        mask = self.vae.encode(render_mask.repeat(1,3,1,1,1)).latent
+        joint = torch.cat([target_noisy,rendered,mask],dim=1)
+        return self.patch(joint).flatten(2).transpose(1,2)
+# 论文采用渲染图+mask 的 VAE 条件与 noisy target 通道拼接；
+# 这里通道数仅作示例，不是官方 CogVideoX 配置。</code></pre></div></section><section class="doc-block" id="implementation-code-2"><h2>代码 2：RefDiTBlock</h2><div class="code-block"><span class="code-label">RefDiTBlock · 源视频作为 K/V（讲解用实现，非官方源码）</span><pre><code>class RefDiTBlock(nn.Module):
+    def __init__(self,dim,heads):
+        super().__init__()
+        self.view_attn=nn.MultiheadAttention(dim,heads,batch_first=True)
+        self.ref_attn=nn.MultiheadAttention(dim,heads,batch_first=True)
+        self.norm1,self.norm2=nn.LayerNorm(dim),nn.LayerNorm(dim)
+
+    def forward(self,view_tokens,reference_tokens,text_tokens):
+        # 教学上将文本与 view 序列拼接；实际 RoPE/mask 必须跟随基座。
+        joint=torch.cat([text_tokens,view_tokens],dim=1)
+        joint=joint+self.view_attn(self.norm1(joint),self.norm1(joint),self.norm1(joint))[0]
+        view=joint[:,text_tokens.shape[1]:]
+        ref=self.ref_attn(self.norm2(view),reference_tokens,reference_tokens)[0]
+        return view_tokens+ref
+# 训练第一阶段冻 ref_attn，第二阶段重点学习参考读取；
+# 官方同步多视数据/双重投影构造不能由此类简化 forward 替代。</code></pre></div></section><section class="doc-block" id="tensor-contract"><h2>附录 C：端到端张量与条件合同</h2><p>下表把整篇论文从用户输入到输出的计算路径放在一处。形状用于说明信息怎样对齐；若论文未公开完整源码，它是依据论文结构的实现参考，而不是对未公开代码的逐行声明。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>数据 / 形状</th><th>必须满足的约束</th></tr></thead><tbody><tr><td>目标视角</td><td>相对变换 Tᵢʳ</td><td>投影 RGB 与 mask</td></tr><tr><td>View 流</td><td>渲染条件 + noisy target</td><td>主 DiT 负责目标视角</td></tr><tr><td>Reference 流</td><td>源视频 VAE tokens</td><td>保留外观与动作</td></tr><tr><td>Ref-DiT</td><td>Q=view，K/V=reference</td><td>跨流读取源内容</td></tr><tr><td>训练</td><td>双重再投影 + 多视三元组</td><td>两阶段冻结策略</td></tr></tbody></table></div></section>
+<section class="doc-block" id="algorithm-training"><h2>附录 D：训练算法与梯度路径</h2><p>阶段一使用 60K OpenVid 动态数据的双重再投影与 120K DL3DV/RealEstate10K 静态三元组，训练 DiT 与 Ref-DiT 的 3D attention，冻结 cross-attention、不注入 reference。阶段二只用多视静态三元组训练 Ref-DiT cross-attention 和 patch embedding，其余冻结，以学会从源视图读内容。</p><p><strong>读代码时的关注点：</strong>代码 1 展示 render/mask/target 三类 latent 如何形成 view token，通道数仅教学示例；代码 2 展示 view/source 的 cross-attention。真实 CogVideoX-Fun-5B 还需要时空 RoPE、patchify、mask 和基座调度，不应误称为官方实现。</p></section>
+<section class="doc-block" id="algorithm-inference"><h2>附录 E：显式位姿推理流程</h2><p>逐时刻由源 RGB-D 建立点云，按目标位姿重投影；view 流接收新视角渲染与 mask，reference 流接收源视频。每个 Ref-DiT 先做 text/view 的 3D attention，再以 view 为 Q 从 source K/V 读取。最后去噪并解码目标视频。</p><p>推理前要明确：位姿是 c2w 还是 w2c、是否首帧相对、K 是否像素单位、帧率是否经过 VAE 压缩，以及 unconditional 分支采用哪一种空相机。只把这些数值变成合法 shape 不足以保证几何正确。</p></section>
+<section class="doc-block" id="implementation-tests"><h2>附录 F：代码级验证清单</h2><ul class="checklist"><li>源到目标的 Tᵢʳ 方向与同一时刻索引必须一致。</li><li>渲染使用 z-buffer/可见性 mask，避免前后表面混叠。</li><li>双重再投影要真实执行两次离散渲染，不能只做矩阵恒等。</li><li>比较大角度、动态遮挡和源视频完全未观测区域。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与进一步核对</h2><ul class="source-links"><li><a href="https://arxiv.org/abs/2503.05638">arXiv:2503.05638：论文与版本记录</a>；<a href="https://arxiv.org/html/2503.05638">论文 HTML 全文</a>。</li><li><a href="https://TrajectoryCrafter.github.io">作者项目页：方法演示与公开资源</a>。</li></ul><p class="source-scope">本文写作时核对了本地保存的论文原文。没有可确认的官方完整实现，因此不虚构仓库文件、参数默认值或训练日志；如需生产使用，请按项目页的最新发布说明复核。</p></section><section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="gen3c.html">← GEN3C：可更新 3D cache 驱动的视频生成</a><a href="cameractrl2.html">下一篇：CameraCtrl II：输入端注入与长程动态探索 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

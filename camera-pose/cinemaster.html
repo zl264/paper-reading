@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="将用户在 3D 空间摆放的物体框、相机轨迹转成深度/语义布局与 RT 条件，分别通过 ControlNet 和 Camera Adapter 融合。"><title>CineMaster：3D 布局与相机轨迹的导演式控制｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="cinemaster 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top"><h1>CineMaster：像导演一样控制 3D 布局与镜头</h1><p class="doc-subtitle">3D box、投影深度、语义布局与独立相机 RT</p>
+<div class="paper-nav"><a href="index.html">← 返回 12 篇论文索引</a><a href="guide.html">综合技术导读</a></div>
+<div class="paper-meta"><a href="https://arxiv.org/abs/2502.08639">arXiv:2502.08639</a><a href="https://cinemaster-dev.github.io/">项目页</a><span>骨干：约 1B 内部 DiT</span><span>Layout ControlNet</span><span>Camera Adapter</span></div>
+<p class="reading-note">本文依据官方 arXiv 论文 <strong>2502.08639v1（2025-02-12）</strong> 及项目页整理；未将项目页或论文补充代码等同于完整官方实现。下文教学代码均为本文依据论文机制编写的<strong>讲解用实现，非官方源码</strong>，未运行训练或生成，也不据此报告实测性能。</p></header><div class="doc-callout"><strong>与“只控制相机”的区别</strong><p>CineMaster 把电影生成拆成场景布置和摄影：用户在三维空间放置物体 box、设定类别和相机运动；系统将它们转换成深度/语义布局与独立 RT，避免所有意图都只能压缩成一句文本。</p></div><section class="doc-block" id="interface"><h2>1. 从交互式 3D 场景到扩散条件</h2><p>第一阶段是交互界面：物体用 3D bounding boxes 表达，用户在三维空间拖动和设定运动，相机用关键帧与轨迹描述。第二阶段将 box 经 Blender 投影成每帧深度图，同时记录类别与实体 mask；相机则转为每个 latent frame 的 3×4 RT。</p><p>这样做的意义不是用 Blender 直接出最终视频，而是产生扩散模型可读的结构条件。最终外观、材质、运动和遮挡细节仍由视频扩散模型生成。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>控制对象</th><th>中间表示</th><th>网络入口</th></tr></thead><tbody><tr><td>物体位置与布局</td><td>3D box → 深度图 + entity mask</td><td>Semantic Layout ControlNet</td></tr><tr><td>物体身份/类别</td><td>每实体类别 embedding</td><td>按 mask 注入布局 token</td></tr><tr><td>相机位姿</td><td>每 latent 帧 RT ∈ R¹²</td><td>Camera Adapter / DiT block</td></tr><tr><td>文本内容</td><td>prompt embedding</td><td>视频 DiT cross-attention</td></tr></tbody></table></div><div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 300" role="img" aria-label="CineMaster 布局与相机的两条条件通路"><rect x="20" y="30" width="195" height="78" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="117.5" y="62" text-anchor="middle" class="svg-title">3D 物体框</text><text x="117.5" y="87" text-anchor="middle" class="svg-small">位置、尺寸、类别</text><rect x="20" y="180" width="195" height="78" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="117.5" y="212" text-anchor="middle" class="svg-title">相机关键帧</text><text x="117.5" y="237" text-anchor="middle" class="svg-small">位置、朝向 → RT</text><rect x="315" y="30" width="230" height="78" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="430.0" y="62" text-anchor="middle" class="svg-title">Blender 布局渲染</text><text x="430.0" y="87" text-anchor="middle" class="svg-small">深度图 + 实体 mask</text><rect x="315" y="180" width="230" height="78" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="430.0" y="212" text-anchor="middle" class="svg-title">Camera Adapter</text><text x="430.0" y="237" text-anchor="middle" class="svg-small">12 维 RT → token embedding</text><rect x="645" y="30" width="210" height="78" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="750.0" y="62" text-anchor="middle" class="svg-title">Layout ControlNet</text><text x="750.0" y="87" text-anchor="middle" class="svg-small">复制前半 DiT blocks</text><rect x="645" y="180" width="210" height="78" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="750.0" y="212" text-anchor="middle" class="svg-title">逐 DiT block</text><text x="750.0" y="237" text-anchor="middle" class="svg-small">广播相加 / 残差注入</text><rect x="940" y="105" width="120" height="78" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="1000.0" y="137" text-anchor="middle" class="svg-title">视频 DiT</text><text x="1000.0" y="162" text-anchor="middle" class="svg-small">联合生成</text><path d="M215 69 H315" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M215 219 H315" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M545 69 H645" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M545 219 H645" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M855 69 H900 V144 H940" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M855 219 H900 V144 H940" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：CineMaster 将“物体在哪里”与“相机怎样运动”分开。</strong><span>3D box 的投影深度与类别形成布局控制；独立 RT 避免把画面运动全部归因于物体移动。</span></p></section><section class="doc-block" id="adapter"><h2>2. Camera Adapter：为什么保留独立 RT</h2><p>如果只有深度图，相机移动和物体移动都可能表现为 box 在图像中改变位置。独立 RT 为网络提供相机坐标变换，使它更容易区分“物体动了”与“观察者动了”。</p><p>每帧 12 维 RT 经 MLP 映射到 token 维度，广播相加到视频 token；论文还描述在 self-attention 与 temporal-attention 之间再次通过 residual 注入。与 Plücker 不同，它不构造逐像素射线，几何布局主要由另一条深度 ControlNet 提供。</p><div class="math-scroll"><div class="math">c<sub>f</sub> = MLP(flatten([R<sub>f</sub>|t<sub>f</sub>]))，&nbsp; h′<sub>f,h,w</sub>=h<sub>f,h,w</sub>+c<sub>f</sub><span class="equation-number">(1)</span></div></div><div class="code-block"><span class="code-label">讲解用伪代码 · 非官方源码：双路控制</span><pre><code># 3D box / camera keyframes 来自用户交互，不是从文本自动猜测。
+rt, depth, entity_masks, class_labels = prepare_3d_conditions(
+    boxes=scene_boxes, camera_keyframes=camera_keys,
+    latent_frames=F_latent, renderer=&quot;Blender&quot;)
+camera_features = camera_mlp(rt.reshape(F_latent, 12))
+layout_features = layout_controlnet(
+    vae_encode(depth), class_labels, entity_masks)
+for i, block in enumerate(video_dit.blocks):
+    h = block(h + camera_features[i], text)
+    h = h + camera_residual(h, camera_features[i])
+    if i &lt; len(video_dit.blocks) // 2:
+        h = h + layout_features[i]
+# 上述 forward 是概念流程；不对应公开官方模块签名。</code></pre></div></section><section class="doc-block" id="controlnet"><h2>3. Semantic Layout ControlNet 如何保留实体身份</h2><p>深度只说明远近，不说明“这个框是车还是人”。CineMaster 将类别 embedding 按实体 mask 放到对应空间位置，与深度 latent 拼接后 MLP 融合。ControlNet 复制 N/2 个 DiT blocks，hidden states 加回主模型。</p><p>因此布局控制同时具有几何和语义，减少多物体场景中的身份互换。box 是粗粒度几何，并不能精确控制人物轮廓、手指或细粒度遮挡。</p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：按实体放置语义 embedding</span><pre><code>B,F,H,W = depth_latent.shape[0], depth_latent.shape[2], *depth_latent.shape[-2:]
+semantic = torch.zeros(B,F,H,W,embed_dim)
+for entity_id, class_id in enumerate(class_labels):
+    mask = entity_masks[entity_id]              # 对齐 latent 空间
+    semantic += mask[...,None] * class_embedding[class_id]
+layout_input = torch.cat([depth_latent, semantic.permute(0,4,1,2,3)],dim=1)
+layout_hidden = layout_input_mlp(layout_input)
+# 类别 mask、深度图和相机投影必须使用同一时间/分辨率变换。</code></pre></div></section><section class="doc-block" id="training"><h2>4. 三阶段训练与 flow matching</h2><p>模型采用 rectified flow / conditional flow matching。将 clean latent z₀ 与噪声 z₁=ε 在线性路径上插值，网络学习速度：</p><div class="math-scroll"><div class="math">z<sub>t</sub>=(1−t)z₀+tε，&nbsp; L=E ||(ε−z₀)−v<sub>Θ</sub>(z<sub>t</sub>,t,c)||²<span class="equation-number">(2)</span></div></div><ol><li>167K dense-depth 视频上预训练 ControlNet，先学深度条件。</li><li>用 156K 视频和 118K 图像适配 3D box 与语义布局。</li><li>Semantic Layout ControlNet 与 Camera Adapter 联合训练，使用 99.6K 自有标注视频与 10.4K RealEstate10K，按 3:1 采样。</li></ol><p>分阶段避免一开始就要求模型同时学布局、类别、相机与文本的全部组合。论文内部模型和训练数据不等于公开可下载的完整训练包。</p></section><section class="doc-block" id="inference"><h2>5. 推理：只在早期采样阶段启用结构条件</h2><p>论文在 50 步采样中，前 25 步使用布局条件，前 15 步使用相机条件。其解释是让粗布局与运动先形成，后期更多保留生成细节。</p><p>这与 AC3D 的高噪声相机控制有共同直觉，但数值不可互相照搬。关闭条件时应明确是置零、移除 residual，还是切换 unconditional 分支；不同实现的语义不同。</p></section><section class="doc-block" id="limitations"><h2>6. 3D-aware 不等于严格 3D 一致</h2><p>3D box 和深度是强布局先验，独立 RT 提供位姿，但论文没有跨帧重投影一致性损失或持久 3D cache。它不能保证复杂背面、精细几何和动态遮挡严格正确。</p><p>当用户指定不合理布局、相机穿过物体、遮挡完全未知时，模型仍依赖生成先验。ControlNet 与相机 residual 也可能相互竞争，需要联合训练而不是任意拼接现成模块。</p></section><section class="doc-block" id="takeaway"><h2>7. 复现与对比重点</h2><ul class="checklist"><li>把用户 3D box、相机关键帧、Blender 渲染与 latent 帧率对齐。</li><li>分别测试物体运动 + 静止相机、相机运动 + 静止物体。</li><li>比较只有深度、深度+语义、再加 RT 的增量贡献。</li><li>验证 entity mask 不因多物体重叠而混淆类别。</li><li>扫描布局/相机启用步数，记录轨迹、布局和视觉质量变化。</li></ul></section><section class="doc-block" id="worked-example"><h2>附录 A：一个具体导演输入如何变成训练/推理条件</h2><p>设想用户在原点放一个人物 box，在右侧放一辆车，相机从人物前方缓慢向右环绕。系统首先将 box 在世界空间的角点和相机位姿序列送入渲染器，得到每帧深度和实体 mask；人物与车辆的类别 embedding 分别放在对应 mask 区域。相机 RT 则单独经 MLP 注入，不烧录进深度通道。</p><p>如果物体也移动，box 随时间变化、相机 RT 同时变化，深度图反映二者合成后的可见布局。独立 RT 给模型提供分解线索，但不保证网络总能完美解耦。对车与人互相遮挡的场景，渲染器需确定前后关系与可见 mask，不能只把两张完整 mask 相加。</p><p>训练三阶段分别解决深度跟随、语义布局和相机联合控制；这意味着自定义复现若直接同时训练全部模块，可能遇到不同的优化稳定性。推理早期逐步撤掉布局/相机，也要求调度器以一致的时间方向计数。</p></section><section class="doc-block" id="source-code-walkthrough"><h2>附录 B：模块级代码逐段阅读</h2><p>下面的 2 段代码将该论文的条件表示、张量变换与融合接口连成可读的 PyTorch 结构。它们是<strong>依据论文机制编写的教学实现，非官方源码</strong>；目的是把每个模块的输入、输出和训练位置说清楚，不宣称与原模型逐行等价。实际模型仍需要相应的 VAE、位置编码、mask、scheduler、预训练权重和数据处理。</p></section><section class="doc-block" id="implementation-code-1"><h2>代码 1：SemanticLayoutCondition</h2><div class="code-block"><span class="code-label">SemanticLayoutCondition · 深度与实体语义联合（讲解用实现，非官方源码）</span><pre><code>class SemanticLayoutCondition(nn.Module):
+    def __init__(self, depth_channels, classes, dim):
+        super().__init__()
+        self.class_embedding = nn.Embedding(classes,dim)
+        self.fuse = nn.Conv3d(depth_channels+dim,dim,1)
+
+    def forward(self, depth_latent, entity_masks, class_ids):
+        # depth_latent: [B,Cd,F,H,W]
+        # entity_masks: [B,N,F,H,W]，每一维 N 是一个实体的可见区域。
+        B,N,F,H,W = entity_masks.shape
+        embedding = self.class_embedding(class_ids)      # [B,N,D]
+        semantic = (entity_masks.unsqueeze(-1)*embedding[:,:,None,None,None,:]).sum(1)
+        semantic = semantic.permute(0,4,1,2,3)           # [B,D,F,H,W]
+        return self.fuse(torch.cat([depth_latent,semantic],dim=1))
+# mask 来自 Blender 对 3D box 的投影，不是模型自回归生成的 mask。</code></pre></div></section><section class="doc-block" id="implementation-code-2"><h2>代码 2：CineMaster 联合前向与采样期控制（讲解用实现，非官方源码）</h2><div class="code-block"><span class="code-label">CineMaster 联合前向与采样期控制（讲解用实现，非官方源码）</span><pre><code># 先由 3D 交互状态准备两路条件。
+depth,entity_masks,class_ids,rt = prepare_blender_conditions(scene,camera_keys)
+layout = layout_controlnet(depth,entity_masks,class_ids)
+cam = camera_mlp(rt.flatten(-2))               # [B,F_latent,12] -&gt; [B,F,D]
+
+for step,t in enumerate(scheduler.timesteps):
+    use_layout = step &lt; 25
+    use_camera = step &lt; 15
+    h = noisy_tokens
+    for i,block in enumerate(video_dit.blocks):
+        if use_layout and i &lt; len(video_dit.blocks)//2:
+            h = h + layout[i]
+        if use_camera:
+            h = h + broadcast_camera(cam,i,h.shape)
+            h = h + camera_residual(h,cam,i)
+        h = block(h,text_context)
+    noisy_tokens = scheduler.step(h,t,noisy_tokens).prev_sample
+# 这些是论文控制时机的一种可读表达，不是官方 Wan/DiT 调用。</code></pre></div></section><section class="doc-block" id="tensor-contract"><h2>附录 C：端到端张量与条件合同</h2><p>下表把整篇论文从用户输入到输出的计算路径放在一处。形状用于说明信息怎样对齐；若论文未公开完整源码，它是依据论文结构的实现参考，而不是对未公开代码的逐行声明。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>数据 / 形状</th><th>必须满足的约束</th></tr></thead><tbody><tr><td>渲染</td><td>Blender → depth + entity mask</td><td>框投影不是最终 RGB 视频</td></tr><tr><td>布局</td><td>深度 latent + 语义 embedding</td><td>复制 N/2 DiT 的 Layout ControlNet</td></tr><tr><td>相机</td><td>每 latent 帧 RT∈R¹²</td><td>Camera Adapter 广播与残差</td></tr><tr><td>训练</td><td>深度预训→语义适配→联合训练</td><td>解决多条件冲突</td></tr><tr><td>推理</td><td>前 25 步布局、前 15 步相机</td><td>后期更多保留细节</td></tr></tbody></table></div></section>
+<section class="doc-block" id="algorithm-training"><h2>附录 D：训练算法与梯度路径</h2><p>三阶段依次使用 167K dense-depth 视频、156K 视频+118K 图像、99.6K 自有位姿/布局视频+10.4K RealEstate10K。最后阶段 Layout ControlNet 与 Camera Adapter 联合训练，数据采样比 3:1。采用 rectified-flow 速度回归，而不是单独对布局渲染做最终 RGB 损失。</p><p><strong>读代码时的关注点：</strong>代码 1 展示如何按 entity mask 将类别 embedding 放到对应空间位置，再与深度融合；代码 2 展示布局/相机双路和不同采样阶段的开关。它是导演条件的教学结构，不是公开的内部 DiT/Blender 工具源码。</p></section>
+<section class="doc-block" id="algorithm-inference"><h2>附录 E：显式位姿推理流程</h2><p>用户先摆好物体和相机，系统生成逐帧深度、mask、类别与 RT；ControlNet 和 Camera Adapter 将条件注入 DiT。50 步采样的前 25 步使用布局、前 15 步使用相机。box 是粗几何，无法指定人物精细轮廓或真实遮挡背面。</p><p>推理前要明确：位姿是 c2w 还是 w2c、是否首帧相对、K 是否像素单位、帧率是否经过 VAE 压缩，以及 unconditional 分支采用哪一种空相机。只把这些数值变成合法 shape 不足以保证几何正确。</p></section>
+<section class="doc-block" id="implementation-tests"><h2>附录 F：代码级验证清单</h2><ul class="checklist"><li>box 角点、相机和渲染器需使用同一世界坐标与单位。</li><li>重叠实体的 mask 必须按可见性处理，不能无条件相加。</li><li>分别测试相机移动/物体静止和物体移动/相机静止。</li><li>逐步扫描布局与相机的停止时刻，测量布局、轨迹和画质。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与进一步核对</h2><ul class="source-links"><li><a href="https://arxiv.org/abs/2502.08639">arXiv:2502.08639：论文与版本记录</a>；<a href="https://arxiv.org/html/2502.08639">论文 HTML 全文</a>。</li><li><a href="https://cinemaster-dev.github.io/">作者项目页：方法演示与公开资源</a>。</li></ul><p class="source-scope">本文写作时核对了本地保存的论文原文。没有可确认的官方完整实现，因此不虚构仓库文件、参数默认值或训练日志；如需生产使用，请按项目页的最新发布说明复核。</p></section><section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="ac3d.html">← AC3D：低频控制、少层注入与动态数据去偏</a><a href="gen3c.html">下一篇：GEN3C：可更新 3D cache 驱动的视频生成 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

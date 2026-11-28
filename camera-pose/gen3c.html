@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="目标 w2c 与 K 直接控制点云渲染，RGB 和可见性 mask 作为扩散条件；生成帧估计深度、对齐并更新 cache。"><title>GEN3C：可更新 3D cache 驱动的视频生成｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="gen3c 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top">
+  <p><a href="index.html">← 返回 12 篇论文索引</a> · <a href="guide.html">相机位姿控制综合导读</a></p>
+  <h1>GEN3C：以显式时空 3D Cache 驱动精确相机控制</h1>
+  <p>从 RGB-D 反投影、目标 W2C/K 渲染，到 Cosmos 通道融合与长视频缓存更新</p>
+  <p class="reading-note">论文版本：<a href="https://arxiv.org/abs/2503.03751">arXiv:2503.03751v1</a>，2025-03-05；论文作者来自 NVIDIA、University of Toronto 与 Vector Institute。官方公开仓库为 <a href="https://github.com/nv-tlabs/GEN3C">nv-tlabs/GEN3C</a>，README 记录代码和模型于 2025-06-06 发布。本文源码均按固定快照 <a href="https://github.com/nv-tlabs/GEN3C/tree/db2ffe12ced12ddafcec5e0422ee46ce8520746b"><code>db2ffe12ced12ddafcec5e0422ee46ce8520746b</code></a> 解读；源码许可证为 Apache-2.0，模型另受 NVIDIA Open Model License 约束。本文只做论文与静态源码阅读，未执行模型训练或推理，也未进行本地速度、显存或画质实测。</p>
+</header>
+
+<div class="doc-warning"><strong>先划清两个实现的边界。</strong>论文主体实验使用 Stable Video Diffusion（SVD）：4 通道、仅空间压缩的 latent，以 mask 乘法保留渲染信息，并在首层后跨视角 max-pool。论文 §5.7 另报告 Cosmos 扩展。当前公开仓库发布的是 <strong>GEN3C-Cosmos-7B</strong> 推理实现：16 通道时空 VAE、两个 RGB-D buffer、RGB 与 mask 分别编码后拼接，以及 <code>16+16×4+1=81</code> 通道 DiT 输入。下文会分别标注“论文 SVD 机制”和“公开 Cosmos 源码”，不会把后者倒写成前者的网络细节。</div>
+
+<section class="doc-block" id="gen3c-task">
+  <h2>1. 问题定义：相机控制不只是把位姿数字交给网络</h2>
+  <p>GEN3C 处理的是带源观测的位姿可控视频生成与新视角合成。源观测可以是一张图像、若干静态视图，或具有逐帧深度和源相机参数的视频；目标则是用户指定的逐帧相机序列。它要同时解决三个问题：目标画面遵循指定视角、重新看到旧区域时不“忘记”场景、点云渲染没有覆盖的地方仍能生成合理内容。</p>
+  <p>纯参数条件方法把 W2C、射线或 Plücker embedding 输入网络，网络必须自己学习“这组数字意味着哪些像素怎样移动”。GEN3C 将这一步交给确定性几何：先以单目深度建立带颜色的点云，再把同一批世界点投影到目标相机，得到有缺陷但视角明确的 warped RGB 与覆盖 mask。扩散模型不再从零推断相机—图像映射，而是学习修复错误深度、遮挡边界和未观测区域。</p>
+  <div class="math-scroll"><div class="math">(I<sub>t</sub>, M<sub>t</sub>) = R(P, W2C<sub>t</sub>, K<sub>t</sub>)，&nbsp; X̂<sub>1:F</sub> = D(f<sub>θ</sub>(Z<sub>τ</sub>; E(I<sub>1:F</sub>), M<sub>1:F</sub>, c<sub>text/image</sub>))<span class="equation-number">(1)</span></div></div>
+  <p>这里 <code>P</code> 是显式时空缓存，<code>R</code> 是点云前向渲染，<code>E/D</code> 是 VAE 编解码器。RGB 渲染给出可见内容，mask 告诉模型何处缺少可靠观测。因此“精确”首先来自<strong>条件图像本身已按目标相机重投影</strong>，而不是额外的位姿损失；最终视频仍由生成模型产生，并不等同于严格的多视图几何重建。</p>
+  <p>这一设计还解释了它与其他相机控制方法的真实区别：MotionCtrl/CameraCtrl 主要依靠数值或射线条件的网络学习；训练免费的深度 warp 方法通常在去噪过程中权衡 warp 约束；GEN3C 则微调模型，让它把 warped video 当作可持续更新的场景条件。相比逐场景优化 NeRF/3DGS，它用生成先验补全稀疏观测，但补全内容不保证是真实世界中被遮挡的原貌。</p>
+</section>
+
+<section class="doc-block" id="gen3c-geometry">
+  <h2>2. RGB-D 反投影与目标 W2C/K：实际进入渲染器的数学对象</h2>
+  <p>核心接口使用<strong>世界到相机</strong>矩阵 W2C，而非相机到世界矩阵 C2W。源帧与目标帧可以不同，但所有点必须位于同一个世界坐标系，深度、平移和相机轨迹也必须使用一致的尺度。对源像素 <code>(u,v)</code>，若输入 <code>d(u,v)</code> 是沿相机 Z 轴的 z-depth，而不是到相机中心的欧氏距离，则：</p>
+  <div class="math-scroll"><div class="math">K = [[f<sub>x</sub>,0,c<sub>x</sub>],[0,f<sub>y</sub>,c<sub>y</sub>],[0,0,1]]，&nbsp; W2C = [[R,t],[0,1]]，&nbsp; p<sub>c</sub> = d(u,v)K<sup>−1</sup>[u,v,1]<sup>T</sup><span class="equation-number">(2)</span></div></div>
+  <div class="math-scroll"><div class="math">p̃<sub>w</sub> = W2C<sub>src</sub><sup>−1</sup>[p<sub>c</sub>;1]，&nbsp; q̃ = K<sub>tgt</sub>W2C<sub>tgt</sub>p̃<sub>w</sub>，&nbsp; (u′,v′) = (q<sub>x</sub>/q<sub>z</sub>, q<sub>y</sub>/q<sub>z</sub>)<span class="equation-number">(3)</span></div></div>
+  <p>其中 <code>fx,fy</code> 是像素单位焦距，<code>cx,cy</code> 是像素主点；<code>R,t</code> 把世界点变到相机坐标。代码对有效深度像素计算 <code>K⁻¹[u,v,1]</code>，乘深度后再左乘 <code>inverse(w2c)</code> 得到世界点。目标投影直接使用目标 W2C 和目标 K，所以<strong>平移、旋转与焦距变化都在扩散网络之前发生</strong>。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · RGB-D 反投影与世界点投影</span><pre><code># forward_warp_utils_pytorch.py:431-455, 462-479（节选）
+intrinsic_inv = inverse_with_conversion(intrinsic)
+pos = torch.stack([x_valid, y_valid, ones], dim=1).unsqueeze(-1)
+unnormalized_pos = torch.matmul(intrinsic_inv[b_idx], pos)
+depth_valid = depth[b_idx, 0, y_idx, x_idx].view(-1, 1, 1)
+world_points_cam = depth_valid * unnormalized_pos       # is_depth=True
+world_points_homo = torch.cat([world_points_cam, ones_h], dim=1)
+trans = inverse_with_conversion(w2c)
+world_points_transformed = torch.matmul(trans[b_idx], world_points_homo)
+
+world_points_homo = torch.cat([world_points, ones_4d], dim=3)
+camera_points_homo = torch.matmul(w2c[:, None, None], world_points_homo)
+camera_points = camera_points_homo[:, :, :, :3]
+projected_points = torch.matmul(intrinsic[:, None, None], camera_points)</code></pre></div>
+  <p>对应实现见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/forward_warp_utils_pytorch.py#L410-L486">forward_warp_utils_pytorch.py:410-486</a>。像素网格由整数索引构造，这里没有 CameraCtrl 式的 <code>+0.5</code> 像素中心约定。论文也没有另行规定一套通用轴变换；公开多视图样例注明 OpenCV K，ViPE 输入则显式把 C2W 求逆成 W2C，并在 resize/crop 后同步修改 K。</p>
+
+  <h3>三种源输入不能混为一谈</h3>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>输入任务</th><th>源码与缓存</th><th>用户还需提供</th><th>时间/运动含义</th></tr></thead>
+    <tbody>
+      <tr><td>单图生成</td><td><code>gen3c_single_image.py</code>；<code>Cache3D_Buffer</code>，初始 W2C 为单位阵，MoGe 估计深度与 K</td><td>RGB 图；命名轨迹、旋转模式和幅度，或自行接入 W2C/K 数组</td><td>同一静态点集渲染到所有目标时刻；视频动态主要来自生成先验，缓存不会自动获得正确物体运动</td></tr>
+      <tr><td>动态视频换机位</td><td><code>gen3c_dynamic.py</code>；<code>Cache4D</code>，每个源时间各有 RGB-D 点云</td><td>逐帧 RGB、深度、mask、源 W2C、源 K；可用 ViPE 或仓库样例格式</td><td>输出第 t 帧读取第 t 个场景状态；改目标 W2C/K 而保留源物体状态，从而把视角变化与既有物体运动条件性地分开</td></tr>
+      <tr><td>多视图图像</td><td><code>gen3c_multiview.py</code>；<code>Cache3D_BufferSelector</code>，把输入放在 N(buffer) 维</td><td>NPZ 中的 key-frame RGB/depth/mask/W2C/K，以及目标 <code>w2cs_all</code>、可选 <code>Ks_all</code></td><td>按覆盖分数最多选择 2 个 buffer；这不是论文 SVD 的逐视角首层后 max-pool 代码</td></tr>
+    </tbody>
+  </table></div>
+  <p>动态格式由 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/data_loader_utils.py#L137-L194">data_loader_utils.py:137-194</a> 读取：目录内有 <code>rgb.mp4</code>、<code>depth.npz["depth"]</code>、<code>mask.npz["mask"]</code>、<code>camera.npz["w2c","intrinsics"]</code>。ViPE 路径会逐帧读取 C2W 并求逆，缩放 <code>fx,fy,cx,cy</code>，中心裁剪时再减主点偏移，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/vipe_utils.py#L207-L268">vipe_utils.py:207-268</a>。注意单图持久化接口目前会忽略用户传入的相机建议而采用 MoGe 结果；多帧路径才直接采用提供的深度和相机，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_persistent.py#L159-L248">gen3c_persistent.py:159-248</a>。</p>
+  <div class="doc-note"><p><strong>坐标检查比矩阵形状更重要。</strong>核心反投影/投影函数本身不会把 COLMAP、OpenGL、Blender 或 GUI 坐标自动转换为用户想要的约定。轨迹 helper 的 <code>look_at_matrix</code> 注释使用 Y-up，而上下移动注释又以图像 Y-down 解释；实际制作自定义轨迹时，应固定一个世界/相机约定，用 <code>--save_buffer</code> 或 GUI 预览检查视差方向，不要仅凭变量名猜轴。</p></div>
+</section>
+
+<section class="doc-block" id="gen3c-cache-render">
+  <h2>3. Cache3D 如何渲染：覆盖 mask、深度过滤与 buffer 维</h2>
+  <p>初始化时，<code>Cache3D_Base</code> 把输入整理成 <code>[B,F,N,V,C,H,W]</code>：B 是 batch，F 是源时间，N 是静态帧 buffer，V 是视角。深度与对应源 W2C/K 被反投影为同样网格化的世界点 <code>[B,F,N,V,H,W,3]</code>，RGB 和大点数组主要保存在 CPU，渲染时按小批传到 GPU。</p>
+  <p><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/cache_3d.py#L151-L236">cache_3d.py:151-236</a> 对每个目标时刻复制同一组目标 W2C/K 到各个 N buffer，再调用 <code>forward_warp</code>。后者投影世界点，以 <code>q_x/q_z,q_y/q_z</code> 得到 flow，执行带深度的 bilinear splatting，并输出 warped RGB、warped mask 和可选深度。公开实现要求这里的 V=1；多图样例把候选源放在 N 维，而不是走论文公式的 V 维池化。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>张量/选项</th><th>实际含义</th><th>实现细节</th></tr></thead>
+    <tbody>
+      <tr><td><code>rendered_warp_images</code></td><td><code>[B,F,N,3,H,W]</code>，RGB 范围 [-1,1]</td><td>每个 buffer 独立投影到同一个目标 W2C/K；无信息区域需结合 mask 判断，不能把黑色像素当成有效观测</td></tr>
+      <tr><td><code>rendered_warp_masks</code></td><td><code>[B,F,N,1,H,W]</code>，有效覆盖为 1，空洞为 0</td><td>不是源帧条件指示器，也不是物体语义分割；它描述该目标像素是否由 cache 覆盖</td></tr>
+      <tr><td><code>filter_points_threshold=0.05</code></td><td>过滤深度不连续处</td><td>5×5 窗口内 <code>(local_max-local_min)/(local_mean+eps)</code> 小于阈值且深度为正才可靠，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/forward_warp_utils_pytorch.py#L338-L353">forward_warp_utils_pytorch.py:338-353</a></td></tr>
+      <tr><td><code>foreground_masking</code></td><td>额外处理前景遮挡</td><td>把目标相机中的点构成网格，以 Warp 做 ray-triangle intersection，并遮蔽明显更近的 mesh 区域；这不是通用动态物体 mask</td></tr>
+      <tr><td><code>noise_aug_strength</code></td><td>不同 buffer 的渲染噪声增强</td><td><code>Cache3D_Buffer.render_cache</code> 按 buffer 年龄分配噪声幅度；默认强度为 0，不能把它当作扩散噪声本身</td></tr>
+    </tbody>
+  </table></div>
+  <p>对单图而言，论文所说的“沿 L 个时间复制同一 cache”在公开实现中主要通过渲染时 expand 完成，不需要在内存里复制 L 份点云。对动态 Cache4D，<code>start_frame_idx</code> 选择对应的源时间窗口；若目标请求超过已有源帧，持久化实现会钳制到末尾可用窗口，而不是凭空生成新的真实深度状态。</p>
+</section>
+
+<section class="doc-block" id="gen3c-architecture">
+  <h2>4. 网络结构：论文 SVD 融合与公开 Cosmos 81 通道输入</h2>
+  <div class="table-scroll diagram-frame">
+    <svg class="figure-svg" viewBox="0 0 1000 500" role="img" aria-label="GEN3C 从源 RGB-D 和源相机反投影到世界点，以目标 W2C 与 K 渲染 RGB 和 mask，再分别编码并与噪声 latent 和首帧 mask 拼接入 Cosmos DiT 的结构图">
+      
+      <rect x="25" y="35" width="170" height="76" rx="10" fill="#eef5ff" stroke="#257de0" stroke-width="2"/>
+      <text x="110" y="65" text-anchor="middle">源 RGB-D</text><text x="110" y="91" text-anchor="middle">源 W2C / K</text>
+      <rect x="270" y="35" width="180" height="76" rx="10" fill="#eefaf6" stroke="#00a887" stroke-width="2"/>
+      <text x="360" y="63" text-anchor="middle">反投影</text><text x="360" y="89" text-anchor="middle">P = W2C⁻¹·dK⁻¹p</text>
+      <rect x="540" y="35" width="190" height="76" rx="10" fill="#eefaf6" stroke="#00a887" stroke-width="2"/>
+      <text x="635" y="63" text-anchor="middle">时空 3D Cache</text><text x="635" y="89" text-anchor="middle">静态 N buffer / 动态 F</text>
+      <rect x="795" y="35" width="175" height="76" rx="10" fill="#fffaf0" stroke="#d28e05" stroke-width="2"/>
+      <text x="882" y="63" text-anchor="middle">边界帧 RGB-D</text><text x="882" y="89" text-anchor="middle">深度对齐后更新</text>
+      <line x1="195" y1="73" x2="270" y2="73" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="450" y1="73" x2="540" y2="73" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="882" y1="111" x2="882" y2="140" stroke="#788493" stroke-width="2"/><line x1="882" y1="140" x2="635" y2="140" stroke="#788493" stroke-width="2"/><line x1="635" y1="140" x2="635" y2="111" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+
+      <rect x="60" y="190" width="200" height="70" rx="10" fill="#fff5ed" stroke="#f47230" stroke-width="2"/>
+      <text x="160" y="218" text-anchor="middle">用户目标轨迹</text><text x="160" y="244" text-anchor="middle">逐帧 W2C[t], K[t]</text>
+      <rect x="355" y="185" width="240" height="80" rx="10" fill="#fff5ed" stroke="#f47230" stroke-width="2"/>
+      <text x="475" y="216" text-anchor="middle">目标视角前向渲染</text><text x="475" y="243" text-anchor="middle">RGB[N] + 覆盖 mask[N]</text>
+      <line x1="635" y1="111" x2="635" y2="225" stroke="#788493" stroke-width="2"/><line x1="635" y1="225" x2="595" y2="225" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="260" y1="225" x2="355" y2="225" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+
+      <rect x="690" y="170" width="255" height="52" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="2"/>
+      <text x="817" y="202" text-anchor="middle">RGB → Cosmos VAE → 16 ch</text>
+      <rect x="690" y="245" width="255" height="60" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="2"/>
+      <text x="817" y="271" text-anchor="middle">mask → 2M−1 → RGB 三通道</text><text x="817" y="293" text-anchor="middle">Cosmos VAE → 16 ch</text>
+      <line x1="595" y1="210" x2="690" y2="196" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="595" y1="240" x2="690" y2="270" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+
+      <rect x="60" y="355" width="200" height="75" rx="10" fill="#fffaf0" stroke="#d28e05" stroke-width="2"/>
+      <text x="160" y="384" text-anchor="middle">带噪视频 latent：16 ch</text><text x="160" y="410" text-anchor="middle">首帧条件 mask：1 ch</text>
+      <rect x="360" y="345" width="270" height="95" rx="10" fill="#eef5ff" stroke="#257de0" stroke-width="2"/>
+      <text x="495" y="374" text-anchor="middle">channel concat</text><text x="495" y="401" text-anchor="middle">16 + 2×(16+16) + 1</text><text x="495" y="425" text-anchor="middle">= 81 channels</text>
+      <rect x="745" y="350" width="210" height="85" rx="10" fill="#eefaf6" stroke="#00a887" stroke-width="2"/>
+      <text x="850" y="381" text-anchor="middle">Cosmos DiT / 扩散采样</text><text x="850" y="409" text-anchor="middle">VAE Decode → 121 帧</text>
+      <line x1="817" y1="305" x2="817" y2="325" stroke="#788493" stroke-width="2"/><line x1="817" y1="325" x2="495" y2="325" stroke="#788493" stroke-width="2"/><line x1="495" y1="325" x2="495" y2="345" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="260" y1="392" x2="360" y2="392" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+      <line x1="630" y1="392" x2="745" y2="392" stroke="#788493" stroke-width="2" marker-end="url(#gen3c-arrow)"/>
+    </svg>
+  </div>
+  <p class="figure-caption">图 1：公开 Cosmos 推理主线的自制结构图。相机矩阵只进入几何渲染器，不作为 Plücker 或 12 维位姿向量送入 DiT；虚线以外的实线均表示实际数据依赖。N=2 时，RGB 与 mask 各两次 VAE 编码，共 64 个条件通道。</p>
+
+  <h3>论文中的 SVD 版本</h3>
+  <p>论文采用 SVD 的 4 通道 latent：L 帧视频编码为 <code>[L,4,H/8,W/8]</code>，时间长度不压缩。每个源视角的 warped RGB 经过冻结 VAE，mask 经 min-pooling 对齐 latent 分辨率；随后按论文 Eq.(2) 将有效区域 latent 与带噪目标 latent 拼接。各视角分别通过第一层 In-Layer，再对视角维 max-pool，从而保持视角排列不变性，并避免在原始点云空间强行融合未对齐深度。</p>
+  <div class="math-scroll"><div class="math">z′<sup>v</sup> = In-Layer(Concat(z<sup>v</sup> ⊙ M′<sup>v</sup>, z<sub>τ</sub>))，&nbsp; z′ = MaxPool{z′<sup>1</sup>,…,z′<sup>V</sup>}<span class="equation-number">(4)</span></div></div>
+  <p>论文特别强调，早期尝试把 mask 直接作为一个新通道会增加训练参数，对训练中未出现过的 OOD mask 泛化较差，所以主模型选择 mask 与 latent 逐元素相乘。这是 SVD 论文机制，不可据此推断公开 Cosmos 也只有 4+4 个输入通道。</p>
+
+  <h3>公开 Cosmos 版本：mask 也经过 VAE</h3>
+  <p><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/model/model_gen3c.py#L26-L57">model_gen3c.py:26-57</a> 固定 <code>chunk_size=121</code>。对每个 N buffer，warped RGB 从 <code>[B,121,3,H,W]</code> 调整为 <code>[B,3,121,H,W]</code> 后编码；mask 先由 0/1 映射到 -1/+1，再复制为三通道，使用<strong>同一个 encode 接口另行编码</strong>。每个 buffer 因而产生 RGB 16 通道和 mask 16 通道，列表按 <code>[RGB₀,mask₀,RGB₁,mask₁]</code> 拼接。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 双 buffer 的 RGB/mask 条件编码</span><pre><code># model_gen3c.py:39-57
+assert condition_state.dim() == 6
+condition_state_mask = (condition_state_mask * 2 - 1).repeat(1, 1, 1, 3, 1, 1)
+latent_condition = []
+for i in range(condition_state.shape[2]):
+    current_video_latent = self.encode(
+        condition_state[:, :, i].permute(0, 2, 1, 3, 4).to(dtype)
+    ).contiguous()
+    current_mask_latent = self.encode(
+        condition_state_mask[:, :, i].permute(0, 2, 1, 3, 4).to(dtype)
+    ).contiguous()
+    latent_condition.append(current_video_latent)
+    latent_condition.append(current_mask_latent)
+for _ in range(self.frame_buffer_max - condition_state.shape[2]):
+    latent_condition.append(torch.zeros_like(current_video_latent))
+    latent_condition.append(torch.zeros_like(current_mask_latent))
+latent_condition = torch.cat(latent_condition, dim=1)</code></pre></div>
+  <p>配置选择 <code>Cosmos-Tokenize1-CV8x8x8-720p</code>，默认像素尺寸 704×1280，121 个像素帧对应 16 个 latent 时刻，所以单个条件 latent 为 <code>[B,16,16,88,160]</code>；配置原文见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/config/inference/cosmos-1-diffusion-gen3c.py#L22-L45">cosmos-1-diffusion-gen3c.py:22-45</a>。若实际只有一个 buffer，缺失项以零 latent 补足，网络输入通道数仍不变。</p>
+  <div class="math-scroll"><div class="math">X<sub>DiT</sub> = Concat<sub>channel</sub>(X<sub>noisy</sub>[16], M<sub>input-frame</sub>[1], Z<sub>RGB,0</sub>[16], Z<sub>mask,0</sub>[16], Z<sub>RGB,1</sub>[16], Z<sub>mask,1</sub>[16]) = 81 ch<span class="equation-number">(5)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码节选 · DiT 第一层之前的 in-channel 融合</span><pre><code># general_dit_video_conditioned.py:97-118
+B, C, T, H, W = x.shape
+if data_type == DataType.VIDEO:
+    assert condition_video_input_mask is not None
+    input_list = [x, condition_video_input_mask]
+    if condition_video_pose is not None:
+        input_list.append(condition_video_pose)
+    x = torch.cat(input_list, dim=1)
+return super().forward(x=x, timesteps=timesteps,
+    crossattn_emb=crossattn_emb, crossattn_mask=crossattn_mask,
+    fps=fps, image_size=image_size, padding_mask=padding_mask,
+    data_type=data_type)</code></pre></div>
+  <p>调用位置见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/networks/general_dit_video_conditioned.py#L97-L132">general_dit_video_conditioned.py:97-132</a>。变量名 <code>condition_video_pose</code> 容易误导：它装的是已经渲染并 VAE 编码的 RGB/mask，不是相机矩阵或 Plücker 射线。另一个 <code>condition_video_input_mask</code> 是 Video2World 的<strong>时间条件区域</strong>标记，例如首帧为 1、待生成帧为 0；它和逐像素 disocclusion mask 完全不同。首帧 latent 的注入、加噪与回写见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/model/model_v2w.py#L32-L82">model_v2w.py:32-82</a>。</p>
+</section>
+
+<section class="doc-block" id="gen3c-training">
+  <h2>5. 训练目标与数据：学会“修复渲染”，而非只学习轨迹标签</h2>
+  <p>训练样本由“cache 渲染条件 + 新相机轨迹上的目标 RGB 视频”成对组成。对真实视频，过去或未来的帧被用作观测，连续目标片段模拟新的观看路径；对合成动态场景，则可直接从多条相机轨迹渲染 RGB-D 与新视角真值。论文使用通用 denoising score-matching 目标，目标采用预训练 SVD 实践中的 <code>z₀=E(x)</code>，而不是把网络约束成光流或深度回归器。</p>
+  <div class="math-scroll"><div class="math">L(θ) = E<sub>x,τ,ε</sub>[ ||f′<sub>θ</sub>(z<sub>τ</sub>; R(P,C), τ, c<sub>CLIP</sub>) − z<sub>0</sub>||²<sub>2</sub> ]，&nbsp; z<sub>τ</sub>=α<sub>τ</sub>z<sub>0</sub>+σ<sub>τ</sub>ε<span class="equation-number">(6)</span></div></div>
+  <p>论文明确冻结 VAE encoder，使用预训练 decoder，并以首帧 CLIP embedding 作为附加条件；渲染条件和 CLIP 条件的 dropout 比例均为 15%。其余表述应准确写成“微调修改后的视频扩散模型”，第三阶段只微调 temporal layers；论文未提供逐层冻结清单，不应杜撰公开 Cosmos checkpoint 的具体冻结/参数初始化策略。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>数据</th><th>论文中的用途与标注</th><th>配对方式</th></tr></thead>
+    <tbody>
+      <tr><td>RE10K</td><td>74,766 个真实室内外房产片段；DROID-SLAM 位姿，DAV2 深度并对齐 SLAM 尺度</td><td>等间距随机选 V∈[1,4] 帧建 cache，目标为包含其中一个观测帧的 L 帧连续视频</td></tr>
+      <tr><td>DL3DV</td><td>约 10k 真实场景视频；标注协议同 RE10K</td><td>同上，用于提升空间一致性与跨场景泛化</td></tr>
+      <tr><td>Waymo Open Dataset</td><td>1000 个驾驶场景，每个 200 帧；DAV2 深度刚性对齐 LiDAR 尺度</td><td>三个同步相机的 L 帧共同形成 V=3 cache，目标仅取 FRONT 相机</td></tr>
+      <tr><td>Kubric4D</td><td>GCD 的 3000 个多物体动态合成场景，以点云序列渲染所需 RGB-D</td><td>V∈[1,4] 条动态相机轨迹作条件，另一条轨迹作目标，提供真实多视角动态监督</td></tr>
+    </tbody>
+  </table></div>
+  <p>SVD 主模型采用 AdamW，学习率 3×10<sup>−5</sup>：第一阶段在 RE10K/DL3DV 上以 320×576、14 帧训练 100K iteration；第二阶段在四个数据集上以 576×1024、14 帧再训练 100K；第三阶段仅调 temporal layers，在四数据集上训练 10K，随机序列长度 14–56 帧，输入先 resize 到 576×1024 再 center crop 到 320×576。论文称整个训练约使用 32 张 A100 四天，这是论文报告而非本文实测。</p>
+  <p>论文 §5.7 的 Cosmos 扩展以 <strong>Cosmos1.0 Diffusion 7B Video2World</strong> 为基座，在 RE10K 和 DL3DV 上微调 10,000 steps、batch size 64，并以 Cosmos tokenizer 编码渲染帧。公开快照的 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/INSTALL.md#L43-L48">INSTALL.md:43-48</a> 仍把 Post-training 标为 under construction，仓库中的 GEN3C 文件主要是推理管线；不能用论文的训练数字替代一份公开训练脚本，也不能假定公开权重恰好复现论文 SVD 结果。</p>
+</section>
+
+<section class="doc-block" id="gen3c-inference">
+  <h2>6. 推理与长视频：121 帧、重叠一帧、深度对齐及双缓存更新</h2>
+  <p>单段公开 Cosmos 推理从噪声 latent 开始，以文本 embedding、首帧 condition latent、warped RGB/mask 为条件迭代去噪，最后 VAE 解码。<code>gen3c_pipeline.py</code> 把 warped 张量写入 <code>data_batch["condition_state"]</code> 与 <code>["condition_state_mask"]</code>，再调用 <code>generate_world_from_video</code>，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_pipeline.py#L227-L259">gen3c_pipeline.py:227-259</a>。公共 CLI 默认是 35 个扩散步、guidance=1、704×1280、24 FPS；论文 SVD 附录则是 25 步、CFG=3，两者不是同一组默认值。</p>
+  <p>长视频被分为长 121 帧的 chunk，相邻 chunk 共用一帧：首段索引 <code>[0,120]</code>，第二段从索引 120 开始，到 240，依此类推。新段输出的第 0 帧被丢弃，拼上 <code>video_new[1:]</code>。因此总帧数必须为 <code>120N+1</code>，即 121、241、361……；源码校验见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_single_image.py#L110-L113">gen3c_single_image.py:110-113</a>。这不是 121 帧重叠，而是<strong>每段 121 帧、只重叠 1 帧、每段净增 120 帧</strong>。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · 边界帧更新 cache 后生成下一段</span><pre><code># gen3c_single_image.py:378-419（节选）
+num_ar_iterations = (generated_w2cs.shape[1] - 1) // (sample_n_frames - 1)
+for num_iter in range(1, num_ar_iterations):
+    start_frame_idx = num_iter * (sample_n_frames - 1)  # overlap=1
+    end_frame_idx = start_frame_idx + sample_n_frames
+    last_frame_hwc_0_255 = torch.tensor(video[-1], device=device)
+    pred_image_for_depth_chw_0_1 = last_frame_hwc_0_255.permute(2, 0, 1) / 255.0
+    pred_depth, pred_mask = _predict_moge_depth_from_tensor(
+        pred_image_for_depth_chw_0_1, moge_model)
+    cache.update_cache(
+        new_image=pred_image_for_depth_chw_0_1.unsqueeze(0) * 2 - 1,
+        new_depth=pred_depth,
+        new_w2c=generated_w2cs[:, start_frame_idx],
+        new_intrinsics=generated_intrinsics[:, start_frame_idx])
+    rendered_warp_images, rendered_warp_masks = cache.render_cache(
+        generated_w2cs[:, start_frame_idx:end_frame_idx],
+        generated_intrinsics[:, start_frame_idx:end_frame_idx])
+    generated_output = pipeline.generate(
+        prompt=current_prompt,
+        image_path=pred_image_for_depth_chw_0_1.unsqueeze(0).unsqueeze(2) * 2 - 1,
+        rendered_warp_images=rendered_warp_images,
+        rendered_warp_masks=rendered_warp_masks)
+    video_new, prompt = generated_output
+    video = np.concatenate([video, video_new[1:]], axis=0)</code></pre></div>
+  <p>这里用于更新的是<strong>上一段最后一帧</strong>，它的目标相机索引正好是下一段的 <code>start_frame_idx</code>。该 RGB 帧先经 MoGe 估计深度，再更新 cache，同时作为下一段首帧图像条件；所以“重叠一帧”既提供图像连续性，也提供新观测几何。</p>
+
+  <h3>论文的深度尺度对齐</h3>
+  <p>论文附录先将已有 cache 渲染到边界帧相机，得到 <code>d<sup>tgt</sup></code> 和覆盖 mask M，再对 MoGe/DAV2 类单目深度 d 求全局尺度和偏移，只在可靠覆盖区最小化重投影深度差：</p>
+  <div class="math-scroll"><div class="math">s,t = argmin<sub>s,t</sub> ||(s·d + t − d<sup>tgt</sup>)·M||²<sub>2</sub>，&nbsp; d′=s·d+t<span class="equation-number">(7)</span></div></div>
+  <p>对齐后的 RGB-D 用该边界帧 W2C/K 反投影，再加入 cache。没有重叠的区域不能为尺度估计提供几何约束；若 mask 很稀疏或旧 cache 本身错误，优化也可能不稳定。</p>
+
+  <h3>公开实现并不照搬这条公式</h3>
+  <p><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/cache_3d.py#L246-L316">cache_3d.py:246-316</a> 默认使用 <code>alignment_method="non_rigid"</code>。它先在旧 cache 上渲染目标深度与 mask，然后 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/camera_utils.py#L225-L345">camera_utils.py:225-345</a> 在<strong>逆深度</strong>域执行带 0.1/0.9 分位离群过滤的最小二乘仿射对齐；非刚性路径再优化一个逐像素 scale map，共 100 次 Adam iteration，以反投影点 L1 数据项加上 <code>lambda_arap=0.1</code> 的局部平滑项，最后才反投影新点。这与论文 Eq.(4) 的全局 z-depth <code>s·d+t</code> 有关联，但实现更复杂，不能写成完全相同。</p>
+  <p>公开单图 cache 的 <code>frame_buffer_max=2</code> 也不是论文所描述的无限 append。第一次更新把最新边界帧放在 slot 0、原种子帧保留在 slot 1；后续更新替换 slot 0，最老生成历史不会全部保留。因此长视频一致性来自“原始观测 + 最近边界观测 + 首帧条件 + 生成先验”，不是一个不断增长的完整世界点云。动态 <code>Cache4D</code> 则直接用输入视频所有已有 RGB-D 帧，长段循环<strong>不做</strong>上述 MoGe cache 更新，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_dynamic.py#L286-L317">gen3c_dynamic.py:286-317</a>。</p>
+</section>
+
+<section class="doc-block" id="gen3c-camera-authoring">
+  <h2>7. 相机 UI、命名预设与显式自定义轨迹教学</h2>
+  <p>命令行 helper <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/camera_utils.py#L142-L222">camera_utils.py:142-222</a> 返回 <code>generated_w2cs [1,F,4,4]</code> 和 <code>generated_intrinsics [1,F,3,3]</code>。支持 <code>left/right/up/down/zoom_in/zoom_out/clockwise/counterclockwise</code>；这里的 zoom 是沿 Z 平移，不是修改焦距。若 K 只给一张 3×3，会沿 F 维复制；若给逐帧 K，则保留输入的时间维。</p>
+  <p>直线轨迹在初始相机坐标中按 <code>i × movement_distance × center_depth / F</code> 累进，符号决定方向；公开单图 CLI 把 <code>center_depth</code> 固定为 1.0，默认 <code>movement_distance=0.3</code>，所以幅度不是绝对米制承诺。旋转模式有 <code>center_facing</code>（朝估计中心）、<code>no_rotation</code>（保持原朝向）和 <code>trajectory_aligned</code>（随平移调整朝向）。圆周预设实际调用 spiral helper，X/Y 半径使用 movement_distance，Z 半径默认为 0。</p>
+  <div class="doc-warning"><strong><code>none</code> 不是普通单图 CLI 的可用轨迹预设。</strong>单图 parser 虽接受 <code>--trajectory none</code>，但 <code>generate_camera_trajectory</code> 并不实现该分支；持久化模式正是要求设为 none，再绕过 helper、直接调用 <code>inference_on_cameras</code>。因此自定义矩阵不能只靠给原 CLI 加 <code>none</code>，必须接入持久化接口或替换轨迹生成调用。</div>
+
+  <h3>GUI 真正提供的是逐帧 C2W 与内参编辑</h3>
+  <p><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/README.md#L99-L177">gui/README.md:99-177</a> 描述了完整工作流：拖入图像或预处理视频来 Seed，服务端建立 cache；客户端可录制 viewport 相机、从当前相机添加关键帧、插值/分割/复制/删除关键帧、在 Local 或 World 空间编辑平移旋转、保存/加载 JSON 路径。每个关键帧还能修改 Field of view，或把 FoV 应用到全部关键帧，从而通过逐帧 K 实现真正变焦；论文的 Dolly Zoom 正是位姿与内参同时变化。</p>
+  <p>GUI 的 Authored 路径在归一化路径时间 <code>linspace(0,1,F)</code> 上求值，生成 C2W、逐帧焦距和主点；播放速度只影响预览，不等于视频 FPS。API 的 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/api/api_types.py#L30-L95">api_types.py:30-95</a> 接收 <code>cameras_to_world [F,3,4]</code>、像素单位 <code>focal_lengths [F,2]</code>、相对主点 <code>principal_points [F,2]</code> 和 <code>resolutions [F,2]</code>，然后补齐 4×4、求逆成 W2C，并构造 K。客户端请求不足 121 帧时重复最后相机补齐，完成后裁掉 padding，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/api/client.py#L381-L502">client.py:381-502</a>。需要独立复现时，应检查导出 JSON 中的实际矩阵，而不是把关键帧时间等同于匀速三维运动。</p>
+
+  <h3>讲解用接线代码 · 非官方独立入口</h3>
+  <p>下面代码只是基于已核对接口的<strong>教学改写</strong>，不是仓库自带脚本。它在单图程序已经建立 <code>cache</code> 和 <code>pipeline</code> 后，替换 <code>gen3c_single_image.py:340-350</code> 的预设生成调用。轨迹在 MoGe 初始相机坐标系内做纯平移：W2C 的旋转保持单位阵，相机中心沿 X 做往返、沿 Y 做小幅二次谐波；W2C 平移取负号，因为相机中心为 <code>−Rᵀt</code>。K 使用 MoGe 返回的初始内参并逐帧复制，后续官方 121 帧循环和 cache 更新逻辑无需改变。</p>
+  <div class="code-block"><span class="code-label">讲解用实现 / 自定义轨迹接线 · 非官方独立源码，未执行</span><pre><code>import torch
+
+def make_custom_w2c_k(initial_k: torch.Tensor, num_frames: int):
+    """返回官方 render_cache 所需的 [1,F,4,4] W2C 与 [1,F,3,3] K。"""
+    assert num_frames &gt;= 121 and (num_frames - 1) % 120 == 0
+    device, dtype = initial_k.device, initial_k.dtype
+    phase = torch.linspace(0.0, 2.0 * torch.pi, num_frames,
+                           device=device, dtype=dtype)
+
+    # 单图入口的 initial_w2c=I；t 是 W2C 平移，不是相机世界中心。
+    w2cs = torch.eye(4, device=device, dtype=dtype).repeat(1, num_frames, 1, 1)
+    w2cs[0, :, 0, 3] = -0.08 * torch.sin(phase)       # 相机世界 X ≈ +0.08 sin(phase)
+    w2cs[0, :, 1, 3] = -0.02 * torch.sin(2 * phase)   # 幅度使用深度所在世界单位
+    intrinsics = initial_k.reshape(1, 1, 3, 3).repeat(1, num_frames, 1, 1)
+    return w2cs, intrinsics
+
+# 替换原脚本中的 generate_camera_trajectory(...) 调用：
+generated_w2cs, generated_intrinsics = make_custom_w2c_k(
+    initial_k=initial_cam_intrinsics_for_traj,
+    num_frames=args.num_video_frames)
+assert generated_w2cs.shape == (1, args.num_video_frames, 4, 4)
+assert generated_intrinsics.shape == (1, args.num_video_frames, 3, 3)
+
+# 后续仍调用官方接口；首段示例，长视频切片沿用原循环：
+rendered_warp_images, rendered_warp_masks = cache.render_cache(
+    generated_w2cs[:, 0:pipeline.model.chunk_size],
+    generated_intrinsics[:, 0:pipeline.model.chunk_size])</code></pre></div>
+  <p>若要加入旋转或变焦，应保持同一套约定：用局部相对变换 <code>A<sub>t</sub></code> 左乘初始 W2C（即 <code>W2C<sub>t</sub>=A<sub>t</sub>W2C<sub>0</sub></code>），或从明确的 C2W 构造后整体求逆；逐帧改变 <code>fx,fy</code> 时同步更新 <code>K[t]</code>。如果使用已有场景坐标而非单图初始坐标，所有新相机必须仍在 cache 的世界系中。动态视频还要求目标帧索引与源时间一一对应；任意时间戳数组不会自动重定时物体运动，GUI API 注释也明确 timestamps 可能被模型忽略。</p>
+</section>
+
+<section class="doc-block" id="gen3c-repository">
+  <h2>8. 固定提交下的仓库结构与源码阅读路线</h2>
+  <p>推荐沿“入口 → cache → 渲染 → pipeline → 模型条件 → DiT 拼接”的顺序阅读，而不是先从 Cosmos 通用网络猜测 GEN3C 条件。下表路径均属于固定提交，链接指向对应实际代码。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>路径</th><th>职责</th><th>阅读重点</th></tr></thead>
+    <tbody>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_single_image.py#L219-L419">cosmos_predict1/diffusion/inference/gen3c_single_image.py</a></td><td>单图 CLI 主入口</td><td>MoGe、初始单位 W2C、命名轨迹、121 帧自回归和末帧 cache 更新</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_dynamic.py#L199-L317">.../gen3c_dynamic.py</a></td><td>动态视频入口</td><td>ViPE/目录数据加载、Cache4D、源时间与目标轨迹的对应</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_persistent.py#L137-L177">.../gen3c_persistent.py</a></td><td>常驻服务接口</td><td><code>seed_model_from_values</code> 与 <code>inference_on_cameras</code>，适合接自定义 W2C/K</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_multiview.py#L179-L285">.../gen3c_multiview.py</a></td><td>多视图 NPZ 入口</td><td>key-frame 字段、目标 W2C/K 数组、buffer selector；该路径不做在线 cache append</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/cache_3d.py#L26-L143">.../cache_3d.py</a></td><td>3D/4D cache 数据结构</td><td><code>[B,F,N,V,C,H,W]</code>、CPU 点缓存、render、align、双 buffer 替换</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/forward_warp_utils_pytorch.py#L171-L336">.../forward_warp_utils_pytorch.py</a></td><td>实际几何渲染</td><td>unproject/project、bilinear splatting、mask/depth、前景 mesh</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/camera_utils.py#L48-L139">.../camera_utils.py</a></td><td>相机预设与深度对齐</td><td>look-at、轨迹幅度、旋转三模式、刚性/非刚性深度对齐</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/inference/gen3c_pipeline.py#L101-L173">.../gen3c_pipeline.py</a></td><td>推理编排</td><td>加载 <code>DiffusionGen3CModel</code>、首帧 tokenizer、文本 embedding、data batch</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/model/model_gen3c.py#L85-L129">cosmos_predict1/diffusion/model/model_gen3c.py</a></td><td>GEN3C 条件封装</td><td>编码 warped RGB/mask、CFG 条件分支、<code>condition_video_pose</code></td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/cosmos_predict1/diffusion/config/inference/cosmos-1-diffusion-gen3c.py#L30-L45">cosmos_predict1/diffusion/config/inference/cosmos-1-diffusion-gen3c.py</a></td><td>模型形状配置</td><td>16×16×88×160 latent、81 个输入通道、frame_buffer_max=2</td></tr>
+      <tr><td><a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/api/server_cosmos_base.py#L98-L146">gui/api/server_cosmos_base.py</a> 与 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/api/client.py#L454-L498">gui/api/client.py</a></td><td>GUI 客户端/服务端</td><td> authored path → C2W/K → W2C/K → persistent inference</td></tr>
+    </tbody>
+  </table></div>
+  <p>仓库根目录还包含 <code>scripts/download_gen3c_checkpoints.py</code>、<code>requirements.txt</code>、<code>cosmos-predict1.yaml</code>、<code>assets/diffusion</code> 和完整 <code>gui/</code>（C++ viewport、Python API 与 CMake）。权重脚本会下载 <code>Gen3C-Cosmos-7B</code>、<code>Cosmos-Tokenize1-CV8x8x8-720p</code> 与 <code>google-t5/t5-11b</code>，并为主 GEN3C 权重提供 MD5 校验，见 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/scripts/download_gen3c_checkpoints.py#L200-L218">download_gen3c_checkpoints.py:200-218</a> 与 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/scripts/download_gen3c_checkpoints.py#L254-L307">254-307</a>。</p>
+</section>
+
+<section class="doc-block" id="gen3c-limitations">
+  <h2>9. 失败模式、计算代价与一致性边界</h2>
+  <h3>深度和渲染误差不会被自动“消灭”</h3>
+  <ul>
+    <li><strong>错误尺度或内参：</strong>反投影点不再位于真实表面，目标视差会整体错误；深度与 W2C 平移若单位不一致，轨迹幅度也会失真。</li>
+    <li><strong>遮挡边界与细结构：</strong>单目深度常在物体边缘混合前后景，forward splatting 会产生拉伸、飞点、裂缝和空洞。局部连续性过滤与 mesh masking 只能筛掉部分问题。</li>
+    <li><strong>新内容不是观测：</strong>mask=0 的区域完全依赖视频先验补全。大幅转身、离开原有视锥或极端外推时，纹理和结构可能看似合理但与真实场景不符。</li>
+    <li><strong>反馈误差：</strong>单图长视频把上一段生成图重新深度估计并写入 cache。生成伪影、深度偏差和错误对齐可进入后续条件；非刚性 scale map 还可能用局部形变“迁就”不一致点云。</li>
+    <li><strong>多视图冲突：</strong>论文让生成模型聚合深度未对齐、曝光不同的视图，避免直接点云拼接，但并不保证度量尺度、光照或视图相关材质都正确。</li>
+  </ul>
+  <p>论文在双视图实验中加入以深度 5%/95% 分位间距为标准差尺度的高斯噪声，观察到噪声增大时指标下降；这说明模型有一定修复能力，而不是证明对任意深度错误鲁棒。补充材料也明确展示其能修复部分 rail/light 投影错误和填补缺失区域，这些是定性结果，不应扩展成“保证恢复真实几何”。</p>
+
+  <h3>相机运动与物体运动只在有条件地解耦</h3>
+  <p>静态单图 cache 共享同一几何，若模型生成行走人物或形变物体，旧点云无法描述其新三维状态；长视频仅更新最近边界帧，也不能恢复完整动态场景。动态视频模式则把源时刻 t 的 RGB-D 点云作为物体状态，再用目标相机重投影，因此可以较明确地分离“已有物体运动”和“新相机运动”。但这种分离依赖逐帧深度、源 W2C/K、同步和尺度都可靠，并不是网络从单目视频自动学到的通用动态三维分解。论文的限制也明确写道：动态内容生成依赖预生成视频提供物体运动，如何从文本提示运动仍是开放方向。</p>
+
+  <h3>成本来自整条管线，而不只是 DiT</h3>
+  <p>公开单段需要 Cosmos 7B DiT、VAE 编解码、文本编码和首帧编码；两个 buffer 的 RGB 与 mask 要执行四次条件 VAE encode。每个扩散步的代码都会计算 conditional 与 unconditional 两次网络输出。每个长视频边界还增加 MoGe 深度推理、cache 深度渲染、默认 100 步非刚性深度对齐和点反投影；前景 mesh masking 又需要 ray-triangle intersection。cache 通过 CPU 驻留和小批 warp 缓解显存，但增加传输，offload 也会引入模型搬运成本。</p>
+  <p>论文 SVD 的参考是单张 A100 上 14 帧约 30 秒、25 步；公开 Cosmos 默认 121 帧、35 步、704×1280，不能直接比较或套用这个速度。README 只声明在 H100/A100 上测试，并称 full offload 推理观察到的峰值显存约 43GB，实际随系统变化；这不是本文本地实测，也不是所有 GPU 的显存保证。GUI 还提示单服务实例未测试多用户并发。</p>
+</section>
+
+<section class="doc-block" id="gen3c-checklist">
+  <h2>10. 复现检查清单与来源</h2>
+  <h3>环境和最小官方命令</h3>
+  <p>官方 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/INSTALL.md#L1-L40">INSTALL.md:1-40</a> 要求 Linux、Python 3.10、conda，并列出 PyTorch、Transformer Engine、Apex、MoGe 与 Warp 等依赖；GUI 另需 CUDA Toolkit 11+ 和 NVIDIA GPU。以下只转载官方用法作为复现路线，本文没有执行安装、下载或推理。</p>
+  <div class="code-block"><span class="code-label">官方命令示例 · 单图 121 帧与可扩展帧数（未在本文执行）</span><pre><code># 固定源码后，在仓库根目录按 INSTALL.md 准备 Linux/Python 3.10 环境
+conda env create --file cosmos-predict1.yaml
+conda activate cosmos-predict1
+pip install -r requirements.txt
+# 其余 Transformer Engine / Apex / MoGe 步骤必须继续按 INSTALL.md 完成
+
+huggingface-cli login
+CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) \
+  python scripts/download_gen3c_checkpoints.py --checkpoint_dir checkpoints
+
+CUDA_HOME=$CONDA_PREFIX PYTHONPATH=$(pwd) \
+  python cosmos_predict1/diffusion/inference/gen3c_single_image.py \
+  --checkpoint_dir checkpoints \
+  --input_image_path assets/diffusion/000000.png \
+  --video_save_name test_single_image \
+  --num_video_frames 241 \
+  --trajectory left --camera_rotation center_facing \
+  --movement_distance 0.3 --guidance 1 --save_buffer</code></pre></div>
+  <p>完整环境测试可运行仓库的 <code>scripts/test_environment.py</code>。多 GPU 命令通过 <code>torchrun</code> 和 <code>--num_gpus</code> 启用 context parallel；低显存可按照 README 添加 DiT/tokenizer/text encoder/prompt upsampler/guardrail offload。动态输入需先用独立环境的 ViPE 生成 RGB、深度、pose、intrinsics，再调用 <code>gen3c_dynamic.py --vipe_path ...</code>；README 明确提示 ViPE 与 GEN3C 环境不兼容，应分开安装。</p>
+
+  <h3>输入与几何检查</h3>
+  <ul>
+    <li>固定源码到 <code>db2ffe12ced12ddafcec5e0422ee46ce8520746b</code>，确认使用 <strong>Gen3C-Cosmos-7B</strong> 权重，而不是误加载 SVD 或普通 Cosmos Video2World checkpoint。</li>
+    <li>单图确认 MoGe 深度可视化和主点/焦距合理；多帧确认 RGB、depth、mask、W2C、K 的帧数、宽高和 dtype 一致，mask 已知为 1。</li>
+    <li>确认深度是 z-depth 还是射线距离；当前默认 <code>is_depth=True</code>。若改变此语义，必须同步检查反投影逻辑。</li>
+    <li>用已知静态点手算一次 <code>K·W2C·W2C_src⁻¹·dK⁻¹p</code>，检查左右/上下方向、旋转方向和尺度；不要将 C2W 当 W2C 直接传入。</li>
+    <li>resize 时缩放 fx/fy/cx/cy；center crop 时主点减偏移。GUI/API 的 principal point 是相对值，而 cache 内部 K 使用像素值。</li>
+    <li>先用 <code>--save_buffer</code> 检查每个目标视角的 warped RGB、mask 和深度，再判断是否值得启动扩散生成。</li>
+  </ul>
+
+  <h3>轨迹、长视频与结果诊断</h3>
+  <ul>
+    <li>轨迹数组必须是 <code>[1,F,4,4]</code> 与 <code>[1,F,3,3]</code>，且 F=120N+1；自定义旋转需为有效刚体变换，矩阵不能含意外缩放或剪切。</li>
+    <li>241 帧应有两次 121 帧生成，共用索引 120 的边界帧；最终保存 121+120=241 帧。若拼接处跳变，检查边界帧 RGB、cache slot、W2C/K 索引和 mask 覆盖。</li>
+    <li>单图长视频确认边界帧确实经过 MoGe 和深度对齐，且最新帧位于 slot 0；若希望重新从原图开始，在 GUI 重新 Seed，避免沿用服务端已更新的 cache。</li>
+    <li>动态视频确认 Cache4D 时间窗口与目标帧对齐，且没有误以为它会像单图路径一样在线更新所有生成帧。</li>
+    <li>分别评估几何跟随与生成真实性：检查回环重访区域、遮挡空洞、细线/纹理、前景边界，而不能只看单帧画质。所有定量复现都应使用论文对应基座、分辨率、采样设置和测试协议。</li>
+  </ul>
+
+  <h3>论文、项目、源码与模型来源</h3>
+  <ul>
+    <li>论文：Xuanchi Ren 等，<a href="https://arxiv.org/abs/2503.03751">GEN3C: 3D-Informed World-Consistent Video Generation with Precise Camera Control</a>，arXiv v1，2025-03-05；本文方法、训练数据、SVD 结构、训练/推理设置及限制以该版本为准。</li>
+    <li>官方项目页：<a href="https://research.nvidia.com/labs/toronto-ai/GEN3C/">NVIDIA Toronto AI Lab · GEN3C</a>，用于项目介绍和官方演示；演示效果不作为本地复现实测。</li>
+    <li>官方源码：<a href="https://github.com/nv-tlabs/GEN3C/tree/db2ffe12ced12ddafcec5e0422ee46ce8520746b">nv-tlabs/GEN3C @ db2ffe12…</a>；命令、显存与使用说明来自该快照 <a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/README.md#L53-L230">README.md:53-230</a>。</li>
+    <li>GUI 源码说明：<a class="file-ref" href="https://github.com/nv-tlabs/GEN3C/blob/db2ffe12ced12ddafcec5e0422ee46ce8520746b/gui/README.md#L99-L177">gui/README.md:99-177</a>；相机路径、FoV、121 帧 padding 和 cache reset 以源码及此说明为准。</li>
+    <li>公开模型：<a href="https://huggingface.co/nvidia/GEN3C-Cosmos-7B">nvidia/GEN3C-Cosmos-7B</a>；公开基座是 Cosmos，不是 SVD 论文主模型的公开 checkpoint。</li>
+    <li>外部数据工具：单目几何 <a href="https://github.com/microsoft/MoGe">MoGe</a>；视频深度/位姿预处理 <a href="https://github.com/nv-tlabs/vipe">ViPE</a>。它们是外部估计器，其输出误差正是 GEN3C 需要处理而不能彻底消除的上游误差。</li>
+  </ul>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="cinemaster.html">← CineMaster：3D 布局与相机轨迹的导演式控制</a><a href="trajectorycrafter.html">下一篇：TrajectoryCrafter：动态点云与双流条件扩散 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

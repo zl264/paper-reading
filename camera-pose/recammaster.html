@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="将干净源 latent 与带噪目标 latent 沿时间轴拼接，每层 self-attention 前注入目标相机，仅更新目标段。"><title>ReCamMaster：目标位姿与源视频时空 token 重渲染｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="recammaster 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top">
+  <p><a href="index.html">← 返回 12 篇论文索引</a> · <a href="guide.html">相机位姿控制综合导读</a></p>
+  <h1>ReCamMaster：用目标相机轨迹重拍一段动态视频</h1>
+  <p>从论文的帧维条件机制，到公开 Wan2.1 参考实现中的位姿坐标变换、65,520 个 token、逐块相机注入与 Flow Matching 采样。</p>
+  <p class="reading-note">论文依据：<a href="https://arxiv.org/abs/2503.11647">arXiv:2503.11647v2，2025-07-09</a>。论文使用未公开的内部 T2V 模型；公开代码是迁移到 <strong>Wan2.1-T2V-1.3B</strong> 的参考实现，并非论文内部模型。本文源码核对快照为 <a href="https://github.com/KlingAIResearch/ReCamMaster/tree/fcf98bc86e876bb534518cd99e8a65b282f0f16e"><code>fcf98bc86e876bb534518cd99e8a65b282f0f16e</code></a>。以下不复述论文指标为本地实测，也未执行模型训练或推理。</p>
+</header>
+
+<section class="doc-block" id="task">
+  <h2>1. 任务边界：不是编辑机位标签，而是重新生成同一场动态过程</h2>
+  <p>ReCamMaster 解决的是开放域单视频的重拍摄（re-capturing）：给定源视频 <code>V<sub>s</sub></code>、目标文本 <code>p<sub>t</sub></code> 和目标相机序列 <code>cam<sub>t</sub></code>，生成目标视频 <code>V<sub>t</sub></code>。输出应从新机位观察<strong>同一个动态场景</strong>，既保留源视频的多帧外观，又让同一动作在相同时间发生。它不是把整段视频投射到一幅静态背景，也不是只生成具有相似主题的另一段新视频。</p>
+  <p>论文将输入与输出都写为 <code>f×c×h×w</code>，目标外参为 <code>cam<sub>t</sub>=[R,t]∈R<sup>f×3×4</sup></code>。一个必须理解的简化是：模型<strong>不输入源相机轨迹 cam<sub>s</sub></strong>。作者认为现实单目视频的 SfM 位姿难以准确获得，因此让网络从源视频 token 中自行理解源机位与动态内容；同样不输入源、目标内参，因为真实视频的焦距、主点等往往未知。于是，这里的“精确控制”指给定外参条件下的生成式重渲染，而不是已知完整标定的几何渲染器。</p>
+  <div class="doc-warning"><strong>先分清两套模型。</strong>论文附录描述的是内部 3D-VAE + DiT，每个基础块含空间注意力、3D 时空注意力和交叉注意力。公开仓库改用 Wan2.1 的全时空 self-attention 块，并明确提示公开版本未必达到论文演示效果。下文的 480×832、21 个 latent 时刻、30 个 block、1,536 维、65,520 token 等数字均属于<strong>公开 Wan2.1 实现</strong>，不能倒推为论文内部模型配置。</div>
+  <div class="table-frame table-scroll">
+    <table class="doc-data-table">
+      <thead><tr><th>比较项</th><th>论文内部模型</th><th>公开 Wan2.1 参考实现</th></tr></thead>
+      <tbody>
+        <tr><td>核心条件</td><td>源视频、目标外参、目标文本；统一 V2V/T2V/I2V 训练</td><td>仍以源视频、目标外参、目标文本做 V2V；示例入口未实现论文全部条件替换策略</td></tr>
+        <tr><td>公开默认视频</td><td>训练报告为 384×672，10K steps，batch size 40</td><td>入口为 81 帧、480×832；发布权重为 <code>step20000.ckpt</code>，README 训练命令与论文配置不同</td></tr>
+        <tr><td>帧拼接</td><td>概念公式写为 <code>[x<sub>s</sub>,x<sub>t</sub>]</code></td><td>实际张量是<strong>目标在前、源在后</strong>：<code>cat([latents, source_latents], dim=2)</code></td></tr>
+        <tr><td>位姿参考系</td><td>正文未给出可核对的逐帧参考系代码</td><td>训练以源首帧为参考；推理以目标首帧为参考，二者不可混写</td></tr>
+        <tr><td>初始化</td><td>实验设置称 camera encoder 与 projector 均零初始化</td><td>camera encoder 权重和偏置为零；projector 权重为单位阵、偏置为零</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>这项任务的主要难点来自遮挡：新机位可能看到源视频中从未出现的区域。ReCamMaster 不恢复唯一真实 4D 场景，而借助 T2V 先验生成合理内容。因此“时间同步”和“看似三维一致”可以与“遮挡区域符合真实几何”相分离，后者并无确定性保证。</p>
+</section>
+
+<section class="doc-block" id="mechanism">
+  <h2>2. 为什么是帧维拼接：让两个视频在每个时空注意力块直接交换信息</h2>
+  <p>设 VAE 编码为 <code>z<sub>s</sub>=E(V<sub>s</sub>)</code>、<code>z<sub>t</sub>=E(V<sub>t</sub>)</code>。论文比较三种视频条件路径：通道维拼接把两份 latent 合成 <code>[z<sub>s</sub>,z<sub>t</sub>]<sub>channel</sub></code> 后再 patchify，输入通道和首层卷积都要改变；视角维方案分别 patchify，再增加专门的 view-attention；ReCamMaster 则分别 patchify，沿帧维组成 <code>x<sub>i</sub>=[x<sub>s</sub>,x<sub>t</sub>]<sub>frame</sub></code>。</p>
+  <div class="math-scroll"><div class="math">x<sub>s</sub> = patchify(z<sub>s</sub>),　x<sub>t</sub> = patchify(z<sub>t</sub>),　x<sub>i</sub> = [x<sub>s</sub>, x<sub>t</sub>]<sub>frame-dim</sub> ∈ R<sup>b×2f×s×d</sup><span class="equation-number">(1)</span></div></div>
+  <p>关键不只是“把序列变长”。由于 3D self-attention 本来就在所有时空 token 间运行，源、目标不需要额外跨视角层：每一个基础块都能根据内容对应关系读取对方的信息。源视频提供外观与动作，目标分支在扩散过程中逐步决定新视角；只切出目标侧输出即可。论文表 3 在其内部实验设置下报告，frame-dim 相比 channel-/view-dim 同时改善视觉质量、相机误差和视角同步；这些是论文实验结果，不是公开 Wan 权重或本文复测结果。</p>
+  <p>这个设计保留原 DiT 的输入通道数，却付出明显的序列计算代价：公开实现单支视频有 32,760 token，拼接后为 65,520；全局 self-attention 的注意力交互随序列长度近似二次增长。也就是说，性能来自<strong>密集、逐层、全局的源目标交互</strong>，并非免费的轻量 adapter。</p>
+  <h3>Rectified Flow 与回归目标</h3>
+  <p>论文用直线路径连接数据 latent <code>z<sub>0</sub></code> 和高斯噪声 <code>ε</code>，再学习速度场 <code>v<sub>Θ</sub></code>。公开 scheduler 以 <code>σ</code> 表示论文的连续时间变量，训练目标直接实现为 <code>noise - sample</code>，与直线路径的速度 <code>ε-z<sub>0</sub></code> 一致。</p>
+  <div class="math-scroll"><div class="math">z<sub>σ</sub> = (1-σ)z<sub>0</sub> + σε,　ε ~ N(0,I),　L = E‖v<sub>Θ</sub>(z<sub>σ</sub>,σ) - (ε-z<sub>0</sub>)‖<sub>2</sub><sup>2</sup><span class="equation-number">(2)</span></div></div>
+  <p>公开实现只在前半段目标 latent 上计算 MSE，再乘 scheduler 的时间权重；后半段源 latent 始终恢复为干净条件，详见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/train_recammaster.py#L330-L367">train_recammaster.py:330–367</a> 与 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/schedulers/flow_match.py#L62-L79">flow_match.py:62–79</a>。这比给两个分支同时加噪更符合“源视频是观察条件”的语义。</p>
+</section>
+
+<section class="doc-block" id="camera">
+  <h2>3. 显式目标轨迹：从 UE5 JSON 到 21×12，并处理两种首帧参考</h2>
+  <p>论文层面的输入是每帧 3×4 旋转和平移，没有 Plücker 射线、深度图或内参矩阵。公开代码则规定了一条非常具体的预处理链：从 <code>frame0, frame4, …, frame80</code> 各取一个矩阵，因此 81 个 RGB 时刻对应 21 个相机向量。JSON 中每台相机是一个含四行方括号的字符串；代码解析、转置，依次选择列 <code>[1,2,0,3]</code>，翻转第 1 列（零基索引）的前三行，并把平移从厘米除以 100 转为米，得到代码命名为 <code>c2w</code> 的 4×4 齐次矩阵。</p>
+  <div class="doc-note"><p><strong>时间约定：</strong>公开 loader 对源视频读取连续的 0–80 帧，对目标相机每 4 帧采样一次。代码没有使用 JSON 时间戳，也没有从源视频估计 FPS 来重采样轨迹。公开数据集 README 标注视频为 15 FPS，但推理保存函数固定写 <code>fps=30</code>；这只是输出封装帧率，不能把 21 个位姿误称为“21 个原始视频帧”或自行补一套时间同步假设。</p></div>
+  <h3>3.1 公开训练：相对源视频首帧</h3>
+  <p>对同一场景，loader 先选目标相机 <code>tgt_idx</code>，再从其余九台相机随机选源相机 <code>cond_idx</code>。记源首帧 c2w 为 <code>S<sub>0</sub></code>，目标第 i 个采样时刻为 <code>T<sub>i</sub></code>。helper 被逐个调用为 <code>get_relative_pose([S<sub>0</sub>,T<sub>i</sub>])</code>，其返回列表的第一项永远是单位阵、第二项才是 <code>S<sub>0</sub><sup>-1</sup>T<sub>i</sub></code>；外层总是取第二项。因此 <strong>i&gt;0 的 20 个训练位姿以源首帧为参考，但 i=0 被额外固定为单位阵</strong>，并不保留 <code>S<sub>0</sub><sup>-1</sup>T<sub>0</sub></code> 的源目标首帧相对变换。</p>
+  <div class="math-scroll"><div class="math">P<sub>i</sub><sup>train</sup> = I（i=0）；P<sub>i</sub><sup>train</sup> = (S<sub>0</sub>)<sup>-1</sup>T<sub>i</sub>（i=4,8,…,80）；取 [R|t] 的前三行并展平为 12 维<span class="equation-number">(3)</span></div></div>
+  <div class="code-block"><span class="code-label">公开训练源码 · 目标相机以源首帧为参考（节选）</span><pre><code># train_recammaster.py:237-257
+multiview_c2ws = []
+cam_idx = list(range(81))[::4]
+for view_idx in [cond_idx, tgt_idx]:
+    traj = [self.parse_matrix(cam_data[f&quot;frame{idx}&quot;][f&quot;cam{view_idx:02d}&quot;])
+            for idx in cam_idx]
+    traj = np.stack(traj).transpose(0, 2, 1)
+    c2ws = []
+    for c2w in traj:
+        c2w = c2w[:, [1, 2, 0, 3]]
+        c2w[:3, 1] *= -1.
+        c2w[:3, 3] /= 100
+        c2ws.append(c2w)
+    multiview_c2ws.append(c2ws)
+cond_cam_params = [Camera(cam_param) for cam_param in multiview_c2ws[0]]
+tgt_cam_params = [Camera(cam_param) for cam_param in multiview_c2ws[1]]
+relative_poses = []
+for i in range(len(tgt_cam_params)):
+    relative_pose = self.get_relative_pose(
+        [cond_cam_params[0], tgt_cam_params[i]])
+    relative_poses.append(torch.as_tensor(relative_pose)[:, :3, :][1])
+pose_embedding = torch.stack(relative_poses, dim=0)
+pose_embedding = rearrange(pose_embedding, 'b c d -&gt; b (c d)')</code></pre></div>
+  <p>对应源码见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/train_recammaster.py#L207-L262">train_recammaster.py:207–262</a>。helper 的第二项为 <code>target_cam_c2w @ abs_w2cs[0] @ abs_c2w</code>；训练时 <code>target_cam_c2w=I</code>，所以非首项左乘的是源首帧的逆。首项则是列表常量 <code>[target_cam_c2w,]</code>，没有经过这个乘法；这是逐行核对 helper 后才能发现的首帧特判。</p>
+  <h3>3.2 公开推理：相对目标轨迹首帧</h3>
+  <p>推理没有源机位可用，代码把同一 helper 的第一个参数改成目标首帧 <code>T<sub>0</sub></code>：i=0 仍由 helper 直接给单位阵，i&gt;0 时 <code>P<sub>i</sub><sup>infer</sup>=T<sub>0</sub><sup>-1</sup>T<sub>i</sub></code>。后续矩阵描述相对于目标起点的旋转和平移。与训练的本质差别是：训练非首项参考源首帧，推理非首项参考目标首帧；两者首项在代码中都被强制为单位阵。论文正文没有说明这一训练/推理差异，公开仓库也未在此处给出推导解释。</p>
+  <div class="code-block"><span class="code-label">公开推理源码 · 固定示例 JSON 与目标首帧相对化</span><pre><code># inference_recammaster.py:130-151
+tgt_camera_path = &quot;./example_test_data/cameras/camera_extrinsics.json&quot;
+with open(tgt_camera_path, 'r') as file:
+    cam_data = json.load(file)
+cam_idx = list(range(num_frames))[::4]
+traj = [self.parse_matrix(cam_data[f&quot;frame{idx}&quot;][f&quot;cam{int(self.cam_type):02d}&quot;])
+        for idx in cam_idx]
+traj = np.stack(traj).transpose(0, 2, 1)
+c2ws = []
+for c2w in traj:
+    c2w = c2w[:, [1, 2, 0, 3]]
+    c2w[:3, 1] *= -1.
+    c2w[:3, 3] /= 100
+    c2ws.append(c2w)
+tgt_cam_params = [Camera(cam_param) for cam_param in c2ws]
+relative_poses = []
+for i in range(len(tgt_cam_params)):
+    relative_pose = self.get_relative_pose(
+        [tgt_cam_params[0], tgt_cam_params[i]])
+    relative_poses.append(torch.as_tensor(relative_pose)[:, :3, :][1])
+pose_embedding = torch.stack(relative_poses, dim=0)  # 21 x 3 x 4
+pose_embedding = rearrange(pose_embedding, 'b c d -&gt; b (c d)')
+data['camera'] = pose_embedding.to(torch.bfloat16)</code></pre></div>
+  <p>最终 <code>data['camera']</code> 在 batch size 1 时进入 pipeline 为 <code>[1,21,12]</code>。相机绝对世界坐标被相对化消去，但尺度没有归一化为单位基线：平移仍以米为单位。自定义轨迹若沿用厘米、使用 w2c 而非代码预期的原始布局，或跳过轴变换，都会把“控制信号”变成另一种运动。</p>
+</section>
+
+<section class="doc-block" id="architecture">
+  <h2>4. 公开 Wan2.1 数据流：VAE、42 个 latent 时刻与 65,520 token</h2>
+  <p>公开入口将 RGB 整理为 <code>[B,C,T,H,W]=[1,3,81,480,832]</code>，像素归一化到 [-1,1]。Wan VAE 输出 16 通道，空间压缩 8 倍；时间方向首帧单独处理，其后每 4 帧一组，所以 <code>T<sub>latent</sub>=1+(81-1)/4=21</code>。VAE 还按通道执行均值/标准差归一化，公开实现直接使用均值 <code>mu</code> 作为输出 latent，见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/models/wan_video_vae.py#L492-L550">wan_video_vae.py:492–550</a> 和 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/models/wan_video_vae.py#L599-L618">wan_video_vae.py:599–618</a>。</p>
+  <div class="table-scroll diagram-frame">
+    <svg class="figure-svg" viewBox="0 0 1000 500" role="img" aria-label="ReCamMaster 公开 Wan2.1 实现的数据流：目标噪声和源视频 latent 沿时间维拼接，patchify 后形成六万五千五百二十个 token，相机在三十个 DiT 块中逐块注入，最后仅保留目标分支解码">
+      
+      <text x="30" y="28" font-size="18" font-weight="700" fill="#273444">公开 Wan2.1 参考实现：目标分支在前，源条件分支在后</text>
+      <rect x="30" y="55" width="190" height="60" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="1.5"></rect>
+      <text x="125" y="79" text-anchor="middle" font-size="15" fill="#273444">目标噪声 latents</text>
+      <text x="125" y="101" text-anchor="middle" font-size="14" fill="#273444">[1,16,21,60,104]</text>
+      <rect x="30" y="145" width="190" height="60" rx="8" fill="#eefaf6" stroke="#00a887" stroke-width="1.5"></rect>
+      <text x="125" y="169" text-anchor="middle" font-size="15" fill="#273444">源 RGB → Wan VAE</text>
+      <text x="125" y="191" text-anchor="middle" font-size="14" fill="#273444">[1,3,81,480,832] → 同形 latent</text>
+      <path d="M220 85 L270 85 L270 125 L300 125" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <path d="M220 175 L270 175 L270 125 L300 125" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <rect x="305" y="92" width="190" height="66" rx="8" fill="#fff5ed" stroke="#f47230" stroke-width="1.5"></rect>
+      <text x="400" y="118" text-anchor="middle" font-size="15" fill="#273444">沿时间维 cat，dim=2</text>
+      <text x="400" y="142" text-anchor="middle" font-size="14" fill="#273444">[1,16,42,60,104]</text>
+      <path d="M495 125 L535 125" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <rect x="540" y="92" width="190" height="66" rx="8" fill="#fffaf0" stroke="#d28e05" stroke-width="1.5"></rect>
+      <text x="635" y="116" text-anchor="middle" font-size="15" fill="#273444">Conv3d patchify (1,2,2)</text>
+      <text x="635" y="140" text-anchor="middle" font-size="14" fill="#273444">42×30×52 = 65,520</text>
+      <path d="M730 125 L770 125" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <rect x="775" y="92" width="195" height="66" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="1.5"></rect>
+      <text x="872" y="117" text-anchor="middle" font-size="15" fill="#273444">token 序列</text>
+      <text x="872" y="141" text-anchor="middle" font-size="14" fill="#273444">[1,65520,1536]</text>
+      <rect x="285" y="220" width="430" height="175" rx="10" fill="#eef5ff" stroke="#257de0" stroke-width="1.5"></rect>
+      <text x="500" y="247" text-anchor="middle" font-size="17" font-weight="700" fill="#273444">重复 30 个 DiT block（12 heads）</text>
+      <text x="310" y="278" font-size="14" fill="#273444">1. LayerNorm + timestep modulation</text>
+      <text x="310" y="303" font-size="14" fill="#273444">2. 加逐块 camera embedding，再做全局 self-attention</text>
+      <text x="310" y="328" font-size="14" fill="#273444">3. projector → gated residual → 文本 cross-attention</text>
+      <text x="310" y="353" font-size="14" fill="#273444">4. FFN；源和目标 token 在 self-attention 中直接交互</text>
+      <text x="310" y="379" font-size="13" fill="#273444">相机同时复制到两个时间分支，不是 42 条独立轨迹</text>
+      <path d="M872 158 L872 307 L715 307" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <rect x="30" y="250" width="210" height="78" rx="8" fill="#fff5ed" stroke="#f47230" stroke-width="1.5"></rect>
+      <text x="135" y="275" text-anchor="middle" font-size="15" fill="#273444">目标相机 [1,21,12]</text>
+      <text x="135" y="299" text-anchor="middle" font-size="14" fill="#273444">每块 Linear(12,1536)</text>
+      <text x="135" y="319" text-anchor="middle" font-size="13" fill="#273444">复制 2 倍时间与 30×52 空间</text>
+      <path d="M240 289 L285 289" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <path d="M500 395 L500 430" fill="none" stroke="#788493" stroke-width="1.5" marker-end="url(#recammaster-arrow)"></path>
+      <rect x="305" y="435" width="390" height="48" rx="8" fill="#eefaf6" stroke="#00a887" stroke-width="1.5"></rect>
+      <text x="500" y="455" text-anchor="middle" font-size="14" fill="#273444">仅取前 21 个目标 latent 时刻更新与 VAE 解码</text>
+      <text x="500" y="474" text-anchor="middle" font-size="13" fill="#273444">源分支不在 scheduler.step 中更新，也不作为最终视频输出</text>
+    </svg>
+  </div>
+  <p class="figure-caption">图 1　公开实现的结构图。注意论文概念公式按源、目标书写，而公开 pipeline 和训练 loader 都按目标、源排列；模型学习的是这套固定排列，不能在迁移时任意交换。</p>
+  <p>patch embedding 是 <code>Conv3d(16,1536,kernel=stride=(1,2,2))</code>，所以每支视频有 <code>21×(60/2)×(104/2)=21×30×52=32,760</code> 个 token；拼接后得到 <code>[1,65520,1536]</code>。65,520 是<strong>源与目标合计</strong>，不是单个视频或单个 block 新增的相机 token 数。Wan2.1-T2V-1.3B 对应 30 层、12 个注意力头，配置见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/models/wan_video_dit.py#L454-L468">wan_video_dit.py:454–468</a>。</p>
+  <h3>每个 block 的相机注入位置</h3>
+  <div class="code-block"><span class="code-label">公开 DiT 源码 · 相机在 self-attention 前加性注入</span><pre><code># wan_video_dit.py:203-220
+input_x = modulate(self.norm1(x), shift_msa, scale_msa)
+cam_emb = self.cam_encoder(cam_emb)
+cam_emb = cam_emb.repeat(1, 2, 1)
+cam_emb = cam_emb.unsqueeze(2).unsqueeze(3).repeat(1, 1, 30, 52, 1)
+cam_emb = rearrange(cam_emb, 'b f h w d -&gt; b (f h w) d')
+input_x = input_x + cam_emb
+x = x + gate_msa * self.projector(self.self_attn(input_x, freqs))
+x = x + self.cross_attn(self.norm3(x), context)
+input_x = modulate(self.norm2(x), shift_mlp, scale_mlp)
+x = x + gate_mlp * self.ffn(input_x)</code></pre></div>
+  <p>这与论文式 <code>F<sub>i</sub>=F<sub>o</sub>+E<sub>c</sub>(cam<sub>t</sub>)</code> 的设计意图一致，但具体位置要按源码描述：公开 Wan 块中没有论文内部模型那种单独的空间注意力后再接 3D 注意力，而是在调制后的 <code>norm1(x)</code> 上加相机向量，再进入全局 self-attention。<code>cam_encoder</code> 每个 block 各有一份；21 个向量先沿时间复制为 42，再广播到固定的 30×52 网格。source token 也收到同一条目标轨迹，而不是源相机轨迹。</p>
+  <div class="doc-warning"><strong>分辨率不是自由参数。</strong>上述 <code>repeat(1,1,30,52,1)</code> 是硬编码。虽然 pipeline 接受 <code>height/width/num_frames</code> 参数，改动它们会改变 patch 网格或时刻数，却不会自动修改这里的 30、52 和时间复制逻辑，容易在 reshape 或加法时失配。论文内部实现也不能据此推断采用了同样的固定网格。</div>
+</section>
+
+<section class="doc-block" id="dataset">
+  <h2>5. UE5 多机位同步数据：监督来自同一场动态过程，而非单视图伪深度</h2>
+  <p>训练需要同一时间、同一角色动作下的多台移动相机。作者在 Unreal Engine 5 中组合 3D 环境、带动画的人物与预定义相机轨迹，每个动态场景渲染 10 台同步相机，每次随机取两台分别作为源与目标。这种配对直接监督“动作保持不变、观察机位改变”，避免从普通单目视频强行构造不可靠的源相机与动态 4D 标注。</p>
+  <p>论文统计为 136K 视频、13.6K 动态场景、40 个 3D 环境、122K 相机轨迹；附录另列 70 个人物模型和约 100 种动画。相机起始位置在人物周围的半球范围采样，运动覆盖 pan、tilt、平移、弧线、随机平滑折线与静止，50% 恒速、50% 非线性变速。论文还使用 27K 首帧不重合视频做附加实验，说明模型并非只能让输出首帧等于输入首帧；不应把这一附加结论缩小成公开示例的唯一能力。</p>
+  <div class="table-frame table-scroll">
+    <table class="doc-data-table">
+      <thead><tr><th>项目</th><th>论文 / 附录</th><th>公开数据集 README（固定快照）</th></tr></thead>
+      <tbody>
+        <tr><td>规模</td><td>13.6K 场景，每场景 10 机位，共 136K 视频</td><td>同样为 13,600×10=136,000</td></tr>
+        <tr><td>资产</td><td>40 环境、70 人物、约 100 动画</td><td>37 环境、66 人物、93 动画</td></tr>
+        <tr><td>公开视频配置</td><td>论文训练报告 384×672；未等同发布文件规格</td><td>81 帧、1280×1280、15 FPS，可 center crop 调整长宽比</td></tr>
+        <tr><td>镜头配置</td><td>附录写两组：35mm/2.8、24mm/10</td><td>四组：18/24/35/50mm，搭配 aperture 10/5/2.4</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>这些数字差异应按“论文实验数据构建”与“实际发布数据集配置”分别引用，而不是挑一组数字覆盖另一组。公开数据说明与目录见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/README.md#L147-L222">README.md:147–222</a>。</p>
+  <p>公开 loader 在训练前将每个视频独立编码并缓存 <code>.tensors.pth</code>；训练时从目标缓存路径中识别 <code>camNN</code>，再加载同场景另一机位的缓存，沿无 batch 的 latent 第 1 维（时间）拼为 <code>[16,42,60,104]</code>。文本 embedding 使用目标缓存，image embedding 为空。这一结构也解释了为什么不能随意把不同场景或不同动作的视频拼成“源目标对”。</p>
+</section>
+
+<section class="doc-block" id="training">
+  <h2>6. 冻结、初始化与训练目标：论文策略没有被公开脚本完整复刻</h2>
+  <p>论文的策略是保留基础 T2V 能力，只微调 camera encoder 与 3D-attention；条件 latent 加 200–500 个 noise scheduling steps 的中等噪声以减小合成/真实域差；以 20% 概率把源视频全部 f 帧替换为高斯噪声，另以 20% 概率替换第 2 帧起的 f-1 帧，从而统一 T2V、I2V、V2V 相机控制。论文训练配置为 10K steps、384×672、学习率 0.0001、batch size 40。</p>
+  <p>公开代码只明确恢复了其中一部分。它先对整个 pipeline 禁梯度，再重新开启名称含 <code>cam_encoder</code>、<code>projector</code>、<code>self_attn</code> 的模块。因而 Wan self-attention 的 q/k/v/o 及 Q/K RMSNorm 都训练，cross-attention、FFN、patch/time/text embedding、head 和各 modulation 仍冻结；VAE 与文本特征在数据预处理阶段缓存，也不在此优化。</p>
+  <div class="code-block"><span class="code-label">公开训练源码 · 精确初始化、冻结与目标侧损失</span><pre><code># train_recammaster.py:289-307（初始化与解冻）
+dim = self.pipe.dit.blocks[0].self_attn.q.weight.shape[0]
+for block in self.pipe.dit.blocks:
+    block.cam_encoder = nn.Linear(12, dim)
+    block.projector = nn.Linear(dim, dim)
+    block.cam_encoder.weight.data.zero_()
+    block.cam_encoder.bias.data.zero_()
+    block.projector.weight = nn.Parameter(torch.eye(dim))
+    block.projector.bias = nn.Parameter(torch.zeros(dim))
+self.freeze_parameters()
+for name, module in self.pipe.denoising_model().named_modules():
+    if any(key in name for key in [&quot;cam_encoder&quot;, &quot;projector&quot;, &quot;self_attn&quot;]):
+        for param in module.parameters():
+            param.requires_grad = True
+
+# train_recammaster.py:346-363（训练时条件分支保持干净）
+noise = torch.randn_like(latents)
+timestep_id = torch.randint(0, self.pipe.scheduler.num_train_timesteps, (1,))
+timestep = self.pipe.scheduler.timesteps[timestep_id].to(
+    dtype=self.pipe.torch_dtype, device=self.device)
+origin_latents = copy.deepcopy(latents)
+noisy_latents = self.pipe.scheduler.add_noise(latents, noise, timestep)
+tgt_latent_len = noisy_latents.shape[2] // 2
+noisy_latents[:, :, tgt_latent_len:, ...] = \
+    origin_latents[:, :, tgt_latent_len:, ...]
+training_target = self.pipe.scheduler.training_target(latents, noise, timestep)
+noise_pred = self.pipe.denoising_model()(
+    noisy_latents, timestep=timestep, cam_emb=cam_emb,
+    **prompt_emb, **extra_input, **image_emb)
+loss = torch.nn.functional.mse_loss(
+    noise_pred[:, :, :tgt_latent_len, ...].float(),
+    training_target[:, :, :tgt_latent_len, ...].float())
+loss = loss * self.pipe.scheduler.training_weight(timestep)</code></pre></div>
+  <p>零初始化 <code>cam_encoder</code> 使训练起步时新相机偏置为零；<code>projector=I</code> 则让已有 self-attention 残差通路保持恒等映射，并不是把 self-attention 输出清零。<strong>这与论文“camera encoder and projector are zero-initialized”的文字不同，应以各自版本分别陈述。</strong>完整初始化与冻结代码见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/train_recammaster.py#L270-L327">train_recammaster.py:270–327</a>。</p>
+  <div class="doc-warning"><strong>公开训练不是论文训练策略的逐项开源。</strong>该脚本把拼接后的后半段直接恢复成原始干净 latent，没有实现论文所述对条件施加 200–500 steps 中等噪声，也没有 20% 全帧/20% 除首帧外的 source-latent dropout。不能把这三项论文技巧写进“公开代码默认配置”。公开 README 命令另用每 GPU batch size 1、<code>steps_per_epoch=8000</code>、<code>max_epochs=100</code>、学习率 <code>1e-4</code>，并称未探索最优超参数；这也不是论文的 batch 40、10K steps。</div>
+</section>
+
+<section class="doc-block" id="inference">
+  <h2>7. 推理与采样：源 latent 每轮重拼，CFG 只更新目标侧</h2>
+  <p>公开主入口依次加载 Wan2.1 DiT、UMT5 文本编码器和 VAE，再为每个 block 创建新增层并以 <code>strict=True</code> 加载完整 ReCamMaster DiT state dict。默认权重路径为 <code>models/ReCamMaster/checkpoints/step20000.ckpt</code>。源视频编码一次，目标从高斯噪声开始；50 个推理步中，每轮重新将当前目标 latent 与固定干净源 latent 拼接，所以 self-attention 总能读取未扩散的源条件。</p>
+  <div class="code-block"><span class="code-label">公开 pipeline 源码 · 拼接、双文本 CFG 与目标侧 Euler step</span><pre><code># wan_video_recammaster.py:272-288
+tgt_latent_length = latents.shape[2]
+for progress_id, timestep in enumerate(self.scheduler.timesteps):
+    timestep = timestep.unsqueeze(0).to(
+        dtype=self.torch_dtype, device=self.device)
+    latents_input = torch.cat([latents, source_latents], dim=2)
+    noise_pred_posi = model_fn_wan_video(
+        self.dit, latents_input, timestep=timestep, cam_emb=cam_emb,
+        **prompt_emb_posi, **image_emb, **extra_input, **tea_cache_posi)
+    if cfg_scale != 1.0:
+        noise_pred_nega = model_fn_wan_video(
+            self.dit, latents_input, timestep=timestep, cam_emb=cam_emb,
+            **prompt_emb_nega, **image_emb, **extra_input, **tea_cache_nega)
+        noise_pred = noise_pred_nega + cfg_scale * (
+            noise_pred_posi - noise_pred_nega)
+    else:
+        noise_pred = noise_pred_posi
+    latents = self.scheduler.step(
+        noise_pred[:, :, :tgt_latent_length, ...],
+        self.scheduler.timesteps[progress_id],
+        latents_input[:, :, :tgt_latent_length, ...])</code></pre></div>
+  <p>这里的 CFG 是<strong>正/负文本条件</strong>之差；源视频和 <code>cam_emb</code> 在两次前向中完全相同，并不是“无相机”或“无源视频”的 CFG。默认 <code>cfg_scale=5.0</code>，<code>num_inference_steps=50</code>，<code>seed=0</code>；负向提示是入口中一长串固定中文质量/畸变负面词。调用和默认参数见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/inference_recammaster.py#L242-L257">inference_recammaster.py:242–257</a>。</p>
+  <p>scheduler 是 <code>FlowMatchScheduler(shift=5,sigma_min=0.0,extra_one_step=True)</code>。每步按 <code>z ← z + v<sub>Θ</sub>(σ<sub>next</sub>-σ)</code> 更新，等价于该离散化下的 Euler step；最后仅解码目标侧 21 个 latent 时刻为 81 帧。相关实现见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/pipelines/wan_video_recammaster.py#L194-L250">wan_video_recammaster.py:194–250</a> 与 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/schedulers/flow_match.py#L18-L50">flow_match.py:18–50</a>。</p>
+  <h3>自定义相机 JSON 的真实入口与限制</h3>
+  <p><code>--dataset_path</code> 只改变源视频与 <code>metadata.csv</code> 的根目录，<strong>不会改变目标相机路径</strong>。在固定提交中，相机仍固定读取工作目录下的 <code>./example_test_data/cameras/camera_extrinsics.json</code>；<code>--cam_type 1…10</code> 选择 <code>cam01…cam10</code>。因此，把自己的视频目录传给 CLI 并不等于已经使用了自己的轨迹。最直接的可控改法是给数据集类新增显式 JSON 路径和相机 key，同时原样保留解析、转置、轴变换、厘米转米和目标首帧相对化。</p>
+  <div class="code-block"><span class="code-label">讲解用实现 / 伪代码 · 非官方源码：把固定轨迹路径改为显式参数</span><pre><code># 以下是基于公开 loader 的改动示意，不是仓库中已有的 CLI 功能。
+# 在 TextVideoCameraDataset.__init__ 增加 camera_json / camera_key 并保存：
+self.camera_json = camera_json
+self.camera_key = camera_key  # 例如 &quot;cam01&quot;；自定义文件也可使用别的键
+
+# 用下面两段替换 __getitem__ 中的固定路径和 camNN 选择；
+# parse_matrix、transpose、列重排、符号/单位及 relative_pose 代码不要省略。
+with open(self.camera_json, 'r', encoding='utf-8') as file:
+    cam_data = json.load(file)
+cam_idx = list(range(num_frames))[::4]  # 仍须恰好产生 21 项
+traj = [self.parse_matrix(cam_data[f&quot;frame{idx}&quot;][self.camera_key])
+        for idx in cam_idx]
+assert len(traj) == 21
+# 后续仍生成 data['camera']: [21,12]，Collate 后为 [1,21,12]
+# 并仍由 target_camera=batch['camera'] 传给 pipe(...)。</code></pre></div>
+  <p>这段伪代码只解决路径注入，不会把任意 COLMAP/OpenCV JSON 自动变成正确格式。公开示例每帧每机位是特定字符串布局，原始样本可见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/example_test_data/cameras/camera_extrinsics.json#L1-L25">camera_extrinsics.json:1–25</a>。若自己的数据已经是常规行主序 c2w，盲目再转置会出错；正确做法是先明确现有矩阵方向和坐标轴，再适配上述预处理，并检查输出的 21×3×4 矩阵，而不是仅检查“文件能打开”。</p>
+</section>
+
+<section class="doc-block" id="comparison">
+  <h2>8. 与代表方法的真实区别：3D 一致性来自哪里，又没有保证什么</h2>
+  <div class="table-frame table-scroll">
+    <table class="doc-data-table">
+      <thead><tr><th>方法</th><th>源动态内容如何进入</th><th>相机/几何条件与额外代价</th><th>与 ReCamMaster 的关键区别</th></tr></thead>
+      <tbody>
+        <tr><td>ReCamMaster</td><td>源、目标 latent 分别编码后沿帧/时间拼接，所有时空 self-attention 块共享交互</td><td>只给目标 3×4 外参，不给源外参和内参；序列翻倍</td><td>不依赖点跟踪、显式 4D 重建或逐视频优化</td></tr>
+        <tr><td>GCD</td><td>论文基线采用通道维视频条件</td><td>Kubric 合成配对训练</td><td>论文关注其通道条件与较窄训练域对真实视频泛化的限制</td></tr>
+        <tr><td>Trajectory-Attention / DaS</td><td>从源视频提取 3D 点轨迹等动态信息，再作为生成条件</td><td>依赖上游点跟踪质量</td><td>ReCamMaster 直接让网络从源 token 学动态对应，没有显式点轨迹中间层</td></tr>
+        <tr><td>ReCapture</td><td>先生成相机控制的 anchor video，再适配用户视频</td><td>图像级多视图扩散 + 时空 LoRA，需逐视频优化</td><td>ReCamMaster 推理不是每个输入重新优化一套 LoRA</td></tr>
+        <tr><td>MotionCtrl / CameraCtrl</td><td>主要面向文本或图像条件视频生成的机位控制</td><td>分别使用外参 embedding、Plücker 射线等条件设计</td><td>不能把它们的轨迹编码器和输入约定直接套到 ReCamMaster 的 21×12 外参路径</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>ReCamMaster 的三维一致性有三个来源：同步多机位训练对提供跨视角监督；源/目标 token 的逐层全局交互维持相同时间和内容对应；大规模 T2V 先验补足不可见区域。它<strong>没有</strong>显式优化多视图重投影误差，也不维护点云、mesh、NeRF 或 3D Gaussian 场景表示。因此，它能在遮挡区生成视觉上合理的内容，却不保证不同输出之间共享唯一、可测量的真实 4D 几何。</p>
+  <p>物体运动与相机运动也只是学习到的条件解耦，不是严格可分离变量。目标外参控制机位，源 token 同时携带外观、背景和物体动作；当视角改变过大、源机位理解错误或文本与源内容冲突时，网络可能通过改变人物几何或动作来“满足”新视图。论文的视角同步指标改善不能解释成所有动态细节都严格一致。</p>
+</section>
+
+<section class="doc-block" id="failures">
+  <h2>9. 失败模式与工程风险：从模型先验到硬编码逐层排查</h2>
+  <ol>
+    <li><strong>手部与小物体：</strong>论文附录明确展示手部动作质量差、很小物体生成失败，属于继承自基础 T2V 的不足。换成 Wan2.1 公开权重不会自动消除这些生成先验问题。</li>
+    <li><strong>不可见区域的语义漂移：</strong>大角度绕行、快速 zoom-out 或严重遮挡要求生成源视频未显示的人物背面、地面或背景。结果可能合理但不符合原场景，身份、服装纹理和接触关系尤其需要人工检查。</li>
+    <li><strong>动态不同步：</strong>快速复杂动作下，源目标注意力对应可能失败，表现为动作提前/滞后或肢体形变。增加 CFG 主要调文本引导，不是通用的时间同步修复器。</li>
+    <li><strong>位姿方向与尺度错误：</strong>把 w2c 当 c2w、漏掉转置/列重排/轴翻转、厘米未除以 100，或训练时误用目标首帧而推理时误用源首帧，都会导致轨迹语义不一致。先看相对矩阵，再谈模型质量。</li>
+    <li><strong>训练/推理分支次序错误：</strong>公开实现是目标噪声在前、干净源 latent 在后。若改成论文公式字面上的源在前，却不同时改切片和相机/训练语义，scheduler 可能更新源侧或把目标当条件。</li>
+    <li><strong>自定义分辨率与帧数失配：</strong>相机广播固定为 2×21 个时刻、30×52 个 patch；公开模型按 81 帧、480×832 路径构造。修改 pipeline 参数并不会自动推广这层硬编码。</li>
+    <li><strong>自定义文件“没有生效”：</strong>只改 <code>--dataset_path</code> 仍会读仓库示例相机；修改同名 JSON 与新增自己的 JSON 文件是两件不同的事。还应留意运行工作目录，因为路径是相对路径。</li>
+    <li><strong>时间与内参错觉：</strong>代码每 4 个原始帧取一个外参，内参并不进入网络；保存 FPS 也不从源视频读取。不能声称模型显式执行了焦距可控或物理时间标定。</li>
+    <li><strong>计算代价：</strong>65,520 token 在 30 个 block 中做全局注意力，CFG=5 时每个采样步需正、负文本两次前向，共 50 步。序列翻倍是论文自认的限制；不能把“只训练部分参数”误解成“推理只运行部分网络”。</li>
+  </ol>
+  <div class="doc-note"><p><strong>结果核验建议：</strong>除整体画质外，至少并排看源/目标同帧的动作相位、人物身份、地面接触、遮挡边界和相机运动方向。对论文中的稳定化、局部“超分辨率”和 outpainting 应用也应如此：zoom-in 后细节变多不等于恢复了真实高频，zoom-out 的新区域更是生成内容。</p></div>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>10. 公开仓库结构与复现检查清单</h2>
+  <p>固定提交不是只有一份推理脚本，而是把 ReCamMaster 改造放进一套 DiffSynth 代码中；同时仓库还包含许多与本文模型无关的 SD、Flux、Hunyuan 等模块。复现时只需围绕以下真实路径追踪，不要把整个 <code>diffsynth</code> 目录都当成 ReCamMaster 新增代码。</p>
+  <div class="code-block"><span class="code-label">固定提交仓库结构 · 与 ReCamMaster 直接相关的路径</span><pre><code>ReCamMaster/
+├── inference_recammaster.py          # 源视频/文本/目标轨迹入口，加载完整 ckpt
+├── train_recammaster.py              # VAE/文本缓存、随机源目标配对、冻结与训练
+├── download_wan2.1.py                # 下载 Wan2.1-T2V-1.3B
+├── vis_cam.py                        # 数据集相机轨迹可视化
+├── example_test_data/
+│   ├── metadata.csv                 # file_name,text
+│   ├── videos/                      # 示例输入，每条至少 81 帧
+│   └── cameras/camera_extrinsics.json
+├── models/ReCamMaster/checkpoints/   # 放置 step20000.ckpt（权重不在源码快照内）
+└── diffsynth/
+    ├── models/wan_video_dit.py       # 逐块 cam_encoder、projector 与注入
+    ├── models/wan_video_vae.py       # 16 通道 3D-VAE 与归一化
+    ├── pipelines/wan_video_recammaster.py  # 时间拼接、CFG、目标侧更新
+    └── schedulers/flow_match.py      # Flow Matching 加噪、速度与 Euler step</code></pre></div>
+  <p>官方安装与权重说明见 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/README.md#L56-L145">README.md:56–145</a>。以下是阅读和复现时的检查清单，不表示本文已经执行这些命令：</p>
+  <ul>
+    <li>固定源码到 <code>fcf98bc86e876bb534518cd99e8a65b282f0f16e</code>，确认使用的是 <code>Wan2.1-T2V-1.3B</code> 三个基础权重和兼容的 ReCamMaster <code>step20000.ckpt</code>；strict load 若缺 <code>cam_encoder/projector</code>，应先查权重/代码版本而不是随意 <code>strict=False</code>。</li>
+    <li>按 <code>example_test_data</code> 准备 <code>videos/</code> 与两列表头为 <code>file_name,text</code> 的 <code>metadata.csv</code>；视频至少 81 帧。图像会经过保持比例的预缩放、center crop、resize 与 [-1,1] 归一化。</li>
+    <li>确认目标相机真正来自预期 JSON 和 <code>cam_type</code>。自定义轨迹时检查 0,4,…,80 共 21 项、4×4 矩阵、轴方向、米制平移和 <code>[1,21,12]</code> 输入。</li>
+    <li>分别打印或断言：源/目标 latent 各为 <code>[1,16,21,60,104]</code>；拼接为 <code>[1,16,42,60,104]</code>；patch 后为 <code>[1,65520,1536]</code>；训练与推理目标切片都是前 21 个 latent 时刻。</li>
+    <li>训练时确认后半段在加噪后恢复为干净源 latent，loss 只算前半段； optimizer 仅收到 <code>self_attn</code>、<code>cam_encoder</code>、<code>projector</code> 参数，并核对 projector 为单位阵而非零矩阵。</li>
+    <li>若使用公开训练脚本复现，记录它未包含论文的 200–500 条件噪声与 20%/20% 源 latent 替换；若自行补齐，应把它标成研究改动，不再称“原公开脚本默认”。</li>
+    <li>推理记录 <code>seed=0</code>、50 steps、CFG=5、shift=5、输出尺寸/帧数及负向提示；不要只凭输出 FPS 或视觉效果宣称相机精度。</li>
+    <li>改动帧数、分辨率、长宽比或 latent patch 规则前，先移除/推广每块相机广播中的 30×52 与时间复制假设，并同步检查 RoPE 网格、head unpatchify 和目标切片。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="sources">
+  <h2>11. 来源清单与可追溯范围</h2>
+  <ul>
+    <li><strong>论文：</strong>Jianhong Bai 等，<a href="https://arxiv.org/abs/2503.11647">ReCamMaster: Camera-Controlled Generative Rendering from A Single Video，arXiv:2503.11647v2</a>，2025-07-09。任务、内部模型、帧维条件对比、训练策略、论文实验配置、UE5 数据构建与失败案例均据此。</li>
+    <li><strong>项目页：</strong><a href="https://jianhongbai.github.io/ReCamMaster/">ReCamMaster Project Page</a>，用于论文演示与应用展示；本文未把网页视频当作本地定量复测。</li>
+    <li><strong>公开代码快照：</strong><a href="https://github.com/KlingAIResearch/ReCamMaster/tree/fcf98bc86e876bb534518cd99e8a65b282f0f16e">KlingAIResearch/ReCamMaster @ fcf98bc86e876bb534518cd99e8a65b282f0f16e</a>。README 在 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/README.md#L17-L22">17–22 行</a>及 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/README.md#L56-L58">56–58 行</a>明确说明参考实现和内部/Wan 主干差异。</li>
+    <li><strong>轨迹与入口：</strong><a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/inference_recammaster.py#L14-L152">inference_recammaster.py:14–152</a>；<a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/train_recammaster.py#L164-L262">train_recammaster.py:164–262</a>；<a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/example_test_data/cameras/camera_extrinsics.json#L1-L25">示例 camera_extrinsics.json</a>。</li>
+    <li><strong>模型与采样：</strong><a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/models/wan_video_dit.py#L186-L220">Wan DiT block 注入</a>、<a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/pipelines/wan_video_recammaster.py#L229-L296">推理 pipeline</a>、<a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/schedulers/flow_match.py#L18-L79">FlowMatch scheduler</a>、<a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/diffsynth/models/wan_video_vae.py#L525-L575">VAE 编解码</a>。</li>
+    <li><strong>训练参数：</strong><a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/train_recammaster.py#L270-L386">初始化、冻结、训练损失和 checkpoint 保存</a>。公开 checkpoint 链接见 <a href="https://huggingface.co/KwaiVGI/ReCamMaster-Wan2.1/blob/main/step20000.ckpt">ReCamMaster-Wan2.1 / step20000.ckpt</a>。</li>
+    <li><strong>数据：</strong><a href="https://huggingface.co/datasets/KwaiVGI/MultiCamVideo-Dataset">MultiCamVideo Dataset</a>；公开规格和文件组织以固定提交 <a class="file-ref" href="https://github.com/KlingAIResearch/ReCamMaster/blob/fcf98bc86e876bb534518cd99e8a65b282f0f16e/README.md#L147-L262">README.md:147–262</a> 为准。</li>
+  </ul>
+  <p><a href="#top">返回顶部</a> · <a href="index.html">返回 12 篇论文索引</a></p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="cameractrl2.html">← CameraCtrl II：输入端注入与长程动态探索</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

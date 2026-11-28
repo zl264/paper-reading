@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="分析 RT/Plücker 与 condition-to-channel ratio，解耦文本和相机的 classifier-free guidance，支持稀疏关键帧位姿。"><title>Boosting Camera Motion Control：条件融合与 CMG｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="boosting-camera 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top"><h1>Boosting Camera Motion Control：问题不只在位姿表示</h1><p class="doc-subtitle">Camera Motion Guidance、条件通道比与稀疏关键帧控制</p>
+<div class="paper-nav"><a href="index.html">← 返回 12 篇论文索引</a><a href="guide.html">综合技术导读</a></div>
+<div class="paper-meta"><a href="https://arxiv.org/abs/2410.10802">arXiv:2410.10802</a><a href="https://soon-yau.github.io/CameraMotionGuidance/">项目页</a><span>骨干：OpenSora 1.0 ST-DiT</span><span>表示：RT / Plücker</span><span>推理：独立相机引导</span></div>
+<p class="reading-note">本文依据官方 arXiv 论文 <strong>2410.10802v1（2024-10-14）</strong> 及项目页整理；未将项目页或论文补充代码等同于完整官方实现。下文教学代码均为本文依据论文机制编写的<strong>讲解用实现，非官方源码</strong>，未运行训练或生成，也不据此报告实测性能。</p></header><div class="doc-callout"><strong>论文的核心反驳</strong><p>“Plücker 比 RT 好”不是充分解释。相同的高维相机融合下，RT 也能有效控制；相反，把低维位姿简单拼到 DiT token 中，可能因条件通道占比太低而被视频特征淹没。真正需要同时优化的是表示、投影、注入与推理 guidance。</p></div><section class="doc-block" id="diagnosis"><h2>1. 为什么把 MotionCtrl / CameraCtrl 直接搬到 DiT 会退化</h2><p>OpenSora 的 ST-DiT 将空间和时间注意力组织为 Transformer block。DiT-MotionCtrl baseline 把每帧 RT 重复到空间 token 后拼接；DiT-CameraCtrl baseline 则使用相机 encoder 将 Plücker 投到高维并与特征相加。</p><p>作者把 condition-to-channel ratio 作为关键观察：若视频 token 有数千维而相机只占 12 维，拼接后的可学习投影未必会分配足够权重给这 12 维。高维、空间变化的相机表示提供更多可学习参数和空间对齐信息，控制更容易被网络使用。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>方案</th><th>条件形态</th><th>融合</th><th>论文诊断</th></tr></thead><tbody><tr><td>DiT-MotionCtrl</td><td>每帧 12 维 RT</td><td>空间复制后与 token 通道拼接</td><td>低维条件容易淹没</td></tr><tr><td>DiT-CameraCtrl</td><td>Plücker 图</td><td>encoder 后与特征相加、再投影</td><td>高维空间条件更有效</td></tr><tr><td>相同融合 + RT</td><td>RT 经高维映射</td><td>保持高维融合</td><td>说明 Plücker 并非唯一关键</td></tr></tbody></table></div></section><section class="doc-block" id="representation"><h2>2. RT 与 Plücker 各自表达什么</h2><p>RT 直接表示坐标变换；Plücker 表示每个像素的三维射线。两者经合适网络都能提供几何信息，差别在于先验落在“输入表示”还是“网络学习”上。</p><div class="math-scroll"><div class="math">RT<sub>f</sub> = flatten([R<sub>f</sub>|T<sub>f</sub>]) ∈ R<sup>12</sup><span class="equation-number">(1)</span></div></div><div class="math-scroll"><div class="math">Plücker<sub>u,v</sub> = [O×d<sub>u,v</sub>, d<sub>u,v</sub>] ∈ R<sup>6</sup>，&nbsp; O=−R<sup>T</sup>T<span class="equation-number">(2)</span></div></div><p>这里 O 是世界系相机中心。一个实用的实验不是只比较两种输入，而是固定主干、参数量、注入位置和训练数据，再分别替换表示，才能定位差异。</p><div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 265" role="img" aria-label="CMG 的双条件引导"><rect x="18" y="24" width="220" height="72" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="128.0" y="56" text-anchor="middle" class="svg-title">相机条件</text><text x="128.0" y="81" text-anchor="middle" class="svg-small">RT 或 Plücker → 高维融合</text><rect x="18" y="184" width="220" height="72" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="128.0" y="216" text-anchor="middle" class="svg-title">文本条件</text><text x="128.0" y="241" text-anchor="middle" class="svg-small">正文本 / 空文本</text><rect x="326" y="24" width="260" height="72" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="456.0" y="56" text-anchor="middle" class="svg-title">DiT 时序块</text><text x="456.0" y="81" text-anchor="middle" class="svg-small">高维 camera embedding</text><rect x="326" y="184" width="260" height="72" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="456.0" y="216" text-anchor="middle" class="svg-title">三次网络前向</text><text x="456.0" y="241" text-anchor="middle" class="svg-small">e₀₀、e₁₀、e₁₁</text><rect x="690" y="92" width="345" height="100" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="862.5" y="124" text-anchor="middle" class="svg-title">Camera Motion Guidance</text><text x="862.5" y="149" text-anchor="middle" class="svg-small">文本方向 + 相机方向分别加权</text><path d="M238 60 H326" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M238 220 H326" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M586 60 H638 V122 H690" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M586 220 H638 V162 H690" fill="none" stroke="#788493" stroke-width="1.6"/></svg></div><p class="figure-caption"><strong>图 1：Boosting Camera Motion Control 的两个互补部分。</strong><span>训练侧改进条件注入与 dropout；推理侧分别计算文本和相机差分，而不是只增加文本 CFG。</span></p></section><section class="doc-block" id="cmg"><h2>3. Camera Motion Guidance：把相机从文本 CFG 中分离</h2><p>普通 CFG 通常只比较正文本和负文本，两个分支都有相机。这只能加强语义方向，不一定增加轨迹遵循。CMG 使用三个预测：</p><ul><li><span class="mi">e₀₀</span>：空文本、空相机；</li><li><span class="mi">e₁₀</span>：正文本、空相机；</li><li><span class="mi">e₁₁</span>：正文本、目标相机。</li></ul><div class="math-scroll"><div class="math">ê = e₀₀ + s<sub>T</sub>(e₁₀−e₀₀) + s<sub>C</sub>(e₁₁−e₁₀)<span class="equation-number">(3)</span></div></div><p>第一项提供基础分布，第二项沿文本方向移动，第三项沿相机方向移动。主实验相机 guidance 取 5；该数值是论文实验设置，不是所有模型的最优常数。与两次前向的普通 CFG 相比，三分支增加推理成本。</p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：CMG 采样步</span><pre><code>def cmg_step(dit, latent, t, text, null_text, camera, null_camera,
+             text_scale, camera_scale):
+    e00 = dit(latent, t, null_text, null_camera)
+    e10 = dit(latent, t, text,      null_camera)
+    e11 = dit(latent, t, text,      camera)
+    guided = e00 + text_scale * (e10 - e00)                 + camera_scale * (e11 - e10)
+    return scheduler.step(guided, t, latent)
+# camera_scale=0 时仍有 e11 前向；工程上可省略该分支。
+# null_camera 的语义必须与训练 camera dropout 完全一致。</code></pre></div></section><section class="doc-block" id="dropout"><h2>4. 训练与稀疏关键帧控制</h2><p>基线沿用视频扩散损失，在 RealEstate10K 上以 16 帧、256² 训练 8 epochs；只更新时序 Transformer 和新增相机模块。训练新增两类相机制空：</p><ul><li><strong>null camera（5%）：</strong>重复首帧和首位姿，提供相机 CFG 的空条件。</li><li><strong>camera dropout（5%）：</strong>随机将 70–100% 帧位姿置零，允许只给少数关键帧位姿。</li></ul><p>后者不是普通的数据增强噪声，而是改变条件分布：模型学会在缺省相机帧上根据上下文插值运动。稀疏位姿的实际插值仍由生成模型完成，不是几何上的严格 SE(3) 插值。</p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：关键帧 mask 与条件构造</span><pre><code>def sparse_camera_condition(poses, observed, fill=0.0):
+    # poses: [B,F,12]；observed: [B,F] bool，标出真正指定的关键帧。
+    condition = poses.clone()
+    condition[~observed] = fill
+    # 若需要模型区分“真实零位姿”和“未指定”，建议额外附加 observed mask；
+    # 这是工程改进建议，不是论文已展示的额外界面。
+    return condition, observed.to(poses.dtype)
+
+# 推理时将同一 condition 传入 e11；e00/e10 使用训练约定的 null camera。</code></pre></div></section><section class="doc-block" id="limits"><h2>5. 局限与公平比较</h2><p>这篇工作主要解决控制强度与 DiT 适配，不直接提供 3D cache、极线约束或显式遮挡处理。相机 guidance 增强可能带来画面质量下降、动态减弱或过强的几何运动，需要同时调节文本和相机尺度。</p><p>RealEstate10K 的静态与轨迹分布限制仍在；不能把该基准上的控制提升直接外推到开放域动态视频。论文项目页中的“code will be available”是发布意向，不能据此声称本文已核验官方训练代码。</p></section><section class="doc-block" id="ablation"><h2>6. 推荐消融实验</h2><ol><li>固定 Plücker，比较通道拼接、特征相加与独立 cross-attention。</li><li>固定高维融合，比较 RT 与 Plücker，避免把参数量差异算到表示头上。</li><li>分别扫描 sT、sC，记录轨迹误差和视觉质量，不只报告最优单点。</li><li>比较 0%、5%、更多 camera dropout，观察无条件分支是否落在训练分布内。</li><li>测量三分支前向的实际推理开销，再考虑引导缓存或蒸馏。</li></ol></section><section class="doc-block" id="takeaway"><h2>7. 一句话理解与使用建议</h2><p>把 CMG 看成一种<strong>几何方向的 classifier-free guidance</strong>：文本决定生成什么，相机决定从哪里看。对已有 DiT 进行改造时，先确认条件被网络真正利用，再考虑换更复杂的位姿表示。</p></section><section class="doc-block" id="worked-example"><h2>附录 A：三种“空相机”语义不能混淆</h2><p>论文的首帧相对预处理把 R₁=I、T₁=0，后续 RT 乘上首帧逆矩阵。训练时 null camera 是重复首帧及首位姿，对应“没有额外相机运动”；zero camera 则把随机 70–100% 的帧置零，支持稀疏控制。二者虽然都是张量条件，却承担不同职责。</p><p>对于稀疏控制，用户可以提供第一、中间和最后帧的位姿，其余置零；模型从训练分布学习补全中间轨迹。93% 稀疏时误差明显增加，说明“支持稀疏”不是任意稀疏都不损失精度。</p><p>论文评价使用 COLMAP 重新估计生成视频的 R 和 T。旋转误差从第二帧开始计算；平移向量按最大距离归一化，因此指标主要比较运动方向与相对尺度，不等于绝对米制误差。Motion 用相邻帧光流幅值均值度量，会受画质、物体运动与纹理影响，不能独立代表相机控制精度。</p></section><section class="doc-block" id="source-code-walkthrough"><h2>附录 B：模块级代码逐段阅读</h2><p>下面的 2 段代码将该论文的条件表示、张量变换与融合接口连成可读的 PyTorch 结构。它们是<strong>依据论文机制编写的教学实现，非官方源码</strong>；目的是把每个模块的输入、输出和训练位置说清楚，不宣称与原模型逐行等价。实际模型仍需要相应的 VAE、位置编码、mask、scheduler、预训练权重和数据处理。</p></section><section class="doc-block" id="implementation-code-1"><h2>代码 1：HighDimCameraCondition</h2><div class="code-block"><span class="code-label">HighDimCameraCondition · 保留条件通道比（讲解用实现，非官方源码）</span><pre><code>class HighDimCameraCondition(nn.Module):
+    def __init__(self, video_dim, camera_dim=6, condition_dim=None):
+        super().__init__()
+        condition_dim = condition_dim or video_dim
+        self.encoder = nn.Sequential(
+            nn.Conv3d(camera_dim, condition_dim//4, 3, padding=1),
+            nn.GELU(),
+            nn.Conv3d(condition_dim//4, condition_dim, 3, padding=1))
+        self.merge = nn.Linear(video_dim + condition_dim, video_dim)
+
+    def forward(self, video_tokens, camera, spatial_shape):
+        # video_tokens: [B,F,HW,C]；camera: [B,6,F,H,W]
+        B,F,HW,C = video_tokens.shape
+        cam = self.encoder(camera)               # [B,D,F,H,W]
+        cam = cam.flatten(3).permute(0,2,3,1)    # [B,F,HW,D]
+        # 条件通道 D 与视频 C 同量级，避免 12 维被数千维淹没。
+        return self.merge(torch.cat([video_tokens,cam],dim=-1))
+# 若用 RT 代替 Plücker，先经过独立 MLP 扩展到相同 D，再比较才公平。</code></pre></div></section><section class="doc-block" id="implementation-code-2"><h2>代码 2：稀疏关键帧条件与 CMG</h2><div class="code-block"><span class="code-label">稀疏关键帧条件与 CMG · 推理完整骨架（讲解用实现，非官方源码）</span><pre><code># 首帧相对化
+relative_rt = np.linalg.inv(rt_absolute[0]) @ rt_absolute
+# 训练与推理中 null_camera 是重复首帧，不是任意全零矩阵。
+null_camera = np.repeat(relative_rt[:1], repeats=F, axis=0)
+# 稀疏用户输入：未指定的帧按训练约定置零。
+zero_camera = relative_rt.copy()
+zero_camera[:, ~keyframe_mask] = 0
+
+latent = torch.randn(video_latent_shape)
+for t in scheduler.timesteps:
+    e00 = model(latent,t,null_text,null_camera)
+    e10 = model(latent,t,text,null_camera)
+    e11 = model(latent,t,text,zero_camera)
+    direction = e00 + 4.0*(e10-e00) + camera_scale*(e11-e10)
+    latent = scheduler.step(direction,t,latent).prev_sample
+# camera_scale 需扫描；论文选择 5 不代表跨模型最优。</code></pre></div></section><section class="doc-block" id="tensor-contract"><h2>附录 C：端到端张量与条件合同</h2><p>下表把整篇论文从用户输入到输出的计算路径放在一处。形状用于说明信息怎样对齐；若论文未公开完整源码，它是依据论文结构的实现参考，而不是对未公开代码的逐行声明。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>数据 / 形状</th><th>必须满足的约束</th></tr></thead><tbody><tr><td>首帧参考</td><td>R₁=I，T₁=0</td><td>后续位姿乘首帧逆</td></tr><tr><td>训练条件</td><td>5% null camera + 5% dropout</td><td>null 是重复首帧；dropout 将部分帧置零</td></tr><tr><td>融合</td><td>camera encoder 与高维 token 合并</td><td>提高 condition-to-channel ratio</td></tr><tr><td>推理</td><td>e₀₀/e₁₀/e₁₁ 三次前向</td><td>文本和相机独立 guidance</td></tr><tr><td>输出</td><td>OpenSora ST-DiT 去噪</td><td>支持稀疏位姿关键帧</td></tr></tbody></table></div></section>
+<section class="doc-block" id="algorithm-training"><h2>附录 D：训练算法与梯度路径</h2><p>采用 RealEstate10K、16 帧、256²、8 epochs；文本使用已有 CameraCtrl 标注。每个 GPU batch=3、lr=1e-5。模型只更新 temporal transformer 与新增相机模块。训练还使用中心裁剪和时间反转平衡相反运动方向。null camera 与 zero camera 是两种不同条件，不能都简单解释成“删除相机”。</p><p><strong>读代码时的关注点：</strong>代码 1 用 3D 卷积把射线条件提升到与视频相近的维度，避免 12 维在数千维 token 中失去作用；代码 2 把首帧相对、null/zero camera 和 CMG 采样串起来。真实 OpenSora 还需 ST-DiT 的空间/时间打包与 scheduler，不应将这些教学类当成已发布实现。</p></section>
+<section class="doc-block" id="algorithm-inference"><h2>附录 E：显式位姿推理流程</h2><p>先准备正文本、空文本、目标相机与 null camera，再在每个采样步计算 e00、e10、e11。文本尺度固定 4，论文比较时相机尺度选 5；更高相机尺度通常增强运动，却可能降低画质。稀疏控制中把未指定帧置零，模型补全其余轨迹，93% 稀疏时误差已明显增加。</p><p>推理前要明确：位姿是 c2w 还是 w2c、是否首帧相对、K 是否像素单位、帧率是否经过 VAE 压缩，以及 unconditional 分支采用哪一种空相机。只把这些数值变成合法 shape 不足以保证几何正确。</p></section>
+<section class="doc-block" id="implementation-tests"><h2>附录 F：代码级验证清单</h2><ul class="checklist"><li>固定融合结构再比较 RT 与 Plücker，排除参数量混淆。</li><li>逐个扫描 sC，同时记录旋转/平移、光流运动和 FID。</li><li>null camera 必须与训练重复首帧的定义一致。</li><li>稀疏帧 mask、零位姿与真实相机平移零向量需明确语义。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与进一步核对</h2><ul class="source-links"><li><a href="https://arxiv.org/abs/2410.10802">arXiv:2410.10802：论文与版本记录</a>；<a href="https://arxiv.org/html/2410.10802">论文 HTML 全文</a>。</li><li><a href="https://soon-yau.github.io/CameraMotionGuidance/">作者项目页：方法演示与公开资源</a>。</li></ul><p class="source-scope">本文写作时核对了本地保存的论文原文。没有可确认的官方完整实现，因此不虚构仓库文件、参数默认值或训练日志；如需生产使用，请按项目页的最新发布说明复核。</p></section><section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="vd3d.html">← VD3D：FIT 视频模型的相机 token 支路</a><a href="i2vcontrol-camera.html">下一篇：I2VControl-Camera：投影点轨迹与主体运动强度 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

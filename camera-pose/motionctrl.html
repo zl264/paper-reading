@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="逐帧 W2C [R|t] 如何展开为 12 维条件，在两次 temporal self-attention 之间融合；包含官方源码数据流、训练阶段与自定义轨迹格式。"><title>MotionCtrl：外参与时序注意力｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="motionctrl 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top">
+  <p><a href="index.html">← 返回 12 篇论文索引</a> · <a href="guide.html">相机位姿控制综合导读</a></p>
+  <h1>MotionCtrl：用 RT 与稀疏轨迹分别控制相机和物体运动</h1>
+  <p class="doc-subtitle">从 world-to-camera 外参、Temporal Transformer 融合到 VideoCrafter 主分支的可复现输入接口</p>
+  <p class="reading-note"><strong>版本与证据范围：</strong>本文依据 <a href="https://arxiv.org/abs/2312.03641">MotionCtrl 论文 arXiv:2312.03641v2（2024-07-16）</a>、SIGGRAPH 2024 论文附录，以及官方 <a href="https://github.com/TencentARC/MotionCtrl">TencentARC/MotionCtrl</a> 的 <code>main</code>（VideoCrafter/LVDM）快照 <a href="https://github.com/TencentARC/MotionCtrl/commit/6242d55414d3f4ad690bf0934889660f78e81b6e"><code>6242d55414d3f4ad690bf0934889660f78e81b6e</code></a>（2025-02-19）。<code>svd</code>、<code>animatediff</code> 分支及 VideoCrafter2 后端不混作本页 main 实现。本页核对论文与源码，不声称在本地执行模型训练、推理或性能测量。</p>
+</header>
+
+<section class="doc-block" id="motionctrl-task-input">
+  <h2>任务定义与输入：一条 RT 序列，而不是相机运动标签</h2>
+  <p>MotionCtrl 以文本提示 <code>c</code> 为内容条件，把通常混在一起的“镜头运动”和“被摄物体运动”拆成两条条件通路。前者由相机位姿序列指定，后者由物体在画面中的轨迹指定；两者可以单独开启，也可以同时开启。它不是一个把视频重投影到新视角的显式三维渲染器：输入没有参考 RGB、深度图、点云或 mesh，视频内容仍由文本驱动的潜空间视频扩散模型生成。</p>
+  <p>这个区分决定了它能回答的问题：例如“同一只马沿给定屏幕轨迹运动，同时相机向右移动”，CMCM 负责全场景随时间的视角变化，OMCM 负责局部对象在画面中的路径。论文的泛化主张是同一套训练权重接收不同位姿和轨迹，而不是为每一种预定义运动单独微调；它并不意味着任意物理上冲突的两个条件都能被精确实现。</p>
+
+  <h3>逐帧 W2C 外参的严格展平顺序</h3>
+  <p>设第 <code>i</code> 帧的 world-to-camera（W2C）变换为 <code>T<sub>wc,i</sub> = [R<sub>i</sub> | t<sub>i</sub>]</code>，其中 <code>R<sub>i</sub> ∈ R<sup>3×3</sup></code>、<code>t<sub>i</sub> ∈ R<sup>3×1</sup></code>。对列向量三维点有 <code>p<sub>c,i</sub> = R<sub>i</sub>p<sub>w</sub> + t<sub>i</sub></code>。<code>t</code> 是世界原点在相机坐标系中的坐标，一般不等于相机中心；后者为 <code>C<sub>i</sub> = −R<sub>i</sub><sup>T</sup>t<sub>i</sub></code>。把 camera-to-world 矩阵直接传入会同时弄错旋转方向和这两个平移量的关系。</p>
+  <div class="math-scroll"><div class="math">RT<sub>i</sub> = [r<sub>00</sub> r<sub>01</sub> r<sub>02</sub> t<sub>x</sub> ; r<sub>10</sub> r<sub>11</sub> r<sub>12</sub> t<sub>y</sub> ; r<sub>20</sub> r<sub>21</sub> r<sub>22</sub> t<sub>z</sub>]；vec(RT<sub>i</sub>) = (r<sub>00</sub>, r<sub>01</sub>, r<sub>02</sub>, t<sub>x</sub>, r<sub>10</sub>, r<sub>11</sub>, r<sub>12</sub>, t<sub>y</sub>, r<sub>20</sub>, r<sub>21</sub>, r<sub>22</sub>, t<sub>z</sub>)<span class="equation-number">(1)</span></div></div>
+  <p>即<strong>逐行展平 3×4 矩阵，在每一行末尾插入该行平移</strong>，不是先列九个 R 再列三个 t，也不是 OpenCV 序列化中有时使用的 <code>rvec || tvec</code>。默认视频长度 <code>F=L=16</code>，JSON 是嵌套的 <code>[16][12]</code> 数值列表，读成 <code>[F,12]</code>；<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/main/evaluation/motionctrl_inference.py#L82-L100"><code>motionctrl_inference.py:82–100</code></a> 没有重排或内参处理，<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/main/evaluation/motionctrl_inference.py#L145-L154"><code>motionctrl_inference.py:145–154</code></a> 再扩展为 <code>[B,F,12,1]</code>。这个最后的 <code>1</code> 被 CMCM 展平掉，不代表有一维空间坐标。</p>
+  <div class="doc-note"><p><strong>没有 K，也没有隐式可填写的 K 槽位。</strong>main 的模型条件只有 12 个外参数，不接收焦距 <code>f<sub>x</sub>, f<sub>y</sub></code>、主点 <code>c<sub>x</sub>, c<sub>y</sub></code> 或 <code>K ∈ R<sup>3×3</sup></code>。因此它不能从同一 RT 推导不同视场角的精确透视效果，不能把“分辨率改变但 K 相应缩放”当作网络可见的条件变化。这里的控制是训练数据分布上的生成式条件，不保证针孔相机渲染等式在输出像素上严格成立。</p></div>
+
+  <h3>坐标系、参考系、平移尺度与时间</h3>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>约定</th><th>main 中可以确定的事实</th><th>自定义输入时必须避免的错误</th></tr></thead>
+    <tbody>
+      <tr><td>变换方向</td><td><code>app.py</code> 的注释和随附轨迹将平移方向标为 W2C；网络接收 <code>[R|t]</code>。<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/app.py#L111-L118">方向表</a></td><td>不要把 C2W 直接当 RT；若源数据是 C2W，应对完整齐次矩阵求逆后取上三行。</td></tr>
+      <tr><td>轴向与尺度</td><td>基本相机工具按固定数值构造 RT；基础平移范数为 1.5，基础角度为 π/3。<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/gradio_utils/camera_utils.py#L10-L23">常量和方向</a></td><td>不要自行假定单位是米或厘米；main 没有显式的米制归一化，绝对平移尺度应从同分布的示例检查。</td></tr>
+      <tr><td>帧间与首帧相对</td><td>随附 <code>test_camera_R.json</code> 第一帧是单位旋转但非零平移；生成器也按 <code>i/n</code> 累进。<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/dataset/camera_poses/basic/test_camera_R.json#L1-L15">示例首帧</a></td><td>不要默认强制第一帧为零。<code>create_relative</code> 只用于相机可视化，不在送入模型前调用。</td></tr>
+      <tr><td>离散时间</td><td>默认 16 个 RT 与 16 个 latent 时间位置按索引对齐；输出以 fps=10 写 MP4。<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/main/evaluation/motionctrl_inference.py#L102-L121">保存代码</a></td><td>不要声称 16 帧对应 1.6 秒的实时采集轨迹；fps 是输出封装设置，main 没有 RT 时间戳输入。</td></tr>
+      <tr><td>轴约定</td><td><code>camera_utils.py</code> 使用标准右手旋转矩阵 <code>R<sub>z</sub>R<sub>y</sub>R<sub>x</sub></code>；但 main 未对 COLMAP/OpenCV/OpenGL 外部源做自动转换。</td><td>坐标轴翻转到右手 W2C 后仍需核查正方向；不存在一个通用“加负号”按钮适合所有源数据。</td></tr>
+    </tbody>
+  </table></div>
+  <p>以上未由 main 明确规定的部分不能靠猜：论文把 <code>RT</code> 定义为 L×12，但没有给出外部任意相机日志的统一轴变换或米制换算规则。工程上应先固定一个坐标约定，生成静态 RT 与随附简单轨迹做对照，再验证 R 的正交性、行列式和时序连续性。</p>
+</section>
+
+<section class="doc-block" id="motionctrl-architecture-cmcm">
+  <h2>整体结构与 CMCM：位姿进入第二个时序自注意力之前</h2>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 390" role="img" aria-label="MotionCtrl 的 CMCM 与 OMCM 双通路结构，相机 RT 进入时序 Transformer，物体位移图进入 U-Net 编码器">
+    
+    <text x="26" y="25" font-size="17" fill="#243447" font-weight="700">输入条件</text>
+    <rect x="24" y="43" width="207" height="69" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="1.5"></rect>
+    <text x="127" y="69" font-size="15" fill="#243447" text-anchor="middle">RT: [B,16,12]</text>
+    <text x="127" y="93" font-size="13" fill="#243447" text-anchor="middle">W2C 外参；无 K</text>
+    <rect x="24" y="257" width="207" height="71" rx="8" fill="#eefaf6" stroke="#00a887" stroke-width="1.5"></rect>
+    <text x="127" y="282" font-size="15" fill="#243447" text-anchor="middle">Trajs: [B,2,16,256,256]</text>
+    <text x="127" y="307" font-size="13" fill="#243447" text-anchor="middle">逐帧屏幕位移，非 3D 轨迹</text>
+    <rect x="289" y="39" width="240" height="122" rx="8" fill="#eef5ff" stroke="#257de0" stroke-width="1.5"></rect>
+    <text x="409" y="65" font-size="16" fill="#243447" text-anchor="middle" font-weight="700">CMCM：每个时序块</text>
+    <text x="409" y="92" font-size="14" fill="#243447" text-anchor="middle">[B,16,12,1] → [BHW,16,12]</text>
+    <text x="409" y="117" font-size="14" fill="#243447" text-anchor="middle">concat(x, RT) → Linear(C+12,C)</text>
+    <text x="409" y="142" font-size="13" fill="#243447" text-anchor="middle">再送入第二个时序 self-attention</text>
+    <rect x="289" y="238" width="240" height="107" rx="8" fill="#eefaf6" stroke="#00a887" stroke-width="1.5"></rect>
+    <text x="409" y="263" font-size="16" fill="#243447" text-anchor="middle" font-weight="700">OMCM：二维 Adapter</text>
+    <text x="409" y="290" font-size="14" fill="#243447" text-anchor="middle">PixelUnshuffle(8): 2 → 128</text>
+    <text x="409" y="316" font-size="14" fill="#243447" text-anchor="middle">320 / 640 / 1280 / 1280 通道</text>
+    <rect x="598" y="38" width="363" height="307" rx="10" fill="#fffaf0" stroke="#d28e05" stroke-width="1.5"></rect>
+    <text x="779" y="64" font-size="17" fill="#243447" text-anchor="middle" font-weight="700">VideoCrafter / LVDM Denoising U-Net</text>
+    <rect x="621" y="82" width="315" height="69" rx="6" fill="#fff5ed" stroke="#f47230" stroke-width="1.3"></rect>
+    <text x="779" y="109" font-size="14" fill="#243447" text-anchor="middle">时序 token: [BHW,16,C]</text>
+    <text x="779" y="134" font-size="13" fill="#243447" text-anchor="middle">下采样、额外时序层、middle、上采样</text>
+    <rect x="621" y="181" width="315" height="72" rx="6" fill="#eefaf6" stroke="#00a887" stroke-width="1.3"></rect>
+    <text x="779" y="207" font-size="14" fill="#243447" text-anchor="middle">encoder 第 3 / 6 / 9 / 12 个 block 后相加</text>
+    <text x="779" y="232" font-size="13" fill="#243447" text-anchor="middle">32² / 16² / 8² / 4² 潜特征</text>
+    <rect x="621" y="276" width="315" height="48" rx="6" fill="#eef5ff" stroke="#257de0" stroke-width="1.3"></rect>
+    <text x="779" y="305" font-size="14" fill="#243447" text-anchor="middle">文本 cross-attention + DDIM 噪声预测</text>
+    <line x1="231" y1="78" x2="289" y2="78" stroke="#788493" stroke-width="2" marker-end="url(#motionctrl-arrow)"></line>
+    <line x1="529" y1="103" x2="598" y2="103" stroke="#788493" stroke-width="2" marker-end="url(#motionctrl-arrow)"></line>
+    <line x1="231" y1="293" x2="289" y2="293" stroke="#788493" stroke-width="2" marker-end="url(#motionctrl-arrow)"></line>
+    <line x1="529" y1="274" x2="598" y2="224" stroke="#788493" stroke-width="2" marker-end="url(#motionctrl-arrow)"></line>
+    <text x="500" y="377" font-size="14" fill="#243447" text-anchor="middle">CMCM 贯穿时序模块；OMCM 只向 encoder 注入，二者共享同一个噪声预测器</text>
+  </svg></div>
+  <p class="figure-caption">图 1：依据 main 源码重绘的数据流，不是论文原图。<code>BHW</code> 是 batch 与 latent 空间位置的合并维，<code>C</code> 随 U-Net 层改变；OMCM 的输入大小采用默认 256² GUI 路径。</p>
+  <p>基底的 2D autoencoder 将每帧编码到 latent，默认初始噪声为 <code>[B,4,16,32,32]</code>；U-Net 的空间卷积/空间 Transformer 建模画面内容，Temporal Transformer 把每个空间位置单独变成 16 个时间 token。MotionCtrl 在运行时替换 U-Net 和 Temporal Transformer 的 <code>forward</code>，通过 <code>context</code> 字典将 <code>pose_emb</code> 透传到时序块，而没有改写整个扩散框架。</p>
+
+  <h3>拼接、投影、自注意力的精确形状</h3>
+  <p>论文把同一操作写成 <code>RT ∈ R<sup>L×12</sup> → R<sup>H×W×L×12</sup></code>，与 <code>y<sub>t</sub> ∈ R<sup>H×W×L×C</sup></code> 沿末维拼接。main 中对应的内存排列更明确：<code>[B,C,F,H,W] → [BHW,F,C]</code>，位姿 <code>[B,F,12,1] → [B,F,12] → [BHW,F,12]</code>。注意 repeat 在 batch 维上做 <code>repeat_interleave(HW)</code>，所以每条样本的每帧位姿复制到所有空间位置；同一个位姿绝不会沿 token 维被误当成 16 个不同通道。</p>
+  <div class="math-scroll"><div class="math">ỹ<sub>b,s,i</sub> = W<sub>fuse</sub>[ y<sub>b,s,i</sub> ; vec(RT<sub>b,i</sub>) ] + b<sub>fuse</sub>；W<sub>fuse</sub> ∈ R<sup>C×(C+12)</sup>；i=0,…,F−1，s=0,…,HW−1<span class="equation-number">(2)</span></div></div>
+  <div class="code-block"><span class="code-label">官方源码摘录 · CMCM 融合（提交 6242d55）</span><pre><code>x = self.attn1(self.norm1(x), context=context if self.disable_self_attn else None, mask=mask) + x
+
+# Add camera pose
+if pose_emb is not None:
+    B, t, _, _ = pose_emb.shape # [B, video_length, pose_dim, pose_embedding_dim]
+    hw = x.shape[0] // B
+    pose_emb = pose_emb.reshape(B, t, -1)
+    pose_emb = pose_emb.repeat_interleave(repeats=hw, dim=0)
+    x = self.cc_projection(torch.cat([x, pose_emb], dim=-1))
+
+x = self.attn2(self.norm2(x), context=context, mask=mask) + x
+x = self.ff(self.norm3(x)) + x</code></pre></div>
+  <p>对应 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/lvdm_modified_modules.py#L133-L153"><code>motionctrl/lvdm_modified_modules.py:133–153</code></a>。这里 <code>x</code> 在进入代码块前是 <code>[BHW,F,C]</code>；拼接后是 <code>[BHW,F,C+12]</code>，投影后恢复 <code>[BHW,F,C]</code>。随后 <code>attn2</code> 的 <code>context=None</code>，其默认行为就是 self-attention，所以不是把 RT 作为文本式 key/value context。</p>
+  <p>注入位置也不是只有 U-Net 第一层或 middle：<code>MotionCtrl.__init__</code> 遍历所有名为 <code>TemporalTransformer</code> 的模块并替换前向；通过 temporal block 的 <code>attn2.to_k.in_features == C</code> 而不是文本的 1024 判别并新增 <code>nn.Linear(C+12,C)</code>。默认 <code>temporal_selfatt_only=true</code>，故文本 context 在这些时序模块中被关闭，而空间 Transformer 仍接收文本。</p>
+  <div class="code-block"><span class="code-label">官方源码摘录 · 动态安装 CMCM 投影层（提交 6242d55）</span><pre><code>if _module.__class__.__name__ == 'BasicTransformerBlock':
+    # SpatialTransformer only
+    if _module.attn2.to_k.in_features != context_dim: # TemporalTransformer without crossattn
+        bound_method = temporal_selfattn_forward_BasicTransformerBlock.__get__(
+            _module, _module.__class__)
+        setattr(_module, '_forward', bound_method)
+        cc_projection = nn.Linear(_module.attn2.to_k.in_features + pose_dim, _module.attn2.to_k.in_features)
+        nn.init.eye_(list(cc_projection.parameters())[0][:_module.attn2.to_k.in_features, :_module.attn2.to_k.in_features])
+        nn.init.zeros_(list(cc_projection.parameters())[1])
+        cc_projection.requires_grad_(True)
+        _module.add_module('cc_projection', cc_projection)</code></pre></div>
+  <p>见 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/motionctrl.py#L35-L59"><code>motionctrl/motionctrl.py:35–59</code></a>。初始化必须精确描述：<strong>只有原特征对应的 C×C 子矩阵被设为单位阵，bias 为零；新增位姿对应的 C×12 权重保持 PyTorch Linear 的随机初始化。</strong>所以这不是全零或完整单位阵的恒等控制器，不能声称“训练开始时严格不影响基底输出”。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>默认 latent 尺度 H×W</th><th>C</th><th>CMCM 时序模块数量</th><th>该尺度位姿重复数（每样本）</th></tr></thead>
+    <tbody>
+      <tr><td>32×32</td><td>320</td><td>初始 conv 后 1 + encoder 2 + decoder 3 = 6</td><td>1024</td></tr>
+      <tr><td>16×16</td><td>640</td><td>encoder 2 + decoder 3 = 5</td><td>256</td></tr>
+      <tr><td>8×8</td><td>1280</td><td>encoder 2 + middle 1 + decoder 3 = 6</td><td>64</td></tr>
+      <tr><td>4×4</td><td>1280</td><td>encoder 2 + decoder 3 = 5</td><td>16</td></tr>
+      <tr><td><strong>合计</strong></td><td>—</td><td><strong>22 个时序模块</strong>（每个配一层 cc_projection）</td><td>各层分别复制</td></tr>
+    </tbody>
+  </table></div>
+  <p>该计数由 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/configs/inference/config_both.yaml#L48-L76">config_both.yaml:48–76</a> 的 <code>attention_resolutions=[4,2,1]</code>、<code>channel_mult=[1,2,4,4]</code>、<code>num_res_blocks=2</code>，以及 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/lvdm/modules/networks/openaimodel3d_next.py#L380-L529">UNetModel 构造</a> 推得。计数包含额外 <code>init_attn</code>，不要把 22 与“22 层网络”混淆；每个 <code>transformer_depth=1</code>，这里每个 TemporalTransformer 一个 block。新增融合权重的总数为 ΣC(C+12)+C = 2,360,228（按四个尺度 6/5/6/5 个计算），不含 U-Net 原有参数；真正训练范围还包括论文指定的第二个时序 self-attention。</p>
+</section>
+
+<section class="doc-block" id="motionctrl-omcm">
+  <h2>OMCM 边界：二维轨迹特征加到编码器，不承担显式相机几何</h2>
+  <p>论文中一条物体轨迹是每帧一个 <code>(x<sub>i</sub>,y<sub>i</sub>)</code> 的屏幕位置序列。为了把路径和速度都暴露给网络，<code>i&gt;0</code> 帧在<strong>上一帧位置</strong> <code>(x<sub>i−1</sub>,y<sub>i−1</sub>)</code> 写入位移 <code>(u,v)=(x<sub>i</sub>−x<sub>i−1</sub>,y<sub>i</sub>−y<sub>i−1</sub>)</code>；第 0 帧和轨迹没有经过的位置为零。多条轨迹可写入同一个两通道图。论文定义 <code>Trajs ∈ R<sup>L×Ĥ×Ŵ×2</sup></code>，其中 Ĥ、Ŵ 是 <code>z<sub>T</sub></code> 的网格尺寸；这与 main 的 GUI 预处理不能直接画等号。</p>
+  <div class="doc-warning"><strong>论文与 main 的分辨率差异：</strong>main 的 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/gradio_utils/traj_utils.py#L82-L104"><code>traj_utils.py:82–104</code></a> 先构造 <code>[16,256,256,2]</code> 位移图，在帧 <code>i+1</code>、上一位置 <code>(y,x)</code> 填位移，并以 99×99、σ=10 的归一化 Gaussian kernel 卷积帧 1…15。随后 <code>app.py</code> 转为 <code>[B,2,16,256,256]</code>。Adapter 的第一层 PixelUnshuffle(8) 才把空间边长降到 32，同时把 2 通道扩为 128。若自制 <code>.npy</code>，必须明确自己采用的是哪条接口，不能把论文 latent-grid 尺寸原样塞给 main 的 GUI。</div>
+  <div class="code-block"><span class="code-label">官方源码摘录 · 将稀疏点变成带速度的高斯位移场（提交 6242d55）</span><pre><code>def get_flow(points, video_len=16):
+    optical_flow = np.zeros((video_len, 256, 256, 2), dtype=np.float32)
+    for i in range(video_len-1):
+        p = points[i]
+        p1 = points[i+1]
+        optical_flow[i+1, p[1], p[0], 0] = p1[0] - p[0]
+        optical_flow[i+1, p[1], p[0], 1] = p1[1] - p[1]
+    for i in range(1, video_len):
+        optical_flow[i] = cv2.filter2D(optical_flow[i], -1, blur_kernel)
+    return optical_flow</code></pre></div>
+  <p><code>blur_kernel</code> 在 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/gradio_utils/traj_utils.py#L37-L43"><code>traj_utils.py:37–43</code></a> 定义；其归一化见 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/gradio_utils/flow_utils.py#L47-L69"><code>flow_utils.py:47–69</code></a>。GUI 内部以 0…1023 的画布坐标收集点，插值到 16 个采样位置后除 4 取整到 256²。落点重复、反向或相互交叉的多轨迹会共享同一栅格；官方函数 <code>process_traj</code> 实际只接收一组点，不应把“模型支持多条轨迹”误写成这个 UI 支持分别指定多个对象身份。</p>
+  <div class="code-block"><span class="code-label">官方源码摘录 · OMCM 时间维拆批与多尺度提取（提交 6242d55）</span><pre><code># MotionCtrl.get_traj_features: 输入 [B,2,F,H,W]
+extra_cond = rearrange(extra_cond, 'b c t h w -> (b t) c h w')
+traj_features = self.omcm(extra_cond)
+traj_features = [rearrange(feature, '(b t) c h w -> b c t h w', b=b, t=t) for feature in traj_features]
+
+# Adapter.forward: 默认 B*16 个二维样本，PixelUnshuffle(8)
+x = self.unshuffle(x)     # [BF,2,H,W] -> [BF,128,H/8,W/8]
+features = []
+x = self.conv_in(x)       # 128 -> 320
+for i in range(len(self.channels)):
+    for j in range(self.nums_rb):
+        idx = i * self.nums_rb + j
+        x = self.body[idx](x)
+    features.append(x)
+return features</code></pre></div>
+  <p>这两段分别节自 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/motionctrl.py#L61-L67"><code>motionctrl.py:61–67</code></a> 和 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/lvdm/modules/encoders/adapter.py#L72-L102"><code>adapter.py:72–102</code></a>。配置是四级 channels 320/640/1280/1280，每级两个 ResnetBlock；后三级入口各以平均池化下采样 2 倍。256² 输入得到 <code>[B,320,16,32,32]</code>、<code>[B,640,16,16,16]</code>、<code>[B,1280,16,8,8]</code>、<code>[B,1280,16,4,4]</code> 四个特征。</p>
+  <p><a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/lvdm_modified_modules.py#L93-L112"><code>lvdm_modified_modules.py:93–112</code></a> 把这些特征在 input block 编号 2、5、8、11（即第 3、6、9、12 个 block）之后<strong>直接相加</strong>。默认 <code>sk=true</code> 的 Adapter 使用卷积与残差组合，但这里没有每尺度独立的 zero-conv 门控，也没有注入 U-Net decoder 或 middle；skip connection 后续可以把 encoder 中的轨迹信息送到 decoder，却不是 OMCM 在 decoder 再插一次。</p>
+  <p>所谓“解耦”因此是<strong>条件表示、注入位置和分阶段优化上的结构解耦</strong>，不是输出像素的数学独立性。RT 可以经 Temporal Transformer 影响整段视频的内容组织，物体轨迹也可通过 U-Net 的全局注意力影响背景；网络没有 3D scene state，也没有把前景图层和背景图层分别渲染。联合条件时两种语义仍可能互相牵制。</p>
+</section>
+
+<section class="doc-block" id="motionctrl-training">
+  <h2>训练：先用 RealEstate10K 学相机，再冻结它学习物体</h2>
+  <p>MotionCtrl 不依赖同时具有文本、准确相机外参、物体轨迹三者的数据集，而是构造两套弱增强数据并顺序训练。基本去噪目标仍是 epsilon 预测，而非显式重投影或位姿回归：</p>
+  <div class="math-scroll"><div class="math">z<sub>τ</sub> = √(ᾱ<sub>τ</sub>)z<sub>0</sub> + √(1−ᾱ<sub>τ</sub>)ε；L = E<sub>z₀,c,m,ε,τ</sub>[ ||ε − ε<sub>θ</sub>(z<sub>τ</sub>,τ,c,m)||²<sub>2</sub> ]，m={RT,Trajs}<span class="equation-number">(3)</span></div></div>
+  <p>这里用 <code>τ</code> 表示扩散步，以区别外参平移 <code>t</code>；<code>ᾱ<sub>τ</sub>=∏<sub>j=1…τ</sub>α<sub>j</sub></code>。<code>m</code> 按训练阶段只包含一种或两种运动条件。main 的 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/lvdm/models/ddpm3d.py#L687-L742"><code>ddpm3d.py:687–742</code></a> 保留 <code>parameterization="eps"</code> 时的噪声 MSE 路径，配置中另列 <code>uncond_prob=0.1</code> 和 <code>uncond_type=empty_seq</code>；但 main 没有将论文两阶段运动数据完整接入 training loop 的脚本，不能把这份 YAML 视作一键复现训练的完整证据。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>阶段</th><th>数据构造</th><th>可训练 / 冻结</th><th>论文报告的配置</th></tr></thead>
+    <tbody>
+      <tr><td>CMCM</td><td>RealEstate10K 原本有 60K 以上视频和较干净位姿；对首帧、1/4、1/2、3/4、末帧用 Blip2 生成 caption 并拼接成片段描述。</td><td>训练新增 MLP/cc_projection 和 Temporal Transformer 的第二个 self-attention；冻结 LVDM 其他部分。</td><td>通常约 50K 次迭代收敛。</td></tr>
+      <tr><td>OMCM dense 预热</td><td>从 WebVid 每个视频随机取 32 帧，跳帧间隔 s∈[1,16]；ParticleSfM 的动态轨迹分割生成约 243K 个片段的轨迹，保留原 caption。</td><td>冻结已训练的 LVDM 与 CMCM，只训练 OMCM。</td><td>20K 次迭代。</td></tr>
+      <tr><td>OMCM sparse 微调</td><td>每段从稠密动态轨迹随机选 n∈[1,N] 条，N=8；对过于分散的稀疏轨迹使用 Gaussian filter。</td><td>同上，不重新联合微调全部网络。</td><td>再 20K 次迭代。</td></tr>
+    </tbody>
+  </table></div>
+  <p>两阶段共同设置是 Adam、全局 batch size 128、学习率 10<sup>−4</sup>、8 张 NVIDIA Tesla V100，论文训练片段为 16 帧、256×256。这些是论文报告而非本页实测。RealEstate10K 的“自动生成文本”不是人类逐帧标注；WebVid 的“物体轨迹”来自 ParticleSfM 的运动分割，不是完整 3D 物体跟踪真值，误差会进入控制器训练。</p>
+  <p>顺序有实际优化含义：如果先训 OMCM，再训 CMCM，后者会改动 Temporal Transformer 的第二个 self-attention，破坏 OMCM 已适配的参数环境；反过来则 OMCM 阶段将 CMCM 固定，避开这个问题。消融中 dense-only 的 ObjMC 为 54.4114，sparse-only 为 34.6937，dense→sparse 为 25.1198（均为论文数值，越低越好）；这里支持的是训练分布匹配，不等于所有稀疏路径都能稳定控制。</p>
+  <div class="doc-note"><p>公开数据准备脚本只封装 ParticleSfM 的光流、点轨迹连接和动态运动分割，并把官方 SfM 重建调用注释掉，见 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/dataset/object_trajectories/run_particlesfm_obj_traj.py#L136-L161"><code>run_particlesfm_obj_traj.py:136–161</code></a>。附录报告 ParticleSfM 处理一个 32 帧视频约需 2 分钟，因而采用稀疏时间采样。这是离线标注开销，不是 MotionCtrl 的 16 帧推理耗时。</p></div>
+</section>
+
+<section class="doc-block" id="motionctrl-inference-custom">
+  <h2>推理与自定义轨迹：直接构造 tensor，绕过 GUI 的隐式缩放</h2>
+  <p>一次推理先编码文本，把 RT 变成 <code>[B,16,12,1]</code>，再把 OMCM 特征在采样之前计算一次。之后 DDIM 的每一步都把这些条件送入同一个 U-Net；条件本身不随扩散时间步变化。采样结果 <code>[B,4,16,32,32]</code> 逐帧经 2D autoencoder 解码为 <code>[B,3,16,256,256]</code>，不是先生成一张首图再 warp。</p>
+  <div class="code-block"><span class="code-label">官方源码摘录 · 条件装配与 DDIM 调用（提交 6242d55）</span><pre><code>cond = model.get_learned_conditioning(prompts)
+if camera_poses is not None:
+    RT = camera_poses[..., None]
+else:
+    RT = None
+if trajs is not None:
+    traj_features = model.get_traj_features(trajs)
+else:
+    traj_features = None
+
+samples, _ = ddim_sampler.sample(
+    S=ddim_steps,
+    conditioning=cond,
+    batch_size=noise_shape[0],
+    shape=noise_shape[1:],
+    unconditional_guidance_scale=unconditional_guidance_scale,
+    unconditional_conditioning=uc,
+    eta=ddim_eta,
+    temporal_length=noise_shape[2],
+    features_adapter=traj_features,
+    pose_emb=RT,
+    **kwargs
+)
+batch_images = model.decode_first_stage(samples)</code></pre></div>
+  <p>完整逻辑见 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/main/evaluation/motionctrl_inference.py#L123-L190"><code>motionctrl_inference.py:123–190</code></a>。<code>run.sh</code> 实际使用 50 个 DDIM steps、CFG 7.5、eta=1.0、256²、五份样本；GUI 同样设置 steps=50、CFG=7.5、eta=1.0、cond_T=800，见 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/app.py#L178-L196"><code>app.py:178–196</code></a>。<code>motionctrl_sample</code> 函数默认 50 steps、CFG=1.0，不要把它与 shell/GUI 的运行值混为一谈。eta=1.0 意味着即使固定 seed，也不要把此配置描述为确定性 DDIM。</p>
+  <p>分类器自由引导使用固定负面文本，条件分支与文本无条件分支均保留同一 RT；物体分支的无条件特征由零轨迹计算。<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/lvdm/models/samplers/ddim.py#L200-L244"><code>ddim.py:200–244</code></a> 在 <code>t &lt; cond_T</code> 时去掉 <code>features_adapter</code>，所以 GUI 的 cond_T=800 使 OMCM 主要作用于高噪声阶段；pose 的移除代码被注释，RT 保留。它不包含独立的相机 guidance scale，不能简单调高 CFG 就认为只增强相机控制。</p>
+  <div class="doc-warning"><strong>Gradio RAW 不是原样矩阵输入：</strong><a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/gradio_utils/camera_utils.py#L98-L110"><code>camera_utils.py:98–110</code></a> 会检查 16×12 个浮点数、reshape 为 <code>[16,3,4]</code>，再将平移乘以 <code>[1.5,1,1.3] * speed</code>。虽然 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/app.py#L413-L416"><code>app.py:413–416</code></a> 帮助文字误写“14 lines”，实际断言要求 16 帧。要原样输入，应走 JSON loader 或直接调用 <code>motionctrl_sample</code> 的 tensor 接口。</div>
+  <p>下面的可执行语法示例展示如何在不调用 GUI 的情况下构造输入。它是将公开接口串起来的<strong>讲解用实现 / 伪代码 · 非官方源码</strong>，本文没有执行；其中 <code>w2c_seq</code> 必须已是与训练分布相符的 W2C，而不是自动猜测任意相机日志的轴向。</p>
+  <div class="code-block"><span class="code-label">讲解用实现 / 伪代码 · 非官方源码：原样 RT 与自定义屏幕轨迹</span><pre><code>import json
+import numpy as np
+import torch
+
+F = 16
+
+def load_w2c_tensor(json_path, batch_size=1):
+    with open(json_path, "r", encoding="utf-8") as f:
+        values = np.asarray(json.load(f), dtype=np.float32)
+    assert values.shape == (F, 12), values.shape
+
+    rt = values.reshape(F, 3, 4)       # 每行 [r0,r1,r2,t]
+    rotation = rt[:, :, :3]
+    assert np.allclose(rotation @ rotation.transpose(0, 2, 1),
+                       np.eye(3, dtype=np.float32), atol=1e-4)
+    assert np.allclose(np.linalg.det(rotation), 1.0, atol=1e-4)
+    assert np.allclose(rotation[0], np.eye(3), atol=1e-5), "先核查参考系"
+    poses = torch.from_numpy(values).unsqueeze(0)  # [1,16,12]
+    return poses.repeat(batch_size, 1, 1)
+
+def one_pixel_trajectory(points_256, height=256, width=256):
+    """points_256[i]=(x,y)；不做 GUI 的 1024→256 或 RAW 平移缩放。"""
+    assert len(points_256) == F
+    points = np.asarray(points_256, dtype=np.int32)
+    assert np.all(points >= 0) and np.all(points < [width, height])
+    flow = np.zeros((F, height, width, 2), dtype=np.float32)
+    for i in range(1, F):
+        x0, y0 = points[i - 1]
+        x1, y1 = points[i]
+        flow[i, y0, x0] = (x1 - x0, y1 - y0)
+    # 实际 main GUI 还在此处用 99×99、sigma=10 的 Gaussian 卷积。
+    return torch.from_numpy(flow).permute(3, 0, 1, 2).unsqueeze(0)
+
+camera_poses = load_w2c_tensor("examples/camera_poses/test_camera_R.json")
+points = [(48 + 8 * i, 128) for i in range(F)]
+trajs = one_pixel_trajectory(points)                # [1,2,16,256,256]
+noise_shape = [1, 4, 16, 32, 32]
+
+# 假定 model 已按官方 config 和 motionctrl.pth 加载；本文不执行该调用。
+# samples = motionctrl_sample(
+#     model, ["a horse running on grass"], noise_shape,
+#     camera_poses=camera_poses.to("cuda"), trajs=trajs.to("cuda"),
+#     ddim_steps=50, ddim_eta=1.0,
+#     unconditional_guidance_scale=7.5, cond_T=800,
+# )</code></pre></div>
+  <p>这个例子故意保留稀疏单点位移，方便核对索引，并不等价于已微调的官方 GUI 输入分布；实际复现宜先调用官方 <code>process_traj</code> 生成 Gaussian 位移图。若直接 <code>motionctrl_sample</code>，JSON 不再经过 RAW 的平移乘数，<code>[B,16,12]</code> 是正确输入。用多个对象时，需要在同一 flow 图中加入多条轨迹；要处理遮挡或交叉，必须另外设计冲突规则，官方单线 GUI 并未解决这一层问题。</p>
+</section>
+
+<section class="doc-block" id="motionctrl-repository-reproduction">
+  <h2>仓库地图与复现检查：读懂 main 实际提供了什么</h2>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>路径</th><th>责任</th><th>核查重点</th></tr></thead>
+    <tbody>
+      <tr><td><code>app.py</code></td><td>Gradio UI、模型加载、条件拼接与输出</td><td>默认噪声形状、GUI 预处理、固定 prompt 后缀与负面 prompt。</td></tr>
+      <tr><td><code>main/evaluation/motionctrl_inference.py</code></td><td>JSON/NPY loader、批量采样和保存</td><td>camera_motion / object_motion / both 由内置测试列表选择，并非任意文件名 CLI。</td></tr>
+      <tr><td><code>motionctrl/motionctrl.py</code></td><td>安装 CMCM forward、构造 cc_projection 与 OMCM</td><td>按类名/注意力输入宽度替换模块，是轻量但耦合原 VideoCrafter 类结构的 monkey patch。</td></tr>
+      <tr><td><code>motionctrl/lvdm_modified_modules.py</code></td><td>位姿融合和 OMCM 加法注入</td><td>所有 TemporalTransformer 的 [BHW,F,C] 路径；encoder block 2/5/8/11 的加法。</td></tr>
+      <tr><td><code>lvdm/modules/encoders/adapter.py</code></td><td>PixelUnshuffle 与四尺度卷积编码</td><td>cin=128 来自 2×8²，而非 128 通道轨迹。</td></tr>
+      <tr><td><code>gradio_utils/camera_utils.py</code> / <code>traj_utils.py</code></td><td>基础位姿生成、RAW 平移缩放、轨迹插值和 Gaussian</td><td>16 帧硬编码；GUI 与原始 tensor/JSON 接口语义不同。</td></tr>
+      <tr><td><code>configs/inference/config_both.yaml</code></td><td>VideoCrafter/LVDM 结构与 OMCM 参数</td><td>4 通道 latent、16 帧、时序配置与冻结的文本编码器。</td></tr>
+      <tr><td><code>lvdm/models/ddpm3d.py</code> / <code>samplers/ddim.py</code></td><td>2D VAE 编解码、epsilon loss 与 DDIM</td><td>每帧 VAE，50 步均匀 DDIM 离散化，条件截止与 CFG 的具体位置。</td></tr>
+      <tr><td><code>dataset/object_trajectories/</code></td><td>WebVid 切片与 ParticleSfM 动态轨迹标注辅助</td><td>依赖外部 ParticleSfM 环境，不是自包含的训练程序。</td></tr>
+    </tbody>
+  </table></div>
+  <p>官方 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/README.md#L85-L105"><code>README.md:85–105</code></a> 的 main 推理步骤是 Python 3.10.6 环境、安装 requirements、下载 <code>motionctrl.pth</code> 到 <code>checkpoints/</code>、在 <code>configs/inference/run.sh</code> 选择 <code>condtype</code> 后运行。配置和 ckpt 必须匹配，加载函数对普通 checkpoint 使用非严格 load；复现时应检查缺失/意外键，而不是只看进程是否结束。</p>
+  <ol>
+    <li><strong>版本与入口：</strong>固定本文列出的 commit；明确用 main，而不是直接套用 SVD 或 AnimateDiff 分支的输入定义。阅读 <code>run.sh</code> 的三个连续 <code>condtype</code> 赋值：未编辑时最后一项 <code>camera_motion</code> 才生效。</li>
+    <li><strong>条件自检：</strong>验证 JSON shape、逐行 flatten、R<sup>T</sup>R≈I、det R≈1，比较静态轨迹；物体侧验证 flow 的 <code>[2,F,H,W]</code> 排列、0 帧为零、帧 i 的位移写在 i−1 的位置。</li>
+    <li><strong>预处理自检：</strong>若需要逐值可控，打印 GUI <code>process_camera</code> 之后的 RT；优先 JSON 或 tensor 路径。OMCM 若用 GUI 语义，应复用插值和 Gaussian，不要任意插值成不同速度曲线。</li>
+    <li><strong>采样自检：</strong>记录 seed、prompt 后缀、负面 prompt、steps、eta、CFG、cond_T、输出分辨率。把论文定量指标与本机输出分开，不声称默认 50 步等于训练 1000 个扩散步。</li>
+    <li><strong>训练复现边界：</strong>main 没有完整两阶段 VideoCrafter 训练数据管线和冻结脚本；若需完整训练代码，应单独核对官方 <code>animatediff</code> 分支，不能把其模型/数据约定倒灌成本页 main 的实现。</li>
+  </ol>
+</section>
+
+<section class="doc-block" id="motionctrl-limitations-comparison">
+  <h2>能力边界、计算代价与代表方法比较</h2>
+  <h3>哪些“3D 一致性”能由 RT 提供，哪些不能</h3>
+  <p>位姿序列提供跨帧的全局几何归纳偏置：所有 latent 空间位置共享同一帧 RT，时序注意力可以学习一致的视差、推进和旋转模式。但网络看不到 K、深度或场景三维状态，输出也没有经过多视图重投影约束。因此遮挡处的新内容、远近物体不同视差、焦距改变或严格度量尺度仍由生成先验补全。这里的“3D 一致性”应理解为从 RealEstate10K 位姿—视频对中学习的统计一致性，而不是经过结构光束法平差或渲染一致性损失的证明。</p>
+  <ul>
+    <li><strong>联合控制的失败模式：</strong>论文明确报告，同时要求复杂相机与复杂物体轨迹时需要精心设计二者，自然协调结果的成功率相对较低。这不只涉及跟踪误差：在相机大位移时仍要求屏幕空间物体走固定路径，可能隐含互相竞争的场景运动。</li>
+    <li><strong>尺度与外推：</strong>缺少米制或深度条件意味着同一平移值可能对应不同语义幅度；远离训练位姿的旋转、长轨迹和大尺度平移不应预期仍精确。16 帧硬编码也限制直接长视频控制。</li>
+    <li><strong>轨迹不携带身份：</strong>OMCM 的二维流没有对象 ID、3D 深度或遮挡状态，文本负责对象语义；相同流可被不同 prompt 解释为不同物体，但不能保证指定多对象后的对应关系。</li>
+    <li><strong>数据噪声和外观：</strong>RT 本身 appearance-free，但 RealEstate10K 场景单一，文本依赖 Blip2；ParticleSfM 分割不完美，冻结策略只是减少而非消除对基底生成质量的影响。</li>
+    <li><strong>推理开销：</strong>CMCM 每个时序块增加 C+12→C 的逐 token 投影，并让 RT 影响两次 CFG 前向；OMCM 先对每帧高分辨率位移图做一次多尺度编码，再共享给各 DDIM 步。相对只跑原 U-Net，这些不是零成本；main 没有可靠的统一显存/延迟基准，本页不给出虚构数字。</li>
+  </ul>
+  <div class="table-frame table-scroll"><table class="doc-data-table">
+    <thead><tr><th>方法</th><th>运动条件与几何</th><th>与 MotionCtrl main 的真实差别</th></tr></thead>
+    <tbody>
+      <tr><td>AnimateDiff Motion LoRA</td><td>从模板视频学习八种基本镜头运动，各用独立 LoRA。</td><td>MotionCtrl 直接给 16 个连续 RT，可用幅度改变速度并组合复杂路径；论文也展示过 AnimateDiff 移植，但那不是 main 的同一个实现。</td></tr>
+      <tr><td>VideoComposer</td><td>从参考视频得到 motion vectors，以统一条件描述运动。</td><td>向量可能同时编码相机、物体和轮廓；MotionCtrl 用外参与稀疏轨迹分路，减少把参考门的外形错误转移到生成对象的情况。</td></tr>
+      <tr><td>DragNUWA</td><td>文本、首图和轨迹控制视频。</td><td>轨迹来自光流，论文指出其不明确区分前景物体与背景运动；MotionCtrl 在架构及训练阶段显式分离二者。</td></tr>
+      <tr><td>CameraCtrl</td><td>逐像素 Plücker 射线编码，通常同时依赖 R、t 与 K。</td><td>MotionCtrl 是每帧仅 12 维外参，复制到 latent 位置后做时序融合；不能用 CameraCtrl 的六通道射线张量替换 RT，也不能将“无 K”说成两种方法共有性质。</td></tr>
+      <tr><td>GEN3C 类三维生成方法</td><td>利用深度、点云/缓存和显式 warp 为新视角提供场景内容。</td><td>MotionCtrl 不维护几何缓存，结构更轻，但不提供同等意义上的显式可见性、遮挡和度量几何约束。</td></tr>
+    </tbody>
+  </table></div>
+  <p>论文实验中 MotionCtrl 的基本/复杂位姿 CamMC 分别为 0.0289/0.0735，优于其 AnimateDiff 与 VideoComposer 对照；对象 ObjMC 为 28.877。所有数值由生成视频再经 ParticleSfM 估计位姿或轨迹后计算欧氏距离，因此评价估计器也会影响结果，不是逐像素满足输入矩阵的误差。注入位置消融支持时序模块：Temporal Transformer 的 CamMC 0.0289，而 time embedding、spatial cross-attention、spatial self-attention 分别为 0.0887、0.0857、0.0902。它们是论文在指定数据集、基底和设置下的对照，不能外推成对所有新模型的普遍排名。</p>
+</section>
+
+<section class="doc-block" id="motionctrl-sources">
+  <h2>来源与阅读索引</h2>
+  <ol>
+    <li>Wang 等，<a href="https://arxiv.org/abs/2312.03641">MotionCtrl: A Unified and Flexible Motion Controller for Video Generation，arXiv v2，2024-07-16</a>：第 3 节 CMCM/OMCM、训练策略，第 4 节实验与消融，第 5 节局限，附录 A/B 数据构造与评估集。DOI：<a href="https://doi.org/10.1145/3641519.3657518">10.1145/3641519.3657518</a>。</li>
+    <li><a href="https://github.com/TencentARC/MotionCtrl/tree/6242d55414d3f4ad690bf0934889660f78e81b6e">官方源码 main 固定快照</a>：本文直接读取本地对应快照并逐行核对。关键文件包括 <a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/motionctrl.py#L12-L67"><code>motionctrl/motionctrl.py</code></a>、<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/motionctrl/lvdm_modified_modules.py#L19-L153"><code>motionctrl/lvdm_modified_modules.py</code></a>、<a class="file-ref" href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/main/evaluation/motionctrl_inference.py#L123-L190"><code>main/evaluation/motionctrl_inference.py</code></a>。</li>
+    <li><a href="https://github.com/TencentARC/MotionCtrl/blob/6242d55414d3f4ad690bf0934889660f78e81b6e/README.md">官方 README</a> 与 <a href="https://huggingface.co/TencentARC/MotionCtrl/tree/main">模型权重页面</a>：环境、推理入口、分支与发布范围。README 的其他分支说明仅用于划清范围，不充当本页 main 形状的证据。</li>
+    <li>相关方法与数据： <a href="https://arxiv.org/abs/2310.19512">VideoCrafter1</a>、<a href="https://arxiv.org/abs/2211.13221">LVDM</a>、<a href="https://arxiv.org/abs/2307.04725">AnimateDiff</a>、<a href="https://arxiv.org/abs/2306.02018">VideoComposer</a>、<a href="https://arxiv.org/abs/2308.08089">DragNUWA</a>、<a href="https://google.github.io/realestate10k/">RealEstate10K</a>、<a href="https://github.com/bytedance/particle-sfm">ParticleSfM</a>。</li>
+    <li><a href="https://wzhouxiff.github.io/projects/MotionCtrl/">MotionCtrl 项目页</a>：论文中的动态效果展示。本页的结构与代码结论来自上述论文和固定源码，不把展示视频视为本地复现结果。</li>
+  </ol>
+  <p><a href="#top">回到顶部</a> · <a href="index.html">返回论文索引</a></p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="cameractrl.html">下一篇：CameraCtrl：Plücker 射线与多尺度时序融合 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>

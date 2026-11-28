@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="description" content="视频和 Plücker 分别 patchify 后一次相加，全部主干联合训练；所有 clip 共享最初首帧参考，支持连续场景探索。"><title>CameraCtrl II：输入端注入与长程动态探索｜原理、结构与代码</title>
+<style>
+:root {
+  --page: #ffffff;
+  --ink: #2f302d;
+  --muted: #6b7280;
+  --faint: #9aa1ad;
+  --line: #e6e8ec;
+  --line-strong: #d4d8df;
+  --soft: #f7f8fa;
+  --soft-2: #f1f4f7;
+  --accent: #2563eb;
+  --teal: #0f766e;
+  --rose: #b83f58;
+  --gold: #b7791f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--page);
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.72;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.doc-page {
+  width: calc(100% - 284px);
+  max-width: none;
+  margin: 0 0 0 284px;
+  padding: 56px 56px 80px;
+}
+
+.doc-title {
+  margin-bottom: 32px;
+}
+
+.doc-title h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 36px;
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-subtitle {
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.doc-block {
+  margin: 36px 0;
+  scroll-margin-top: 28px;
+}
+
+.doc-block h2,
+.doc-chart h2,
+.doc-table h2,
+.doc-diagram h2 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.35;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+.doc-block p,
+.doc-chart p,
+.doc-table p,
+.doc-diagram p {
+  margin: 10px 0 16px;
+  color: #4b5059;
+  text-wrap: pretty;
+}
+
+.doc-block ul,
+.doc-block ol {
+  margin: 10px 0 0;
+  padding-left: 24px;
+}
+
+.doc-block li {
+  margin: 8px 0;
+}
+
+.doc-block strong,
+.doc-callout strong,
+.doc-note strong {
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.doc-callout {
+  margin: 28px 0 34px;
+  padding: 16px 18px;
+  border: 1px solid #dfe5e2;
+  border-radius: 16px;
+  background: #f7faf8;
+}
+
+.doc-callout p {
+  margin: 6px 0 0;
+  color: #46534f;
+}
+
+.doc-note {
+  margin: 22px 0;
+  padding: 13px 15px;
+  border-left: 3px solid var(--line-strong);
+  border-radius: 0 16px 16px 0;
+  background: var(--soft);
+  color: #535a66;
+}
+
+.doc-note p {
+  margin: 0;
+}
+
+.doc-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 30px 0 42px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.doc-metric {
+  min-width: 0;
+  padding: 16px 17px;
+}
+
+.doc-metric + .doc-metric {
+  border-left: 1px solid var(--line);
+}
+
+.doc-metric span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-metric strong {
+  display: block;
+  margin: 6px 0 3px;
+  color: var(--ink);
+  font-size: 23px;
+  line-height: 1.18;
+  font-weight: 640;
+}
+
+.doc-metric small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.doc-chart,
+.doc-table,
+.doc-diagram {
+  margin: 46px 0;
+  scroll-margin-top: 28px;
+}
+
+.chart-frame,
+.table-frame,
+.diagram-frame {
+  position: relative;
+  margin-top: 18px;
+}
+
+.mermaid-frame {
+  width: fit-content;
+  max-width: 100%;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.mermaid {
+  margin: 0;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.mermaid svg {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-zoom-trigger {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.lucide-icon {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  pointer-events: none;
+}
+
+.mermaid-frame:hover .diagram-zoom-trigger,
+.mermaid-frame:focus-within .diagram-zoom-trigger {
+  opacity: 1;
+}
+
+.diagram-zoom-trigger:hover,
+.diagram-zoom-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.diagram-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: none;
+  padding: 34px;
+  background: rgba(25, 28, 34, 0.62);
+}
+
+.diagram-lightbox.open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.diagram-lightbox-panel {
+  position: relative;
+  width: min(1120px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.28);
+  padding: 28px;
+}
+
+.diagram-lightbox-content {
+  min-width: 880px;
+  padding-top: 6px;
+}
+
+.diagram-lightbox-content svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagram-lightbox-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.diagram-lightbox-close:hover,
+.diagram-lightbox-close:focus-visible {
+  background: var(--soft);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.chart-frame:hover .chart-menu,
+.chart-frame:focus-within .chart-menu {
+  opacity: 1;
+}
+
+.chart-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 1px 2px rgba(32, 33, 36, 0.04);
+}
+
+.chart-menu-trigger span {
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.chart-menu-trigger:hover,
+.chart-menu-trigger:focus-visible {
+  background: #fff;
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-menu-popover {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 34px;
+  width: 156px;
+  padding: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(32, 33, 36, 0.12);
+}
+
+.chart-menu:hover .chart-menu-popover,
+.chart-menu:focus-within .chart-menu-popover {
+  display: block;
+}
+
+.chart-menu-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.chart-menu-popover button.active,
+.chart-menu-popover button:hover,
+.chart-menu-popover button:focus-visible {
+  background: var(--soft-2);
+  color: var(--ink);
+  outline: none;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 390px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.figure-caption {
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.figure-caption strong {
+  display: block;
+  color: #343941;
+  font-weight: 620;
+}
+
+.figure-caption span {
+  display: block;
+  margin-top: 2px;
+}
+
+.table-scroll {
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.doc-data-table {
+  width: auto;
+  min-width: 0;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.doc-data-table th,
+.doc-data-table td {
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-data-table th {
+  background: var(--soft);
+  color: #566173;
+  font-weight: 620;
+}
+
+.doc-data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.doc-data-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.diagram-flow {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+  min-width: 640px;
+}
+
+.diagram-node {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.diagram-node strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-weight: 620;
+}
+
+.diagram-node span {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diagram-arrow {
+  display: flex;
+  align-items: center;
+  color: var(--faint);
+  font-size: 22px;
+}
+
+.doc-sources {
+  margin-top: 48px;
+  padding-top: 4px;
+}
+
+.source-links {
+  margin: 16px 0 0;
+  padding-left: 22px;
+  color: #535a66;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.source-links li {
+  margin: 7px 0;
+}
+
+.toc-rail {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 10;
+  width: 284px;
+  padding: 28px 18px 40px;
+  overflow-y: auto;
+  border-right: 1px solid #e3e4ec;
+  background: #ffffff;
+}
+
+.toc-title {
+  padding: 0 10px 14px;
+  color: #4636c4;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: .5px;
+}
+
+.toc-rail a {
+  display: block;
+  margin: 1px 0;
+  padding: 5px 10px;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  color: #5a6070;
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-decoration: none;
+  transition: all .15s ease;
+}
+
+.toc-rail a:hover {
+  background: #eeecfc;
+  color: #5845e6;
+  text-decoration: none;
+}
+
+.toc-rail a.active {
+  border-left-color: #5845e6;
+  background: #eeecfc;
+  color: #4636c4;
+  font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+  .toc-rail {
+    display: none;
+  }
+
+  .doc-page {
+    width: 100%;
+    margin-left: 0;
+    padding: 40px 22px 60px;
+  }
+}
+
+@media (max-width: 820px) {
+  .doc-page {
+    width: 100%;
+    padding-top: 44px;
+  }
+
+  .doc-title h1 {
+    font-size: 30px;
+  }
+
+  .doc-subtitle {
+    font-size: 16px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .doc-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .doc-metric:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 360px;
+  }
+
+  .diagram-lightbox {
+    padding: 18px;
+  }
+
+  .diagram-lightbox-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    padding: 22px;
+  }
+
+  .diagram-lightbox-content {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 560px) {
+  .doc-page {
+    width: 100%;
+  }
+
+  .doc-title h1 {
+    font-size: 27px;
+  }
+
+  .doc-block h2,
+  .doc-chart h2,
+  .doc-table h2,
+  .doc-diagram h2 {
+    font-size: 21px;
+  }
+
+  .doc-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .doc-metric,
+  .doc-metric + .doc-metric {
+    border-left: 0;
+  }
+
+  .doc-metric + .doc-metric {
+    border-top: 1px solid var(--line);
+  }
+
+  .chart-canvas {
+    height: 320px;
+  }
+}
+
+  
+
+    .doc-page { --code-bg: #151922; }
+    .doc-block h3 { margin: 32px 0 10px; color: var(--ink); font-size: 19px; line-height: 1.45; }
+    .doc-block h4 { margin: 23px 0 8px; color: var(--ink); font-size: 16px; }
+    .doc-block li { color: #4b5059; }
+    .lead { font-size: 17px; line-height: 1.85; }
+    .reading-note { margin-top: 22px; color: var(--muted); font-size: 14px; }
+    .math-scroll { width: fit-content; max-width: 100%; margin: 15px 0 20px; overflow-x: auto; border-left: 3px solid #dce5f3; background: #f8fafc; border-radius: 0 10px 10px 0; }
+    .math { width: max-content; min-width: 0; padding: 13px 16px; color: #27364a; font-family: "Cambria Math", "STIX Two Math", Cambria, serif; font-size: 17px; line-height: 1.75; white-space: nowrap; }
+    .mi { font-family: "Cambria Math", "STIX Two Math", Cambria, serif; white-space: nowrap; }
+    .math small { color: var(--muted); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 12px; white-space: normal; }
+    .code-block { position: relative; width: fit-content; max-width: 100%; margin: 18px 0 24px; overflow: hidden; border: 1px solid #242b38; border-radius: 14px; background: var(--code-bg); }
+    .code-block pre { max-width: 100%; margin: 0; padding: 48px 20px 20px; overflow: auto; color: #e5e7eb; font-size: 13px; line-height: 1.65; tab-size: 4; }
+    .code-block code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .code-label { position: absolute; top: 12px; left: 18px; z-index: 1; max-width: calc(100% - 100px); overflow: hidden; color: #9aa4b2; font-size: 12px; letter-spacing: .025em; text-overflow: ellipsis; white-space: nowrap; }
+    .copy-code { position: absolute; top: 8px; right: 9px; z-index: 2; padding: 4px 9px; border: 1px solid #3a4352; border-radius: 7px; background: #202633; color: #cbd5e1; font: inherit; font-size: 12px; cursor: pointer; }
+    .copy-code:hover, .copy-code:focus-visible { background: #2a3343; color: #fff; outline: none; }
+    .algorithm { width: fit-content; max-width: 100%; margin: 18px 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: #fbfcfd; }
+    .algorithm ol { margin: 8px 0 0; padding-left: 22px; }
+    .algorithm li { margin: 7px 0; color: #4b5059; }
+    .doc-data-table code, .doc-block p code, .doc-block li code, .doc-note code, .doc-callout code, .doc-sources code { padding: 2px 5px; border-radius: 5px; background: #f1f4f7; color: #334155; font-family: "Cascadia Code", Consolas, monospace; font-size: .88em; overflow-wrap: anywhere; }
+    .code-block code { padding: 0; background: transparent; color: inherit; }
+    .file-ref { display: inline-block; margin: -8px 0 20px; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+    .file-ref a { color: #526d8c; }
+    .checklist { list-style: none; padding-left: 0 !important; }
+    .checklist li { position: relative; padding-left: 25px; }
+    .checklist li::before { content: "✓"; position: absolute; left: 0; color: var(--teal); font-weight: 700; }
+    .doc-sources li { margin: 10px 0; overflow-wrap: anywhere; }
+    .source-scope { color: var(--muted); font-size: 14px; }
+    .equation-number { float: right; color: var(--faint); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 13px; }
+    .no-toc { scroll-margin-top: 28px; }
+    .tree { white-space: pre; }
+    @media (max-width: 560px) {
+      .doc-block h3 { font-size: 17px; }
+      .math { font-size: 15px; padding: 12px 13px; }
+      .code-block pre { font-size: 12px; padding-left: 15px; padding-right: 15px; }
+      .lead { font-size: 16px; }
+    }
+    @media print {
+      .copy-code, .toc-rail { display: none !important; }
+      .code-block { break-inside: avoid; }
+      .math-scroll { overflow: visible; }
+    }
+  
+    .doc-page { max-width: 1520px; }
+    .doc-block h3 { margin:32px 0 10px; color:var(--ink); font-size:19px; line-height:1.45; scroll-margin-top:24px; }
+    .doc-block h4 { margin:23px 0 8px; color:var(--ink); font-size:16px; }
+    .lead { font-size:17px; line-height:1.85; }
+    .reading-note { margin-top:22px; color:var(--muted); font-size:14px; }
+    .paper-nav { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; font-size:14px; }
+    .paper-nav a, .paper-meta a, .paper-meta span { padding:4px 9px; border:1px solid var(--line); border-radius:8px; background:var(--soft); color:#526071; }
+    .paper-meta { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; font-size:13px; }
+    .paper-meta a { color:var(--accent); }
+    .source-badge { display:inline-block; padding:2px 7px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; color:#526071; font-size:12px; }
+    .source-badge.paper { border-color:#b9cdfd; background:#f3f7ff; }
+    .source-badge.source { border-color:#a5d8ce; background:#f0faf7; }
+    .math-scroll { width:fit-content; max-width:100%; margin:15px 0 20px; overflow-x:auto; border-left:3px solid #dce5f3; background:#f8fafc; border-radius:0 10px 10px 0; }
+    .math { width:max-content; min-width:0; padding:13px 16px; color:#27364a; font-family:"Cambria Math","STIX Two Math",Cambria,serif; font-size:17px; line-height:1.75; white-space:nowrap; }
+    .mi { font-family:"Cambria Math","STIX Two Math",Cambria,serif; white-space:nowrap; }
+    .code-block { position:relative; width:fit-content; max-width:100%; margin:18px 0 24px; overflow:hidden; border:1px solid #242b38; border-radius:14px; background:#151922; }
+    .code-block pre { max-width:100%; max-height:680px; margin:0; padding:48px 20px 20px; overflow:auto; color:#e5e7eb; font-size:13px; line-height:1.65; tab-size:4; }
+    .code-block code { font-family:"Cascadia Code","SFMono-Regular",Consolas,"Liberation Mono",monospace; }
+    .code-label { position:absolute; top:12px; left:18px; z-index:1; max-width:calc(100% - 100px); overflow:hidden; color:#9aa4b2; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+    .copy-code { position:absolute; top:8px; right:9px; z-index:2; padding:4px 9px; border:1px solid #3a4352; border-radius:7px; background:#202633; color:#cbd5e1; font:inherit; font-size:12px; cursor:pointer; }
+    .algorithm { width:fit-content; max-width:100%; margin:18px 0; padding:16px 18px; border:1px solid var(--line); border-radius:14px; background:#fbfcfd; }
+    .doc-warning { margin:22px 0; padding:14px 17px; border:1px solid #efdcae; border-radius:14px; background:#fffaf0; color:#5b4b2f; }
+    .table-frame, .table-scroll { width:100%; max-width:100%; overflow-x:auto; border:1px solid var(--line); border-radius:16px; background:#fff; }
+    .doc-data-table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.45; }
+    .doc-data-table th,.doc-data-table td { padding:11px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    .doc-data-table th { background:var(--soft); color:#566173; font-weight:620; }
+    .shape { white-space:nowrap; }
+    .figure-svg { display:block; width:100%; height:auto; min-width:620px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif; }
+    .diagram-frame { padding:18px; }
+    .svg-title { fill:#2f302d; font-size:16px; font-weight:600; }
+    .svg-label { fill:#2f302d; font-size:14px; }
+    .svg-small { fill:#5c6470; font-size:12px; }
+    .figure-caption { margin-top:9px; color:var(--muted); font-size:14px; line-height:1.48; }
+    .figure-caption strong,.figure-caption span { display:block; }
+    .file-ref { display:inline-block; margin:-8px 0 20px; color:#526d8c; font-size:13px; overflow-wrap:anywhere; }
+    .checklist { list-style:none; padding-left:0 !important; }
+    .checklist li { position:relative; padding-left:25px; }
+    .checklist li::before { content:"✓"; position:absolute; left:0; color:#0f766e; font-weight:700; }
+    .paper-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:26px 0; }
+    .paper-card { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:16px; padding:21px; background:#fff; }
+    .paper-card h3 { margin:10px 0; font-size:19px; line-height:1.45; }
+    .paper-card p { color:#535a66; font-size:14px; flex:1; }
+    .paper-card .card-meta { color:var(--muted); font-size:13px; }
+    .paper-card a.card-link { display:inline-block; margin-top:12px; font-weight:600; }
+    .filter-bar { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; }
+    .filter-bar button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:999px; background:#fff; color:#535a66; cursor:pointer; font:inherit; font-size:13px; }
+    .filter-bar button.active { background:#eeecfc; border-color:#b9b0ef; color:#4636c4; }
+    .print-button { padding:7px 13px; border:1px solid var(--line-strong); border-radius:9px; background:#fff; color:#535a66; font:inherit; font-size:13px; cursor:pointer; }
+    .doc-sources li { margin:10px 0; overflow-wrap:anywhere; }
+    @media(max-width:800px) { .paper-cards { grid-template-columns:1fr; } }
+    @media print { .toc-rail,.copy-code,.filter-bar,.print-button { display:none !important; } .doc-page { width:100%; margin:0; max-width:none; padding:24px; } .code-block,.table-frame,.diagram-frame { break-inside:avoid; } }
+</style></head>
+<body data-toc="cameractrl2 论文详解"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page">
+<header class="doc-title" id="top"><h1>CameraCtrl II：从单段位姿控制到连续动态场景探索</h1><p class="doc-subtitle">轻量输入端注入、动态数据与共享首帧参考的多 clip 生成</p>
+<div class="paper-nav"><a href="index.html">← 返回 12 篇论文索引</a><a href="guide.html">综合技术导读</a></div>
+<div class="paper-meta"><a href="https://arxiv.org/abs/2503.10592">arXiv:2503.10592</a><a href="https://hehao13.github.io/Projects-CameraCtrl-II/">项目页</a><span>骨干：约 3B 内部 DiT</span><span>Plücker 输入端一次注入</span><span>支持多 clip 扩展</span></div>
+<p class="reading-note">本文依据官方 arXiv 论文 <strong>2503.10592v1（2025-03-13）</strong> 及项目页整理；未将项目页或论文补充代码等同于完整官方实现。下文教学代码均为本文依据论文机制编写的<strong>讲解用实现，非官方源码</strong>，未运行训练或生成，也不据此报告实测性能。</p></header><div class="doc-callout"><strong>不要把它理解为 CameraCtrl 的简单换 backbone</strong><p>一代解决在 U-Net 上如何编码射线并在多个 motion module 融合；二代转向 DiT、动态场景和长程探索：输入端一次 patchify 相加、全参数联合训练，以及跨 clip 的干净历史和共享世界参考。</p></div><section class="doc-block" id="challenges"><h2>1. 大相机运动会暴露哪三个问题</h2><ol><li><strong>动态减弱：</strong>静态 RealEstate10K 训练使模型倾向只移动背景，物体运动被冻结。</li><li><strong>视角范围受限：</strong>训练轨迹不足时，大角度旋转/平移会失真或生成不足。</li><li><strong>跨段漂移：</strong>逐段生成若各自重设参考系，长轨迹与场景外观会不一致。</li></ol><p>CameraCtrl II 的结构简化与数据/训练改造是一起设计的，不能只复制输入端相加而忽略其余部分。</p></section><section class="doc-block" id="injection"><h2>2. 轻量相机注入：在 patchify 后一次相加</h2><p>每帧仍构造 6×h×w Plücker 场。视频 VAE 时间压缩 4×、空间压缩 8×，所以每 4 帧采样一次相机位姿，使其与 latent 时间对应；视频与相机分别 patchify 后直接相加。</p><div class="math-scroll"><div class="math">z<sub>feat</sub> = Patchify<sub>video</sub>(z<sub>t</sub>) + Patchify<sub>pose</sub>(P)<span class="equation-number">(1)</span></div></div><p>之后正常进入所有 DiT block，没有 CameraCtrl 一代的多尺度时序 QKV 融合，也不是 AC3D 的前 8 层支路。全部主干参数解冻，使模型能够把几何条件融入整个时空生成过程。</p><div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 300" role="img" aria-label="CameraCtrl II 轻量注入和多 clip 历史"><rect x="15" y="30" width="210" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="120.0" y="62" text-anchor="middle" class="svg-title">视频 noisy latent</text><text x="120.0" y="87" text-anchor="middle" class="svg-small">当前 clip zₜⁱ⁺¹</text><rect x="15" y="184" width="210" height="76" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="120.0" y="216" text-anchor="middle" class="svg-title">上一段 clean token</text><text x="120.0" y="241" text-anchor="middle" class="svg-small">历史 z₀ⁱ</text><rect x="315" y="30" width="230" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="430.0" y="62" text-anchor="middle" class="svg-title">Video patchify</text><text x="430.0" y="87" text-anchor="middle" class="svg-small">与 DiT 输入同构</text><rect x="315" y="184" width="230" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="430.0" y="216" text-anchor="middle" class="svg-title">Plücker patchify</text><text x="430.0" y="241" text-anchor="middle" class="svg-small">每 4 帧采样位姿</text><rect x="645" y="105" width="190" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="740.0" y="137" text-anchor="middle" class="svg-title">输入端相加</text><text x="740.0" y="162" text-anchor="middle" class="svg-small">一次轻量注入</text><rect x="920" y="105" width="145" height="76" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="992.5" y="137" text-anchor="middle" class="svg-title">全参数 DiT</text><text x="992.5" y="162" text-anchor="middle" class="svg-small">动态场景生成</text><path d="M225 68 H315" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M225 222 H315" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M545 68 H595 V128 H645" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M545 222 H595 V158 H645" fill="none" stroke="#788493" stroke-width="1.6"/><path d="M835 143 H920" fill="none" stroke="#788493" stroke-width="1.6"/><text x="538" y="272" text-anchor="middle" class="svg-small">全部 clip 共享最初首帧坐标，而非逐段重新归零</text></svg></div><p class="figure-caption"><strong>图 1：输入端一次融合与跨段历史条件。</strong><span>有/无位姿数据联合训练保留动态；共同世界参考帧降低长时轨迹漂移。</span></p><div class="code-block"><span class="code-label">讲解用实现 · 非官方源码：时间对齐与输入端融合</span><pre><code># pixel_poses: [B,F,4,4]；latent F&#x27;=(F-1)//4+1（首帧独立）。
+indices = torch.arange(0, F, step=4)
+pose_latent_frames = pixel_poses[:, indices]
+plucker = make_plucker(pose_latent_frames, K_pixel[:,indices], H, W)
+video_tokens = video_patchify(noisy_latent)     # [B,N,D]
+pose_tokens = camera_patchify(plucker)          # [B,N,D]
+assert video_tokens.shape == pose_tokens.shape
+joint_tokens = video_tokens + pose_tokens
+output = video_dit(joint_tokens, text_context)
+# 这里一次相加不等于每 4 帧简单丢信息在所有基座上最佳；
+# AC3D 选择因果卷积压缩，是另一种时间对齐方案。</code></pre></div></section><section class="doc-block" id="training"><h2>3. 全参数联合训练与动态数据</h2><p>训练目标仍是条件噪声预测：</p><div class="math-scroll"><div class="math">L = E ||ε − ε̂<sub>θ</sub>(z<sub>t</sub>,c,s,t)||<sub>2</sub><sup>2</sup><span class="equation-number">(2)</span></div></div><p>有相机标注和无标注数据按 4:1 联合训练，无标注数据使用全零 Plücker，既利用更大视频分布也支持 camera CFG。与一代只训练相机支路不同，二代全部主干可训练。</p><p>RealCam 使用 VGGSfM 标注动态视频，并结合 metric depth / RANSAC 将平移转换到米制尺度，同时平衡轨迹分布。阶段一 192×320 约 100K steps；阶段二 384×640 约 50K steps，同时学习多 clip 扩展。后续再做 progressive distillation 和可选一步蒸馏。</p></section><section class="doc-block" id="sequential"><h2>4. 多 clip：历史条件与共享世界参考</h2><p>生成第 i+1 段时，将上一段 clean token z₀ⁱ 与当前 noisy token zₜⁱ⁺¹ 拼接，二元 mask 标明历史与待去噪区域；损失只计算当前段。</p><div class="math-scroll"><div class="math">Input = [z<sub>0</sub><sup>i</sup> ; z<sub>t</sub><sup>i+1</sup>]，&nbsp; Loss = MSE(ε̂<sup>i+1</sup>, ε<sup>i+1</sup>)<span class="equation-number">(3)</span></div></div><p>所有 clip 的相机轨迹都相对<strong>最初首帧</strong>。如果每段都以自己的第一帧重新归零，同一个世界坐标会在段边界变化；共享参考避免这一点，但并不能完全消除视觉遗忘。与 GEN3C 的外部 3D cache 相比，这里历史主要以 clean token 保留。</p><div class="code-block"><span class="code-label">讲解用伪代码 · 非官方源码：连续片段生成</span><pre><code>reference_w2c = all_camera_w2c[0]
+relative_c2w = reference_w2c.inverse() @ all_camera_c2w
+history = initial_condition_latent
+chunks = []
+for current_camera in split_latent_aligned(relative_c2w, chunk_size=31):
+    noisy = torch.randn_like(current_clean_shape)
+    joint = torch.cat([history, noisy], dim=time_dim)
+    condition_mask = make_mask(history_frames=history.shape[time_dim])
+    generated = diffusion_sample(joint, condition_mask, current_camera)
+    chunks.append(generated)
+    history = generated.detach()       # 下一段的 clean 历史
+# 所有 current_camera 保持最初世界参考，不在循环内重新归零。</code></pre></div></section><section class="doc-block" id="comparison"><h2>5. 与一代和 AC3D 的结构差异</h2><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>维度</th><th>CameraCtrl</th><th>CameraCtrl II</th><th>AC3D</th></tr></thead><tbody><tr><td>骨干</td><td>AnimateDiff U-Net</td><td>约 3B DiT</td><td>11.5B VDiT / CogVideoX</td></tr><tr><td>位姿</td><td>逐帧多尺度 Plücker</td><td>每 4 帧采样 patch token</td><td>因果时间编码 Plücker</td></tr><tr><td>注入</td><td>多个 motion module QKV</td><td>输入端一次相加</td><td>前 8/32 块反馈</td></tr><tr><td>训练</td><td>主要训练相机支路</td><td>全参数联合训练</td><td>冻结主干与轻量支路</td></tr><tr><td>长程</td><td>MultiDiffusion 接口/单段为主</td><td>clean history + 共享首帧</td><td>本文重点非多段记忆</td></tr><tr><td>动态</td><td>静态数据偏差明显</td><td>RealCam 动态 + 联合训练</td><td>静止相机动态数据去偏</td></tr></tbody></table></div></section><section class="doc-block" id="limitations"><h2>6. 局限与实现边界</h2><p>没有显式持久点云或极线约束，因此长时一致性依靠历史 token、共享坐标与训练，而不是严格 3D 保证。全参数训练成本比即插即用 adapter 高，模型和 RealCam 数据处理也不能从一代 main 仓库直接获得。</p><p>每 4 帧采样位姿可能与快速变化的相机运动不完全对齐；大角度和高速轨迹需要额外评估。本文不将论文项目页误写为已核验完整开源实现。</p></section><section class="doc-block" id="checklist"><h2>7. 复现重点</h2><ul class="checklist"><li>核对 VAE 首帧独立与后续四帧压缩对应哪些相机。</li><li>无标注数据的全零位姿必须和推理 null camera 语义一致。</li><li>历史 clean token 不加与当前段相同的噪声。</li><li>跨段轨迹使用最初参考系，禁止逐段重新归零。</li><li>分别评估单段动态、长程相机精度和重访一致性。</li></ul></section><section class="doc-block" id="worked-example"><h2>附录 A：连续轨迹与多 clip 的具体形状约定</h2><p>假设输入 121 个像素帧，首帧独立、其后每 4 帧形成一个 latent 时刻，则得到 31 个 latent 帧。相机也应取 0,4,…,120 共 31 个，而不是对位姿张量做任意线性插值到 31 帧；后者会改变运动速度和时间对应。</p><p>生成下一段时，上一段输出是 clean latent，不参与当前 timestep 加噪；当前段则从当前高斯状态去噪。二元 mask 让模型和历史都清楚哪些 token 已确定。训练 loss 若把历史段也算入，会额外优化已给真实/生成条件，而不是专注当前轨迹预测。</p><p>相机 patchify 与视频 patchify 的输出 token 数必须完全相同，才能逐 token 相加。空间分辨率变化时 K 和 Plücker 图需同步调整；使用全零 Plücker 的无位姿数据与“首帧相对静止轨迹”是否同义，应按训练定义检查，不可仅凭张量都是零推断。</p></section><section class="doc-block" id="source-code-walkthrough"><h2>附录 B：模块级代码逐段阅读</h2><p>下面的 2 段代码将该论文的条件表示、张量变换与融合接口连成可读的 PyTorch 结构。它们是<strong>依据论文机制编写的教学实现，非官方源码</strong>；目的是把每个模块的输入、输出和训练位置说清楚，不宣称与原模型逐行等价。实际模型仍需要相应的 VAE、位置编码、mask、scheduler、预训练权重和数据处理。</p></section><section class="doc-block" id="implementation-code-1"><h2>代码 1：PluckerPatchInjection</h2><div class="code-block"><span class="code-label">PluckerPatchInjection · 输入端一次融合（讲解用实现，非官方源码）</span><pre><code>class PluckerPatchInjection(nn.Module):
+    def __init__(self, video_channels, patch_hw, dim):
+        super().__init__()
+        self.video_patch = nn.Conv3d(video_channels,dim,
+            kernel_size=(1,*patch_hw),stride=(1,*patch_hw))
+        self.camera_patch = nn.Conv3d(6,dim,
+            kernel_size=(1,*patch_hw),stride=(1,*patch_hw))
+
+    def forward(self, noisy_video, plucker_latent_frames):
+        # noisy_video: [B,C,F&#x27;,h,w]
+        # plucker_latent_frames: [B,6,F&#x27;,H,W]，与 VAE 时间网格已对齐。
+        v = self.video_patch(noisy_video).flatten(2).transpose(1,2)
+        p = self.camera_patch(plucker_latent_frames).flatten(2).transpose(1,2)
+        assert v.shape == p.shape
+        return v+p                            # 后续正常进入全部 DiT
+# 论文描述为 patchify 后相加；具体卷积 vs  unfold 属教学实现选择。</code></pre></div></section><section class="doc-block" id="implementation-code-2"><h2>代码 2：共享参考系的多 clip 训练/推理（讲解用实现，非官方源码）</h2><div class="code-block"><span class="code-label">共享参考系的多 clip 训练/推理（讲解用实现，非官方源码）</span><pre><code># 整个长视频只相对最初首帧一次。
+world_to_first = camera_w2c[0]
+relative_c2w = world_to_first @ camera_c2w
+plucker = make_plucker(relative_c2w,K_pixel,H,W)
+plucker = plucker[:,::4]                     # 示例：与 4× VAE 对齐
+
+history = initial_clean_tokens
+for clip_index in range(num_clips):
+    current_noisy = torch.randn_like(current_clean_shape)
+    joint = torch.cat([history,current_noisy],dim=1)
+    mask = torch.cat([torch.ones(history.shape[1]),
+                      torch.zeros(current_noisy.shape[1])],dim=0)
+    current = generate_current_clip(
+        joint,mask,plucker_for_clip(clip_index),text)
+    # 仅当前段去噪、计算 loss；历史保持 clean。
+    history = current.detach()
+    yield decode_current(current)
+# 禁止在循环里把 current 第一帧重新设为单位相机。</code></pre></div></section><section class="doc-block" id="tensor-contract"><h2>附录 C：端到端张量与条件合同</h2><p>下表把整篇论文从用户输入到输出的计算路径放在一处。形状用于说明信息怎样对齐；若论文未公开完整源码，它是依据论文结构的实现参考，而不是对未公开代码的逐行声明。</p><div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>数据 / 形状</th><th>必须满足的约束</th></tr></thead><tbody><tr><td>注入</td><td>两种 patchify 后相加</td><td>只在输入端一次</td></tr><tr><td>训练</td><td>全主干解冻；有/无位姿 4:1</td><td>无位姿数据用零 Plücker</td></tr><tr><td>多 clip</td><td>历史 clean token + 当前 noisy token</td><td>mask 区分；只算当前段 loss</td></tr><tr><td>坐标</td><td>所有段相对最初首帧</td><td>避免逐段世界参考漂移</td></tr><tr><td>加速</td><td>progressive / 可选一步蒸馏</td><td>论文训练后处理</td></tr></tbody></table></div></section>
+<section class="doc-block" id="algorithm-training"><h2>附录 D：训练算法与梯度路径</h2><p>阶段一在 192×320 训练约 100K steps，阶段二 384×640 约 50K steps并学习多 clip 扩展。RealCam 用 VGGSfM 和 metric-depth/RANSAC 得到米制轨迹并平衡分布。有标注和无标注视频按 4:1 联合训练，全部主干参数更新；这与一代只训练相机模块不同。</p><p><strong>读代码时的关注点：</strong>代码 1 用 3D patch 卷积说明视频/相机 token 如何得到完全相同的形状再相加；代码 2 展示一次共享首帧相对化、多段 clean/noisy 拼接和只更新当前段。它是教学实现，不包含内部 3B DiT 与 RealCam 数据处理代码。</p></section>
+<section class="doc-block" id="algorithm-inference"><h2>附录 E：显式位姿推理流程</h2><p>将上一段 clean token 与当前 noisy token 拼接，二元 mask 标明历史与待生成区域。整段相机共享最初首帧参考，只在输入端与视频 patch 相加。生成后当前段成为下一段历史。没有外部 3D cache，所以回看一致性仍依赖历史 token 与学习到的世界先验。</p><p>推理前要明确：位姿是 c2w 还是 w2c、是否首帧相对、K 是否像素单位、帧率是否经过 VAE 压缩，以及 unconditional 分支采用哪一种空相机。只把这些数值变成合法 shape 不足以保证几何正确。</p></section>
+<section class="doc-block" id="implementation-tests"><h2>附录 F：代码级验证清单</h2><ul class="checklist"><li>121 像素帧对应 31 个 latent 时刻，相机应正确取 0,4,…,120。</li><li>历史 clean token 不能加与当前段同样的噪声。</li><li>每段开始时不要再次把相机归零。</li><li>分别评估动态幅度、轨迹误差与重访场景一致性。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与进一步核对</h2><ul class="source-links"><li><a href="https://arxiv.org/abs/2503.10592">arXiv:2503.10592：论文与版本记录</a>；<a href="https://arxiv.org/html/2503.10592">论文 HTML 全文</a>。</li><li><a href="https://hehao13.github.io/Projects-CameraCtrl-II/">作者项目页：方法演示与公开资源</a>。</li></ul><p class="source-scope">本文写作时核对了本地保存的论文原文。没有可确认的官方完整实现，因此不虚构仓库文件、参数默认值或训练日志；如需生产使用，请按项目页的最新发布说明复核。</p></section><section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="index.html">返回全部论文索引</a><a href="trajectorycrafter.html">← TrajectoryCrafter：动态点云与双流条件扩散</a><a href="recammaster.html">下一篇：ReCamMaster：目标位姿与源视频时空 token 重渲染 →</a><a href="guide.html">综合技术导读</a></div></section><footer class="publication-footer" style="margin:36px 0;padding-top:20px;border-top:1px solid #e6e8ec;color:#6b7280;font-size:13px"><a href="../index.html">论文精读首页</a> · <a href="../categories/camera-pose.html">相机位姿控制分类</a> · <a href="index.html">本专题索引</a><br>论文与代码版权归原作者所有；本文为技术阅读笔记，教学实现不等同于作者官方代码。</footer></main>
+  <script>
+  (() => {
+    function setupToc() {
+      const nav = document.querySelector('.toc-rail'); if (!nav) return;
+      const targets = [...document.querySelectorAll('section[id]')].filter(x => !x.classList.contains('no-toc') && x.querySelector('h2'));
+      const title = document.createElement('div'); title.className='toc-title'; title.textContent=document.body.dataset.toc || '论文技术解读';
+      const links = targets.map(t => { const a=document.createElement('a'); a.href='#'+t.id; a.dataset.target=t.id; a.textContent=t.querySelector('h2').textContent.trim(); return a; });
+      nav.replaceChildren(title,...links);
+      const setActive = id => links.forEach(a => a.classList.toggle('active',a.dataset.target===id));
+      if (targets[0]) setActive(targets[0].id);
+      if ('IntersectionObserver' in window) {
+        const obs = new IntersectionObserver(es => { const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0]; if(v) setActive(v.target.id); },{rootMargin:'-12% 0px -68% 0px',threshold:.01});
+        targets.forEach(t=>obs.observe(t));
+      }
+    }
+    function setupCopy() {
+      const fallback = text => { const a=document.createElement('textarea'); a.value=text; a.style.position='fixed'; a.style.opacity='0'; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); };
+      document.querySelectorAll('.code-block').forEach(b => {
+        const code=b.querySelector('pre code'); if(!code) return;
+        const btn=document.createElement('button'); btn.type='button'; btn.className='copy-code'; btn.textContent='复制'; b.appendChild(btn);
+        btn.addEventListener('click',async()=>{ try { if(navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(code.innerText); else fallback(code.innerText); btn.textContent='已复制'; } catch(_){ try{fallback(code.innerText);btn.textContent='已复制';}catch(_){btn.textContent='复制失败';} } setTimeout(()=>btn.textContent='复制',1600); });
+      });
+    }
+    function setupFilters() {
+      const buttons=[...document.querySelectorAll('[data-filter]')];
+      const cards=[...document.querySelectorAll('[data-category]')];
+      const count=document.querySelector('[data-count]');
+      buttons.forEach(b=>b.addEventListener('click',()=>{
+        buttons.forEach(x=>x.classList.toggle('active',x===b));
+        let n=0; cards.forEach(c=>{const show=b.dataset.filter==='all'||c.dataset.category===b.dataset.filter;c.hidden=!show;if(show)n++;});
+        if(count)count.textContent=`显示 ${n} / ${cards.length} 篇`;
+      }));
+    }
+    document.addEventListener('DOMContentLoaded',()=>{ setupToc();setupCopy();setupFilters();document.querySelectorAll('[data-print]').forEach(b=>b.addEventListener('click',()=>window.print())); });
+  })();
+  </script>
+</body></html>
