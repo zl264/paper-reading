@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MAR：无向量量化的连续自回归生成｜论文深度精读</title><style>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="MAR：连续 token 与逐 token 扩散生成：原理、详细结构、训练推理与代码精读。"><title>MAR：连续 token 与逐 token 扩散生成｜深度精读</title><style>
 :root {
   --page: #ffffff;
   --ink: #2f302d;
@@ -712,22 +712,329 @@ a:hover {
       .code-block { break-inside: avoid; }
       .math-scroll { overflow: visible; }
     }
-   .doc-page{max-width:1520px}.doc-block h3{margin:28px 0 10px;font-size:19px}.reading-note{color:var(--muted);font-size:14px}.lead{font-size:17px}.paper-nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:13px}.math-scroll{width:fit-content;max-width:100%;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;margin:14px 0}.math{padding:13px 16px;width:max-content;font-family:"Cambria Math",Cambria,serif;font-size:17px;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0;background:#151922;border-radius:14px;overflow:hidden}.code-block pre{padding:47px 20px 20px;overflow:auto;max-width:100%;color:#e5e7eb;font-size:13px;line-height:1.65}.code-label{position:absolute;top:12px;left:18px;color:#9aa4b2;font-size:12px}.copy-code{position:absolute;right:9px;top:8px;background:#202633;color:#cbd5e1;border:1px solid #3a4352;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}.table-frame{width:100%;overflow:auto;border:1px solid var(--line);border-radius:14px}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px}.doc-data-table th,.doc-data-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.doc-data-table th{background:var(--soft)}.doc-warning{padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;margin:20px 0}.diagram-frame{padding:18px;overflow:auto;border:1px solid var(--line);border-radius:14px}.figure-svg{width:100%;min-width:650px;height:auto}.svg-title{font-size:16px;font-weight:600;fill:#2f302d}.svg-small{font-size:12px;fill:#5c6470}.figure-caption{color:var(--muted);font-size:14px}.file-ref{font-size:13px;color:#526d8c;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0}.checklist li{padding-left:23px;position:relative;margin:8px 0}.checklist li:before{content:'✓';position:absolute;left:0;color:#0f766e}@media print{.toc-rail,.copy-code{display:none}.doc-page{margin:0;width:100%;max-width:none}}</style></head><body><nav class="toc-rail"></nav><main class="doc-page"><header class="doc-title" id="top"><h1>MAR：无向量量化的连续自回归生成</h1><p class="doc-subtitle">MAR 用连续 token 与扩散头取代离散码本，讨论自回归与扩散过程如何结合。</p><p class="reading-note">本页依据 <a href="https://arxiv.org/abs/2406.11838">arXiv:2406.11838</a> 原文与公开实现资料整理。代码块为解释论文机制的教学实现/伪代码，未标为作者官方源码；未执行模型训练或生成。</p><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a></div></header><section class="doc-block" id="problem"><h2>1. 论文要解决的问题</h2><p>MAR 用连续 token 与扩散头取代离散码本，讨论自回归与扩散过程如何结合。</p><p>MAR 的 backbone 给出每位置条件 z_i，扩散头可以在连续空间建模多模态分布。没有 VQ 量化瓶颈不等于没有采样成本，因为每个 token 仍需多次去噪。</p><p>阅读这篇工作时，应先分清它改变的是表示、训练目标、网络结构还是推理算法；同一个名称常被用于不同实现，不能把后续模型的新增能力自动归入原论文。</p></section><section class="doc-block" id="principle"><h2>2. 核心原理与数学表达</h2><p>MAR 说明自回归并不必然需要离散码本：连续 token 由 backbone 预测条件表示，再用小型 diffusion head 对每个位置建模。损失可并行覆盖所有位置，而采样仍是每位置去噪。</p><div class="math-scroll"><div class="math">L_i = E_{ε,t}||ε−ε_θ(x_t^i,t,z_i)||²<span class="equation-number">(1)</span></div></div><p>公式中的每个量都应对应输入、网络状态或监督信号。实现时要额外核对时间索引、batch 维、损失 reduction 与条件 dropout，否则即使公式看起来一致，训练语义也可能不同。</p></section><section class="doc-block" id="structure"><h2>3. 网络结构与数据流</h2><p>MAR 的 backbone 给出每位置条件 z_i，扩散头可以在连续空间建模多模态分布。没有 VQ 量化瓶颈不等于没有采样成本，因为每个 token 仍需多次去噪。</p><div class="diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 260" role="img" aria-label="MAR：无向量量化的连续自回归生成 的输入、模型与输出数据流"><rect x="25" y="75" width="235" height="85" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="142" y="111" text-anchor="middle" class="svg-title">输入 / 条件</text><text x="142" y="137" text-anchor="middle" class="svg-small">数据、状态或控制信号</text><path d="M260 117 H370" stroke="#788493" fill="none"/><rect x="375" y="75" width="260" height="85" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="505" y="111" text-anchor="middle" class="svg-title">核心模型 / 条件融合</text><text x="505" y="137" text-anchor="middle" class="svg-small">MAR 的关键变换</text><path d="M635 117 H745" stroke="#788493" fill="none"/><rect x="750" y="75" width="225" height="85" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="862" y="111" text-anchor="middle" class="svg-title">训练目标 / 生成输出</text><text x="862" y="137" text-anchor="middle" class="svg-small">按论文定义验证</text></svg></div><p class="figure-caption">图 1：本工作的计算骨架。具体通道、patch、码本和采样循环需结合论文及代码实现。</p></section><section class="doc-block" id="code"><h2>4. 具体代码：核心模块与损失</h2><p>以下代码把论文的核心计算写成可读的 PyTorch 结构，重点是输入、输出、监督路径与梯度位置。它不是完整训练框架，也不冒充作者仓库实现。</p><div class="code-block"><span class="code-label">教学实现 / 伪代码 · 非官方源码</span><pre><code># 教学实现 · 非官方源码：连续 token 的扩散头
-z = autoregressive_backbone(previous_continuous_tokens)
-for i in range(num_tokens):
-    x = clean_tokens[:,i]
-    noise = torch.randn_like(x)
-    t = sample_diffusion_time(x.shape[0])
-    xt = interpolant(x,noise,t)
-    pred = diffusion_head(xt,t,z[:,i])
-    loss += F.mse_loss(pred,noise)
-# 无需 VQ codebook，也没有离散 token 的交叉熵。</code></pre></div></section><section class="doc-block" id="training"><h2>5. 训练流程与推理步骤</h2><ol><li>准备与原任务一致的数据、条件和预处理，固定坐标/时间/帧序约定。</li><li>按论文选择训练阶段、损失、条件 dropout 与可训练参数。</li><li>用小 batch 验证前向 shape、loss 有限性和梯度是否进入新增模块。</li><li>推理从正确先验/初始状态开始，按对应采样器更新，不把训练捷径直接搬到推理。</li><li>分别评估质量、控制或效率指标，记录采样步数、上下文长度、batch 和硬件。</li></ol></section><div class="code-block"><span class="code-label">训练/推理诊断 · 教学检查代码（非官方源码）</span><pre><code># 每个实现都应先通过这类基础诊断，再讨论模型效果。
-with torch.autograd.set_detect_anomaly(True):
-    output = model(sample_input,condition)
-    loss = objective(output,target)
-    assert torch.isfinite(loss)
-    loss.backward()
-for name,param in model.named_parameters():
-    if param.requires_grad:
-        assert param.grad is not None, f&quot;no gradient: {name}&quot;
-# 采样时确认：time direction、guidance、mask、dtype、设备与 reduction。</code></pre></div></section><section class="doc-block" id="limitations"><h2>6. 局限与易混淆点</h2><p>本页的教学代码不能替代完整官方训练配置，尤其是数据治理、分布式训练、权重、EMA、数值稳定性和评估协议。论文声明的效果来自其特定数据与实验条件，不应当作本地实测。</p><p>如果原文没有公开完整实现，应该将“论文机制”与“可复现源码”分开描述；若有后续版本，也要核对原始论文与当前代码仓库是否仍相同。</p></section><section class="doc-block" id="reproduce"><h2>7. 实现与复现清单</h2><ul class="checklist"><li>写清输入输出、张量维度、概率分布/目标和时间索引。</li><li>对核心数学操作写独立单元测试，不依赖生成结果“看起来正常”。</li><li>检查冻结/训练参数列表、条件 dropout 与空条件语义。</li><li>分离质量、控制精度和推理成本指标。</li><li>保留原文、代码版本、数据预处理和训练超参数。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与核对范围</h2><ul><li><a href="https://arxiv.org/abs/2406.11838">论文原文与版本记录</a></li><li><a href="https://arxiv.org/html/2406.11838">论文 HTML 全文</a>：公式、结构与实验细节。</li></ul><p>本页为基于论文的阅读笔记，教学代码不隶属于论文作者。当前页面未声称核验完整官方训练源码，后续可继续扩展为逐文件源码导读。</p></section><section class="doc-block"><h2>返回分类</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">生成模型与基础架构</a></div></section></main><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.querySelector('.toc-rail'),ts=[...document.querySelectorAll('section[id]')].filter(x=>x.querySelector('h2'));if(nav){const title=document.createElement('div');title.className='toc-title';title.textContent='代表论文深度精读';const links=ts.map(t=>{let a=document.createElement('a');a.href='#'+t.id;a.textContent=t.querySelector('h2').textContent;a.dataset.target=t.id;return a});nav.replaceChildren(title,...links);const obs=new IntersectionObserver(es=>{let v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)links.forEach(a=>a.classList.toggle('active',a.dataset.target===v.target.id))},{rootMargin:'-12% 0px -68% 0px'});ts.forEach(t=>obs.observe(t))}document.querySelectorAll('.code-block').forEach(b=>{let c=b.querySelector('code'),btn=document.createElement('button');btn.textContent='复制';btn.className='copy-code';b.appendChild(btn);btn.onclick=async()=>{try{await navigator.clipboard.writeText(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='请手动复制'}setTimeout(()=>btn.textContent='复制',1600);}});});</script></body></html>
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="mar 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>MAR：不预测“词表类别”，而为每个连续 token 学一个分布</h1>
+  <p class="doc-subtitle">Autoregressive Image Generation without Vector Quantization：从 per-token Diffusion Loss，到双向 MAE 编码器、随机顺序 mask、余弦分组采样与官方 PyTorch 源码。</p>
+  <p class="reading-note">本文逐节阅读 Li、Tian、Li、Deng、He 的 <a href="https://arxiv.org/abs/2406.11838">Autoregressive Image Generation without Vector Quantization</a>，并静态核对官方 <a href="https://github.com/LTH14/mar">LTH14/mar</a> 的 MAR、DiffLoss、训练与评估实现。本文未运行模型训练或推理；论文与 README 中的性能/资源声明不写作本地实测。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/generative-foundations.html">所属分类：生成模型与基础架构</a></div>
+</header>
+
+<section class="doc-block" id="intuition">
+  <h2>1. 小白直觉：不是先选定一个词，而是逐渐“长成”一个向量</h2>
+  <p>VQ 类生成模型先把图像编码为离散码本索引，再像语言模型一样预测下一个词。MAR 换了一个问题：如果 latent token 是连续向量，为什么还要先把它塞进有限词表？</p>
+  <p>它的答案是：自回归真正需要的是“根据过去内容，预测下一个 token 的<strong>概率分布</strong>”，并不强制这个分布是离散的。对每个连续 token，可以用一个小扩散模型从高斯噪声逐渐生成它，而不是用 softmax 在 K 个类别中做选择。</p>
+  <p>所以 MAR 的两层结构非常清楚：大的 Transformer 负责根据已知 token 生成条件向量 z，小的 DiffLoss MLP 负责在这个 z 的指导下生成连续 token。</p>
+  <div class="doc-note"><p><strong>一句话区分：</strong>VQ 路线预测“码本第几个词”；MAR 预测“在这个上下文条件下，连续向量可能长什么样”。后者不再受码本量化误差的直接限制，但每个 token 的采样仍需要扩散步骤。</p></div>
+</section>
+
+<section class="doc-block" id="formulation">
+  <h2>2. 概率分解：从下一 token 到下一组 token</h2>
+  <p>普通自回归模型把 token 序列写成：</p>
+  <div class="math-scroll"><div class="math">p(x¹,…,xⁿ)=∏<sub>i=1</sub><sup>n</sup> p(x<sup>i</sup> | x¹,…,x<sup>i−1</sup>)<span class="equation-number">(1)</span></div></div>
+  <p>对 MAR，x<sup>i</sup> 可以是连续值。网络先根据过去 token 得到条件向量 z<sup>i</sup>=f(x¹,…,x<sup>i−1</sup>)，再由扩散过程表示 p(x<sup>i</sup>|z<sup>i</sup>)。梯度会从扩散损失回传到 z，从而更新 Transformer。</p>
+  <p> masked autoregressive 进一步把一次预测推广为“下一组 token”：每一步预测一个子集 X^k，而不是只能选一个 token：</p>
+  <div class="math-scroll"><div class="math">p(X¹,…,X<sup>K</sup>)=∏<sub>k</sub> p(X<sup>k</sup> | X¹,…,X<sup>k−1</sup>)<span class="equation-number">(2)</span></div></div>
+  <p>这些子集按随机顺序覆盖全部 token。它与 MaskGIT 有联系，但 MAR 强调随机顺序与对 token 概率分布的温度采样，而不是只随机化位置调度。</p>
+</section>
+
+<section class="doc-block" id="diffusion-loss">
+  <h2>3. Diffusion Loss：连续 token 的训练目标是什么</h2>
+  <p>对每个 token 的真实连续值 x，随机选扩散时间 t，加入高斯噪声 ε，得到带噪 token x_t。条件 MLP 接收 x_t、t 和 Transformer 条件 z，预测噪声：</p>
+  <div class="math-scroll"><div class="math">L = E<sub>x,z,t,ε</sub> || ε − ε<sub>θ</sub>(x<sub>t</sub>,t,z) ||²<span class="equation-number">(3)</span></div></div>
+  <p>这不是对整张图片做一次扩散，而是对<strong>每个 latent token</strong>建立条件扩散分布。多个 token 可在一个 batch 中并行计算训练损失，但推理时每组 token 仍需经过若干扩散采样步骤。</p>
+  <p>官方 <code>DiffLoss.forward</code> 使用 1000 步 cosine 训练扩散过程，调用 <code>training_losses</code> 得到 loss，再按 token mask 做加权平均；生成时则使用较少的采样步数（默认 100）。可选的 VLB 输出也与双头通道有关。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · models/diffloss.py：训练损失</span><pre><code>def forward(self,target,z,mask=None):
+    t = torch.randint(0,self.train_diffusion.num_timesteps,
+                      (target.shape[0],),device=target.device)
+    model_kwargs = dict(c=z)
+    loss_dict = self.train_diffusion.training_losses(
+        self.net,target,t,model_kwargs)
+    loss = loss_dict["loss"]
+    if mask is not None:
+        loss = (loss*mask).sum()/mask.sum()
+    return loss.mean()</code></pre></div>
+  <p>这里 mask 用于只计算未知/待预测 token；如果把已知 token 也纳入损失，训练任务就不再对应 masked generation。</p>
+</section>
+
+<section class="doc-block" id="tokenizer">
+  <h2>4. 连续 tokenizer 与数据预处理：KL-16 到底提供什么</h2>
+  <p>MAR 使用 LDM 的 KL-16 连续 autoencoder，而不是 VQ-16 的离散码本。256×256 图像经 stride=16 压缩为 16×16 latent 网格，patch_size=1 时得到 256 个 token，每个 token 包含 vae_embed_dim=16 个连续值。</p>
+  <p>官方训练循环中，VAE 编码得到对角高斯后验，采样 latent 后乘 0.2325 做尺度标准化。这个系数是当前官方实现的预处理约定；更换 tokenizer 时必须重新核对，而不是把所有 VAE latent 都视为同一尺度。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · engine_mar.py：VAE latent 与标准化</span><pre><code>with torch.no_grad():
+    if args.use_cached:
+        moments = samples
+        posterior = DiagonalGaussianDistribution(moments)
+    else:
+        posterior = vae.encode(samples)
+    # normalize the std of latent to be 1 for this tokenizer
+    x = posterior.sample().mul_(0.2325)
+with torch.cuda.amp.autocast():
+    loss = model(x,labels)</code></pre></div>
+  <p>官方 README 支持预计算 cached VAE latents 以减少重复编码开销。缓存的是相同预处理后的 latent/moments，不应混入不同 tokenizer 或图像增强产生的数据。</p>
+</section>
+
+<section class="doc-block" id="mar-architecture">
+  <h2>5. 详细网络：MAE 式编码器—解码器与条件注入</h2>
+  <p>MAR 不是只能使用 causal GPT attention。官方默认 MAR 使用 MAE 式双向编码器与解码器：已知 token 互相可见，未知 token 的位置用 mask token 与位置编码填充，解码器输出每个待预测位置的 z。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>组件</th><th>输入</th><th>作用与形状</th></tr></thead><tbody>
+    <tr><td>patchify</td><td>连续 VAE latent</td><td>[B,16,16,16] → [B,256,16]</td></tr>
+    <tr><td>z_proj</td><td>token 向量</td><td>投到 encoder_embed_dim</td></tr>
+    <tr><td>class/fake latent buffer</td><td>类别标签或无条件 fake latent</td><td>64 个 buffer token 稳定条件编码</td></tr>
+    <tr><td>encoder</td><td>已知 token + 位置编码</td><td>双向 attention，只编码未 mask 位置</td></tr>
+    <tr><td>decoder</td><td>已知特征 + mask token + 位置编码</td><td>恢复所有待预测位置的 z</td></tr>
+    <tr><td>DiffLoss</td><td>z、目标 token、mask</td><td>逐 token 条件扩散损失</td></tr>
+  </tbody></table></div>
+  <p>以官方 MAR-L 为例，encoder 和 decoder 各 16 个 block、宽度 1024、16 头，总计约 479M 参数（README 发布模型）；DiffLoss 的 MLP 深度/宽度可在训练配置中独立调节。</p>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 490" role="img" aria-label="MAR 的连续 tokenizer、双向编码器、随机 mask 与逐 token 扩散头">
+  <text x="24" y="25" class="svg-title">连续 latent 与 masked autoregressive 主干</text>
+  <rect x="20" y="48" width="174" height="76" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="107" y="77" text-anchor="middle" class="svg-title">图像 → KL-16 VAE</text><text x="107" y="102" text-anchor="middle" class="svg-small">连续 latent，非 VQ</text>
+  <path d="M194 86 H245" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="250" y="48" width="200" height="76" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="350" y="75" text-anchor="middle" class="svg-title">随机顺序 mask</text><text x="350" y="100" text-anchor="middle" class="svg-small">已知 / 未知 token</text>
+  <path d="M450 86 H501" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="506" y="48" width="214" height="76" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="613" y="75" text-anchor="middle" class="svg-title">双向 MAE 编解码器</text><text x="613" y="100" text-anchor="middle" class="svg-small">已知内容 + mask 位置</text>
+  <path d="M720 86 H771" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="776" y="48" width="280" height="76" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="916" y="75" text-anchor="middle" class="svg-title">条件向量 z</text><text x="916" y="100" text-anchor="middle" class="svg-small">每个待预测位置一条</text>
+  <text x="24" y="199" class="svg-title">逐 token 的 Diffusion Loss / 采样</text>
+  <rect x="30" y="228" width="204" height="77" rx="12" fill="#fff5ed" stroke="#f47230"/><text x="132" y="258" text-anchor="middle" class="svg-title">带噪 token x_t</text><text x="132" y="283" text-anchor="middle" class="svg-small">时间 t + 条件 z</text>
+  <path d="M234 266 H285" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="290" y="228" width="218" height="77" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="399" y="258" text-anchor="middle" class="svg-title">SimpleMLPAdaLN</text><text x="399" y="283" text-anchor="middle" class="svg-small">shift / scale / gate</text>
+  <path d="M508 266 H559" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="564" y="228" width="230" height="77" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="679" y="258" text-anchor="middle" class="svg-title">预测噪声 / 采样 token</text><text x="679" y="283" text-anchor="middle" class="svg-small">条件 CFG + 温度</text>
+  <path d="M794 266 H845" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="850" y="228" width="200" height="77" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="950" y="258" text-anchor="middle" class="svg-title">写入当前分组</text><text x="950" y="283" text-anchor="middle" class="svg-small">余弦减少 mask</text>
+  <path d="M916 124 V195 H399 V228" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="190" y="370" width="700" height="75" rx="12" fill="#f7f8fa" stroke="#aab4c0"/><text x="540" y="398" text-anchor="middle" class="svg-title">不是预测码本类别，而是学习每个连续 token 的条件分布</text><text x="540" y="423" text-anchor="middle" class="svg-small">MAR 外层逐组生成；DiffLoss 内层逐步去噪；最后 VAE 解码</text>
+</svg></div>
+</section>
+
+<section class="doc-block" id="masking">
+  <h2>6. 随机顺序与 mask：代码到底怎样选择未知 token</h2>
+  <p>每个样本有自己的随机排列 order。训练时 mask ratio 从偏高 masking 的截断分布采样，默认最少约 0.7；把排列前 num_masked_tokens 个位置设为未知。编码器只保留已知 token，解码器再用 mask token 补齐未知位置。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · models/mar.py：随机顺序与 mask</span><pre><code>def sample_orders(self,bsz):
+    orders=[]
+    for _ in range(bsz):
+        order=np.array(list(range(self.seq_len)))
+        np.random.shuffle(order)
+        orders.append(order)
+    return torch.Tensor(np.array(orders)).cuda().long()
+
+def random_masking(self,x,orders):
+    mask_rate=self.mask_ratio_generator.rvs(1)[0]
+    num_masked_tokens=int(np.ceil(x.shape[1]*mask_rate))
+    mask=torch.zeros(x.shape[0],x.shape[1],device=x.device)
+    return torch.scatter(mask,dim=-1,
+        index=orders[:,:num_masked_tokens],
+        src=torch.ones(x.shape[0],x.shape[1],device=x.device))</code></pre></div>
+  <p>解码器将 encoder 输出填回已知位置、mask token 填入未知位置，再加 decoder 位置编码和 diffusion 专用位置编码。这样 z 不仅知道“内容是什么”，还知道“需要预测哪个位置”。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · forward_mae_decoder 的位置恢复</span><pre><code>x = self.decoder_embed(x)
+mask_tokens = self.mask_token.repeat(mask_with_buffer.shape[0],
+                                     mask_with_buffer.shape[1],1).to(x.dtype)
+x_after_pad = mask_tokens.clone()
+x_after_pad[(1-mask_with_buffer).nonzero(as_tuple=True)] = \
+    x.reshape(x.shape[0]*x.shape[1],x.shape[2])
+x = x_after_pad + self.decoder_pos_embed_learned
+for block in self.decoder_blocks:
+    x = block(x)
+x = self.decoder_norm(x)
+x = x[:,self.buffer_size:] + self.diffusion_pos_embed_learned</code></pre></div>
+</section>
+
+<section class="doc-block" id="diffusion-mlp">
+  <h2>7. DiffLoss MLP：时间嵌入与 z 怎样通过 AdaLN 进入</h2>
+  <p>官方 <code>SimpleMLPAdaLN</code> 先把带噪 token x 投影到 MLP 宽度；时间 t 经正弦 embedding + MLP，条件 z 经线性层。两者相加得到 y=t+c，再在每个 residual block 中生成 shift、scale、gate。</p>
+  <div class="math-scroll"><div class="math">h=LN(x)⊙(1+scale(y))+shift(y)，&nbsp;&nbsp; x′=x+gate(y)⊙MLP(h)<span class="equation-number">(4)</span></div></div>
+  <p>这种调制让条件 z 和时间步共同控制去噪，而不是简单把 z 拼到输入向量。AdaLN 最后一层与输出层采用零初始化，保持初始稳定。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · SimpleMLPAdaLN.forward</span><pre><code>x = self.input_proj(x)
+t = self.time_embed(t)
+c = self.cond_embed(c)
+y = t+c
+for block in self.res_blocks:
+    x = block(x,y)
+return self.final_layer(x,y)
+
+# ResBlock 内部：
+shift,scale,gate = self.adaLN_modulation(y).chunk(3,dim=-1)
+h = modulate(self.in_ln(x),shift,scale)
+h = self.mlp(h)
+return x+gate*h</code></pre></div>
+  <p>默认训练配置使用 3 个 residual blocks、宽 1024；评估更大模型时可增加 DiffLoss 深度/宽度。主 Transformer 与 DiffLoss 的容量是可分别调整的，不应把它们看成一个不可拆分的网络。</p>
+</section>
+
+<section class="doc-block" id="training-code">
+  <h2>8. 训练调用链：从图片到一次完整反向传播</h2>
+  <p>官方训练链条可整理为：</p>
+  <ol>
+    <li><code>main_mar.py</code> 创建 MAR、VAE、数据加载器、optimizer 与 EMA。</li>
+    <li><code>engine_mar.train_one_epoch</code> 编码图像并标准化 latent。</li>
+    <li><code>MAR.forward</code> patchify、随机 order/mask、MAE encoder/decoder、得到 z。</li>
+    <li><code>forward_loss</code> 将 target、z、mask 展平，并按 <code>diffusion_batch_mul</code> 复制以增加扩散 batch。</li>
+    <li><code>DiffLoss.forward</code> 采样扩散时间并计算条件去噪损失；mask 只保留待预测 token。</li>
+    <li>反向传播、梯度裁剪、optimizer step 与 EMA 更新。</li>
+  </ol>
+  <div class="code-block"><span class="code-label">官方源码节选 · forward_loss 的扩散 batch</span><pre><code>def forward_loss(self,z,target,mask):
+    bsz,seq_len,_ = target.shape
+    target = target.reshape(bsz*seq_len,-1).repeat(self.diffusion_batch_mul,1)
+    z = z.reshape(bsz*seq_len,-1).repeat(self.diffusion_batch_mul,1)
+    mask = mask.reshape(bsz*seq_len).repeat(self.diffusion_batch_mul)
+    return self.diffloss(z=z,target=target,mask=mask)</code></pre></div>
+  <p><code>diffusion_batch_mul</code> 让每个 token 在同一主 Transformer 条件下拥有更多扩散噪声/时间采样，有助于训练 DiffLoss，但会增加去噪头的计算量。它不是增加图片 batch，也不是复制不同的语义类别。</p>
+</section>
+
+<section class="doc-block" id="sampling">
+  <h2>9. 推理：随机分组、余弦 mask 调度与逐 token 扩散采样</h2>
+  <p>推理从全部 token 未知开始。每次迭代读取当前已知 token，预测本轮要揭示的位置，并用 DiffLoss 从高斯噪声生成这些连续 token。下一轮 mask 长度按 cosine 逐渐减少：</p>
+  <div class="math-scroll"><div class="math">mask_ratio(step)=cos( π/2 · (step+1)/num_iter )<span class="equation-number">(5)</span></div></div>
+  <p>默认 num_iter=64；论文也支持更多/更少步数与速度—质量权衡。每一步新揭示的位置是当前 mask 与下一轮 mask 的差集，而不是简单覆盖所有未知位置。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · MAR.sample_tokens 的逐组生成</span><pre><code>for step in range(num_iter):
+    x = self.forward_mae_encoder(tokens,mask,class_embedding)
+    z = self.forward_mae_decoder(x,mask)
+    mask_ratio = np.cos(math.pi/2.*(step+1)/num_iter)
+    mask_len = torch.floor(self.seq_len*mask_ratio)
+    mask_next = mask_by_order(mask_len,orders,bsz,self.seq_len)
+    mask_to_pred = torch.logical_xor(mask[:bsz].bool(),mask_next.bool())
+    z = z[mask_to_pred.nonzero(as_tuple=True)]
+    sampled = self.diffloss.sample(z,temperature,cfg_iter)
+    cur_tokens[mask_to_pred.nonzero(as_tuple=True)] = sampled
+    tokens = cur_tokens.clone()</code></pre></div>
+  <p>最终 <code>unpatchify</code> 把连续 token 恢复成 VAE latent，再由 VAE decoder 输出图片。MAR 的外层迭代与 DiffLoss 的内层去噪是两个不同循环，报告速度时需要同时给出 num_iter 与 diffusion sampling steps。</p>
+</section>
+
+<section class="doc-block" id="cfg">
+  <h2>10. CFG：类别条件与 fake latent 怎样配合</h2>
+  <p>训练时类别 embedding 以一定概率替换为可学习 fake_latent，提供无条件生成分支。推理时真实类别与 fake latent 组成两路 batch，分别在 MAR 与 DiffLoss 中生效。</p>
+  <div class="math-scroll"><div class="math">ε = ε<sub>uncond</sub> + cfg·(ε<sub>cond</sub>−ε<sub>uncond</sub>)<span class="equation-number">(6)</span></div></div>
+  <p>官方 <code>forward_with_cfg</code> 在 DiffLoss 内对条件/无条件噪声预测做差分，并保留另一半 VLB 通道。MAR 外层采样还可用线性 schedule 逐步增加 cfg，而非常数；采样后只保留真实类别那一路 token。</p>
+  <div class="code-block"><span class="code-label">官方源码节选 · DiffLoss 的 CFG</span><pre><code>half = x[:len(x)//2]
+combined = torch.cat([half,half],dim=0)
+model_out = self.forward(combined,t,c)
+eps,rest = model_out[:,:self.in_channels],model_out[:,self.in_channels:]
+cond_eps,uncond_eps = torch.split(eps,len(eps)//2,dim=0)
+half_eps = uncond_eps+cfg_scale*(cond_eps-uncond_eps)
+eps = torch.cat([half_eps,half_eps],dim=0)
+return torch.cat([eps,rest],dim=1)</code></pre></div>
+  <p>CFG 的两个层级不要混淆：类别条件影响 MAR 的 z，条件/无条件噪声预测在 DiffLoss 内合并。两路 batch 的顺序和 mask 必须一致，否则可能把不同位置的语义错误混合。</p>
+</section>
+
+<section class="doc-block" id="ablation">
+  <h2>11. 设计理由与消融应该怎样读</h2>
+  <p>论文比较了 AR/MAR、raster/random 顺序、causal/bidirectional attention、单 token/多 token 预测，以及 VQ-16 与 KL-16 tokenizer。这样的对比帮助我们分别回答：</p>
+  <ul>
+    <li>连续 token + 扩散损失相对离散交叉熵带来什么差异？</li>
+    <li>双向已知 token 交互相对纯 causal attention 有什么帮助？</li>
+    <li>多 token 分组生成怎样影响速度/质量？</li>
+    <li>tokenizer 重建误差、token 数量和主干容量分别贡献多少？</li>
+  </ul>
+  <p>论文表格中的 FID/IS 依赖相同 ImageNet、训练时长、CFG 与采样配置，不能将不同行的数字脱离这些条件比较，也不能据此声称本文本地复现了指标。</p>
+</section>
+
+<section class="doc-block" id="limitations">
+  <h2>12. 局限、成本与常见误解</h2>
+  <ul>
+    <li><strong>去掉 VQ 不等于去掉采样成本。</strong>每个 token 仍需扩散去噪，MAR 外层也需要多次迭代。</li>
+    <li><strong>双向编码器不等于看见未来真值。</strong>训练只编码已知 token，未知位置以 mask token 表示。</li>
+    <li><strong>连续 token 仍受 tokenizer 限制。</strong>KL autoencoder 的重建能力决定 latent 信息上限。</li>
+    <li><strong>温度作用于生成分布。</strong>温度、CFG、外层 num_iter 和内层扩散步共同影响质量与速度。</li>
+    <li><strong>不同任务需重新校准 latent。</strong>更换 VAE、分辨率或数据模态时，0.2325 等预处理常数不能照搬。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>13. 复现与单元测试清单</h2>
+  <ul class="checklist">
+    <li>核对 VAE stride、latent 通道、patch_size 与 token 数量；256²/KL-16/patch1 应为 256 token。</li>
+    <li>检查 latent 标准化系数与缓存数据是否使用同一预处理。</li>
+    <li>验证随机 order 对每个样本独立，mask 的已知/未知位置与 decoder 填充一致。</li>
+    <li>检查 diffusion loss 只在 mask 位置计算，diffusion_batch_mul 的 target/z/mask 同步复制。</li>
+    <li>验证 AdaLN 的时间与 z 条件形状，以及输出双头的语义。</li>
+    <li>检查 CFG 两路顺序、mask_to_pred 差集和采样后只保留真实类别分支。</li>
+    <li>分别记录外层迭代数、内层扩散步数、VAE 解码与硬件成本。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="probability-detail">
+  <h2>附录 A：为什么“预测一个分布”比“选一个类别”更一般</h2>
+  <p>离散 token 的常用做法是把所有可能取值列成 K 类，再用 softmax 和交叉熵学习。这个分布的优点是采样简单：从 K 类中抽一个即可。但它要求事先存在码本，而且量化误差在 tokenizer 阶段已经发生。</p>
+  <p>MAR 面对连续 token 时不能直接使用有限类别 softmax，因为连续值有无穷多种可能。Diffusion Loss 将每个 token 的分布写成一个由条件 z 控制的去噪过程：训练时让模型在不同噪声强度下恢复噪声方向，推理时通过反向去噪获得样本。这样既能保留连续空间，又能表示同一上下文下多种合理未来。</p>
+  <p>要理解它与“回归平均向量”的区别，可以想象同一上半张图对应多个合理下半部分。如果只输出均值，结果可能模糊；条件扩散允许从不同初始噪声生成不同细节。它并不意味着每次生成都随机无控制，条件 z、温度、CFG 和采样步数共同约束输出分布。</p>
+</section>
+
+<section class="doc-block" id="attention-detail">
+  <h2>附录 B：双向注意力为什么仍然可以是自回归</h2>
+  <p>“自回归”描述的是生成概率怎样按顺序分解，而不是要求注意力矩阵必须是三角形。MAR 的 MAE 式编码器只读取当前已知 token，未知 token 以 mask token 占位；双向 attention 只让这些已知内容充分交流，并没有把未来真实 token 偷给模型。</p>
+  <p>与 causal attention 相比，双向形式的代价是不能直接复用标准 KV cache，且每次分组生成都要重新编码已知 token；收益是已知内容之间通信更充分，并且一次可预测多个未知位置。评价时不能只看注意力方向，还要同时报告分组步数和每次前向成本。</p>
+  <p>训练中的高 mask ratio 也很重要：如果大部分位置已知，模型任务过于容易；如果几乎全部未知，模型学习从零生成。官方默认以偏高 masking 的分布采样，推理从全未知逐渐揭示，二者共同决定模型看到的条件强度。</p>
+</section>
+
+<section class="doc-block" id="numeric-example">
+  <h2>附录 C：一个具体数值例子，跟踪训练与推理张量</h2>
+  <p>设 batch=4、图像为 256×256、KL-16 VAE 输出 16 通道，则每张图对应 16×16 个 latent 位置，共 256 个连续 token，每个 token 为 16 维。patchify 后张量为 [4,256,16]。如果 mask ratio=0.75，则每张图约 192 个位置未知、64 个位置已知。</p>
+  <p>编码器仅处理已知 token 和 buffer；解码器把未知位置恢复为 mask token 并添加位置编码，得到每个待预测位置的条件 z。若 diffusion_batch_mul=4，target/z/mask 会各复制四份，使每个 token 有四次独立扩散时间/噪声训练机会，但主 Transformer 只计算一次。</p>
+  <p>推理若 num_iter=64，第一次从全 mask 开始；随着 cosine mask_ratio 降低，每轮生成一部分 token。每轮选中的 z 再进入 DiffLoss，从该组 token 的高斯噪声出发，经默认 100 个扩散采样步得到连续值。最后所有 token 拼回 [4,16,16,16]，由 VAE decoder 输出四张图。这个例子说明：<strong>256 是 token 数，16 是每 token 维数，64 是 MAR 外层步数，100 是内层去噪步数，四者不能混为一谈。</strong></p>
+</section>
+
+<section class="doc-block" id="debugging-source">
+  <h2>附录 D：从源码定位常见错误</h2>
+  <p>若 loss 对 mask 归一化异常，检查 <code>forward_loss</code> 的 target/z/mask 是否同步 reshape 与复制；若生成时不同位置语义混乱，检查 <code>mask_to_pred</code> 是否确实是当前 mask 与下一轮 mask 的差集；若 CFG 没生效，检查真实类别与 fake_latent 的 batch 顺序及 <code>forward_with_cfg</code> 的 cond/uncond 顺序。</p>
+  <p>如果更换 VAE 后图像尺度异常，先检查 latent 标准化系数与解码器分布，而不是先调 CFG。如果训练速度过慢，可分别记录 VAE 编码、MAR 主干、DiffLoss 采样和评估耗时；官方 README 提供 cached latents 的目的正是将重复的 VAE 编码移出训练循环。</p>
+  <p>这些调试方法都比“重新训练一遍看看”更可控。每一层先验证输入输出合同，再连接下一层，能避免把预处理、mask、扩散和条件问题混成一个无法定位的错误。</p>
+</section>
+
+<section class="doc-block" id="loss-detail">
+  <h2>附录 E：把 Diffusion Loss 的每个量拆开</h2>
+  <p>设一个真实连续 token 为 x∈R^d，d 是 VAE latent 的通道数。训练时取 ε∼N(0,I)，扩散过程使用自己的 ᾱ_t 将 token 变为 x_t=√ᾱ_t x+√(1−ᾱ_t)ε。这里 x 是真实目标，x_t 是去噪网络输入，ε 是监督目标，z 是 MAR 主干给出的条件。</p>
+  <p>去噪 MLP 输出对 ε 的估计；论文实现还可包含 variational lower-bound 通道。损失对未知 token 的 mask 加权平均，并沿 batch、token、扩散复制样本聚合。它与 Flow Matching 的速度回归不同：MAR 这里默认预测噪声，采样器是 DDPM 风格反向扩散，不能把 v=ε−x 之类的公式不加转换地代进去。</p>
+  <p>CFG 只在生成时改变预测噪声方向；训练仍通过 label dropout 学会 fake-latent 无条件分支。若将训练时的真实类别、fake_latent 或 mask 含义改变，就必须重新考虑推理时的无条件分支是否仍在训练分布内。</p>
+</section>
+
+<section class="doc-block" id="schedule-detail">
+  <h2>附录 F：余弦 mask 调度怎样把未知 token 逐步变少</h2>
+  <p>设总 token 数为 N，MAR 外层有 K 次迭代。第 step 次后计划剩余 mask 数约为 floor(N·cos(π(step+1)/(2K)))。当 step 接近 K 时，cos 接近 0，意味着几乎所有位置都被揭示；初始时刻则几乎全部未知。</p>
+  <p>本轮真正要预测的位置不是简单取“当前 mask 的前几个”，而是当前 mask 与下一轮 mask 的差集：上一轮未知、下一轮将变已知的位置。若差集为空或顺序错误，就会重复采样、漏采样或提前覆盖历史 token。</p>
+  <p>余弦调度让早期/后期的分组大小不均匀，而 num_iter 控制总外层步数。它与 DiffLoss 内部的扩散步数独立：即使外层只分 64 组，每组 token 仍可能需要 100 次去噪。因此评估速度时必须同时报告两个循环，而不能只说“64 步生成”。</p>
+</section>
+
+<section class="doc-block" id="optimization-detail">
+  <h2>附录 G：冻结、EMA 与训练稳定性在源码里的位置</h2>
+  <p>VAE 在官方训练中只负责编码/解码，不作为 MAR 的训练目标更新；主干与 DiffLoss 才接收扩散损失的梯度。模型权重还维护 EMA 参数，用于评估/生成时提供更平滑的权重估计。EMA 是参数的滑动平均，不是 VQ 码本 EMA，也不是对 latent token 做平滑。</p>
+  <p>训练循环在每次更新前调整学习率，检查 loss 是否有限，再做梯度缩放、裁剪、optimizer step 与 EMA。若 loss 出现 NaN，官方代码会停止而不是继续掩盖问题。复现时应分别记录主干与 DiffLoss 的梯度、mask 有效元素数、EMA rate 和混合精度配置。</p>
+  <p>官方训练示例的 batch、epoch、GPU 数量与缓存配置都是资源相关的具体实验设置。本文不将这些说明当作本地实测，也不建议为了“先跑起来”直接删除 mask、标准化或 EMA 等关键语义。</p>
+</section>
+
+<section class="doc-block" id="responsibility-detail">
+  <h2>附录 H：tokenizer、MAR 主干与 DiffLoss 分别负责什么</h2>
+  <p>tokenizer 把原始图像变成可计算的连续 latent，它的重建误差决定了信息保留上限；MAR 主干根据当前已知内容推断未知位置的条件向量，决定不同位置之间的语义关系；DiffLoss 则在该条件下表示一个 token 的多模态连续分布。三者不能互相替代。</p>
+  <p>这带来一个实用诊断方法：如果 tokenizer 单独重建就模糊，先不要怪 MAR；如果已知 token 之间的语义不合理，检查 mask 与主干；如果给定同一 z 时输出总趋向单一均值，则检查 DiffLoss 的噪声采样、训练时间与 CFG。把三层问题分开，比只比较最终 FID 更容易找到真正瓶颈。</p>
+  <p>官方实现中 <code>models/vae.py</code> 负责 latent 分布与解码接口，<code>models/mar.py</code> 负责 patch/mask/encoder/decoder/采样循环，<code>models/diffloss.py</code> 负责逐 token 去噪，<code>engine_mar.py</code> 负责把这些组件串成训练与评估。阅读仓库时按这条链走，而不是把所有模块当成一个大网络。</p>
+</section>
+
+<section class="doc-block" id="invariant-tests">
+  <h2>附录 I：可以直接写成单元测试的数学与数据不变量</h2>
+  <p>对固定输入 x 和固定 ε，扩散前向应满足 x_t=√ᾱ_t x+√(1−ᾱ_t)ε；当 ᾱ_t=1 时应得到 x，当 ᾱ_t→0 时应接近纯噪声。对量化/连续 tokenizer，需测试编码 latent 的形状、标准化尺度与解码输出范围，而不是只测图片能否保存。</p>
+  <p>对随机 mask，需检查每张图的 order 是 0…N−1 的排列、mask 数为预期数量、不同样本的 order 不共享；对 decoder，未知位置必须由 mask token 与位置编码构造，不能误读真实未知 latent。对 mask_to_pred，应验证当前未知集合等于本轮已采样集合与下一轮新增集合的并集。</p>
+  <p>对 CFG，固定同一 x/t 时，真实类别和 fake_latent 两路的噪声预测之差应决定 cond−uncond 方向；将 cfg=1 时应退化为无条件预测。对训练参数，VAE 应保持冻结，MAR/DiffLoss 可训练参数应有非空梯度，EMA 参数不应误注册为 optimizer 的直接训练目标。</p>
+</section>
+
+<section class="doc-block" id="comparison-detail">
+  <h2>附录 J：与 VAR、普通图像扩散和 VQGAN 的真正区别</h2>
+  <p>VAR 的核心是改变自回归顺序为 next-scale；MAR 的核心是改变连续 token 的条件分布表示，并采用随机顺序 masked generation。二者都可以在离散/连续空间中讨论结构，但不要把 VAR 的尺度 mask 与 MAR 的随机 mask 混为同一个算法。</p>
+  <p>普通图像扩散把整张图作为一个连续状态反复去噪；MAR 把自回归主干与逐 token 扩散头组合，先生成一组 latent token，再对每组 token 做条件去噪。其推理成本由 token 分组、主干前向与去噪头共同决定，而不是只由图像扩散步数决定。</p>
+  <p>VQGAN 依赖离散码本和索引先验，MAR 直接建模连续 token。取消 VQ 不意味着取消 tokenizer，也不意味着不需要训练/推理调度；它只是将“分类索引”换成“条件连续分布”。</p>
+<p>阅读时建议先运行一个单 batch、单尺度/单分组的教学实验，打印每个张量与 mask，再逐步加入 CFG、EMA 与多样本评估。先验证“数据与条件正确”，再讨论生成质量，能避免把大量训练时间浪费在接口错误上。</p>
+</section>
+
+<section class="doc-block doc-sources" id="sources">
+  <h2>14. 原文与官方实现</h2>
+  <ul class="source-links">
+    <li><a href="https://arxiv.org/abs/2406.11838">Autoregressive Image Generation without Vector Quantization</a>，重点为 §3 的 per-token 概率、masked autoregression 与 §4 的实现。</li>
+    <li><a href="https://github.com/LTH14/mar">LTH14/mar 官方 PyTorch 实现、训练与评估说明</a>。</li>
+    <li>源码定位：<a href="https://github.com/LTH14/mar/blob/main/models/mar.py">MAR</a>、<a href="https://github.com/LTH14/mar/blob/main/models/diffloss.py">DiffLoss / SimpleMLPAdaLN</a>、<a href="https://github.com/LTH14/mar/blob/main/engine_mar.py">训练与评估调用链</a>。</li>
+  </ul>
+  <p>本文已阅读原论文与官方源码；未运行训练或推理，不声称本地复现论文指标。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>
