@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VQ-VAE：离散潜变量与码本学习｜论文深度精读</title><style>
+<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="VQ-VAE：离散潜变量与码本学习：原理、详细结构、训练推理与代码精读。"><title>VQ-VAE：离散潜变量与码本学习｜深度精读</title><style>
 :root {
   --page: #ffffff;
   --ink: #2f302d;
@@ -712,18 +712,233 @@ a:hover {
       .code-block { break-inside: avoid; }
       .math-scroll { overflow: visible; }
     }
-   .doc-page{max-width:1520px}.doc-block h3{margin:28px 0 10px;font-size:19px}.reading-note{color:var(--muted);font-size:14px}.lead{font-size:17px}.paper-nav{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;font-size:13px}.math-scroll{width:fit-content;max-width:100%;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;margin:14px 0}.math{padding:13px 16px;width:max-content;font-family:"Cambria Math",Cambria,serif;font-size:17px;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0;background:#151922;border-radius:14px;overflow:hidden}.code-block pre{padding:47px 20px 20px;overflow:auto;max-width:100%;color:#e5e7eb;font-size:13px;line-height:1.65}.code-label{position:absolute;top:12px;left:18px;color:#9aa4b2;font-size:12px}.copy-code{position:absolute;right:9px;top:8px;background:#202633;color:#cbd5e1;border:1px solid #3a4352;border-radius:7px;padding:4px 9px;font-size:12px;cursor:pointer}.table-frame{width:100%;overflow:auto;border:1px solid var(--line);border-radius:14px}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px}.doc-data-table th,.doc-data-table td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}.doc-data-table th{background:var(--soft)}.doc-warning{padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;margin:20px 0}.diagram-frame{padding:18px;overflow:auto;border:1px solid var(--line);border-radius:14px}.figure-svg{width:100%;min-width:650px;height:auto}.svg-title{font-size:16px;font-weight:600;fill:#2f302d}.svg-small{font-size:12px;fill:#5c6470}.figure-caption{color:var(--muted);font-size:14px}.file-ref{font-size:13px;color:#526d8c;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0}.checklist li{padding-left:23px;position:relative;margin:8px 0}.checklist li:before{content:'✓';position:absolute;left:0;color:#0f766e}@media print{.toc-rail,.copy-code{display:none}.doc-page{margin:0;width:100%;max-width:none}}</style></head><body><nav class="toc-rail"></nav><main class="doc-page"><header class="doc-title" id="top"><h1>VQ-VAE：离散潜变量与码本学习</h1><p class="doc-subtitle">VQ-VAE 将连续编码向量替换为最近邻码本，通过 straight-through 估计训练离散生成先验。</p><p class="reading-note">本页依据 <a href="https://arxiv.org/abs/1711.00937">arXiv:1711.00937</a> 原文与公开实现资料整理。代码块为解释论文机制的教学实现/伪代码，未标为作者官方源码；未执行模型训练或生成。</p><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a></div></header><section class="doc-block" id="problem"><h2>1. 论文要解决的问题</h2><p>VQ-VAE 将连续编码向量替换为最近邻码本，通过 straight-through 估计训练离散生成先验。</p><p>VQ-VAE 的训练有两阶段：先训练 encoder、codebook 与 decoder，再固定离散表示学习 PixelCNN/Transformer 先验。码本大小、embedding 维度和 commitment 系数都会影响重构与后续生成。</p><p>阅读这篇工作时，应先分清它改变的是表示、训练目标、网络结构还是推理算法；同一个名称常被用于不同实现，不能把后续模型的新增能力自动归入原论文。</p></section><section class="doc-block" id="principle"><h2>2. 核心原理与数学表达</h2><p>VQ-VAE 把 encoder 输出 z_e 映射到最近的码本向量 e_k；decoder 接收量化后的 z_q。训练同时解决重建、码本跟随与 encoder 承诺，离散采样后才由 PixelCNN 等模型学习先验。</p><div class="math-scroll"><div class="math">codebook = argmin_k ||z_e-e_k||₂<span class="equation-number">(1)</span></div></div><p>公式中的每个量都应对应输入、网络状态或监督信号。实现时要额外核对时间索引、batch 维、损失 reduction 与条件 dropout，否则即使公式看起来一致，训练语义也可能不同。</p></section><section class="doc-block" id="structure"><h2>3. 网络结构与数据流</h2><p>VQ-VAE 的训练有两阶段：先训练 encoder、codebook 与 decoder，再固定离散表示学习 PixelCNN/Transformer 先验。码本大小、embedding 维度和 commitment 系数都会影响重构与后续生成。</p><div class="diagram-frame"><svg class="figure-svg" viewBox="0 0 1000 260" role="img" aria-label="VQ-VAE：离散潜变量与码本学习 的输入、模型与输出数据流"><rect x="25" y="75" width="235" height="85" rx="12" fill="#eef5ff" stroke="#257de0"/><text x="142" y="111" text-anchor="middle" class="svg-title">输入 / 条件</text><text x="142" y="137" text-anchor="middle" class="svg-small">数据、状态或控制信号</text><path d="M260 117 H370" stroke="#788493" fill="none"/><rect x="375" y="75" width="260" height="85" rx="12" fill="#eefaf6" stroke="#00a887"/><text x="505" y="111" text-anchor="middle" class="svg-title">核心模型 / 条件融合</text><text x="505" y="137" text-anchor="middle" class="svg-small">VQ-VAE 的关键变换</text><path d="M635 117 H745" stroke="#788493" fill="none"/><rect x="750" y="75" width="225" height="85" rx="12" fill="#fffaf0" stroke="#d28e05"/><text x="862" y="111" text-anchor="middle" class="svg-title">训练目标 / 生成输出</text><text x="862" y="137" text-anchor="middle" class="svg-small">按论文定义验证</text></svg></div><p class="figure-caption">图 1：本工作的计算骨架。具体通道、patch、码本和采样循环需结合论文及代码实现。</p></section><section class="doc-block" id="code"><h2>4. 具体代码：核心模块与损失</h2><p>以下代码把论文的核心计算写成可读的 PyTorch 结构，重点是输入、输出、监督路径与梯度位置。它不是完整训练框架，也不冒充作者仓库实现。</p><div class="code-block"><span class="code-label">教学实现 / 伪代码 · 非官方源码</span><pre><code># 教学实现 · 非官方源码：量化与 straight-through
-indices = torch.cdist(z_e, codebook).argmin(dim=-1)
+  
+.doc-page{max-width:1520px}.doc-block h3{margin:32px 0 10px;color:var(--ink);font-size:19px;line-height:1.45}.lead{font-size:17px;line-height:1.85}.reading-note{margin-top:20px;color:var(--muted);font-size:14px}.paper-nav,.paper-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px;font-size:13px}.paper-nav a,.paper-meta a,.paper-meta span{padding:4px 9px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:#526071}.paper-meta a{color:var(--accent)}.math-scroll{width:fit-content;max-width:100%;margin:15px 0 20px;overflow-x:auto;border-left:3px solid #dce5f3;background:#f8fafc;border-radius:0 10px 10px 0}.math{width:max-content;padding:13px 16px;color:#27364a;font-family:"Cambria Math","STIX Two Math",Cambria,serif;font-size:17px;line-height:1.75;white-space:nowrap}.code-block{position:relative;width:fit-content;max-width:100%;margin:18px 0 24px;overflow:hidden;border:1px solid #242b38;border-radius:14px;background:#151922}.code-block pre{max-width:100%;max-height:660px;margin:0;padding:48px 20px 20px;overflow:auto;color:#e5e7eb;font-size:13px;line-height:1.65;tab-size:4}.code-block code{font-family:"Cascadia Code","SFMono-Regular",Consolas,monospace}.code-label{position:absolute;top:12px;left:18px;max-width:calc(100% - 100px);overflow:hidden;color:#9aa4b2;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.copy-code{position:absolute;top:8px;right:9px;padding:4px 9px;border:1px solid #3a4352;border-radius:7px;background:#202633;color:#cbd5e1;font:inherit;font-size:12px;cursor:pointer}.doc-warning{margin:22px 0;padding:14px 17px;border:1px solid #efdcae;border-radius:14px;background:#fffaf0;color:#5b4b2f}.table-frame,.table-scroll{width:100%;max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:#fff}.doc-data-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.45}.doc-data-table th,.doc-data-table td{padding:11px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.doc-data-table th{background:var(--soft);color:#566173}.diagram-frame{padding:18px}.figure-svg{display:block;width:100%;height:auto;min-width:620px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}.svg-title{fill:#2f302d;font-size:16px;font-weight:600}.svg-label{fill:#2f302d;font-size:14px}.svg-small{fill:#5c6470;font-size:12px}.figure-caption{margin-top:9px;color:var(--muted);font-size:14px}.figure-caption strong,.figure-caption span{display:block}.file-ref{display:inline-block;margin:-8px 0 20px;color:#526d8c;font-size:13px;overflow-wrap:anywhere}.checklist{list-style:none;padding-left:0!important}.checklist li{position:relative;padding-left:25px}.checklist li::before{content:"✓";position:absolute;left:0;color:#0f766e}.doc-sources li{margin:10px 0;overflow-wrap:anywhere}
+@media(max-width:700px){.code-block pre{font-size:12px}.math{font-size:15px}.lead{font-size:16px}}
+@media print{.toc-rail,.copy-code{display:none!important}.doc-page{width:100%;margin:0;padding:24px;max-width:none}.code-block,.table-frame,.diagram-frame{break-inside:avoid}}
+</style></head><body data-toc="vq-vae 深度精读"><nav class="toc-rail" aria-label="文档目录"></nav><main class="doc-page"><header class="doc-title" id="top">
+  <h1>VQ-VAE：让神经网络学会“从码本里选一个符号”</h1>
+  <p class="doc-subtitle">从连续自编码器到离散潜变量：最近邻量化、straight-through 梯度、码本/承诺损失，以及训练完编码器后怎样再学生成先验。</p>
+  <p class="reading-note">本文逐节阅读 van den Oord、Vinyals、Kavukcuoglu 的 <a href="https://arxiv.org/abs/1711.00937">Neural Discrete Representation Learning</a>（arXiv v2，2018-05-30），包括附录 A.1 的 EMA 字典更新。论文没有附带本文所核验的原始完整训练仓库；下文 PyTorch 代码均为明确标注的教学实现。相关后续实现的差异会单独标注，不冒充原论文源码。</p>
+  <div class="paper-nav"><a href="../index.html">← 论文精读首页</a><a href="../categories/generative-foundations.html">所属分类：生成模型与基础架构</a></div>
+</header>
+
+<section class="doc-block" id="intuition">
+  <h2>1. 先用一个比喻：把连续描述改成有限词汇表</h2>
+  <p>普通自编码器会把一张图片变成一个连续向量。你可以把这个向量想成“用很多小数描述图片”。VQ-VAE 则增加一本有 K 个词条的字典：编码器先给出一个连续向量，系统在其中找最接近的词条，解码器只能根据这个词条重建图片。</p>
+  <p>这样做有两个直接收益：</p>
+  <ul>
+    <li><strong>信息必须压缩到有限符号里。</strong>不能让每个像素噪声都藏进任意精细的小数编码。</li>
+    <li><strong>后续可以在离散符号上学习语言式先验。</strong>图片、语音或视频帧序列不必在原始高维像素空间中直接做自回归。</li>
+  </ul>
+  <p>论文的两个核心不同点是：<strong>编码输出离散，而不是连续高斯潜变量；先验 p(z) 可以学习，而不是永远固定为标准正态。</strong>这也解释了为什么 VQ-VAE 常作为后续 Transformer、VQGAN、视频生成模型的 tokenizer。</p>
+  <div class="doc-note"><p><strong>不要把 VQ-VAE 等同于“把 VAE 的 z 四舍五入”。</strong>它使用的是共享 embedding 码本、确定性最近邻后验、特殊梯度近似和可学习离散先验，训练目标也与连续高斯 VAE 不同。</p></div>
+</section>
+
+<section class="doc-block" id="pipeline">
+  <h2>2. 整体结构：编码器、码本、解码器与第二阶段先验</h2>
+  <p>输入 x 经 encoder 得到连续表示 z<sub>e</sub>(x)。码本 e 中有 K 个 D 维向量；每个空间/时间位置选择最近的 e<sub>k</sub>，得到量化向量 z<sub>q</sub>(x)，再交给 decoder 重建输入。</p>
+  <div class="math-scroll"><div class="math">e ∈ R<sup>K×D</sup>，&nbsp;&nbsp; k = argmin<sub>j</sub> ||z<sub>e</sub>(x)−e<sub>j</sub>||<sub>2</sub>，&nbsp;&nbsp; z<sub>q</sub>(x)=e<sub>k</sub><span class="equation-number">(1)</span></div></div>
+  <p>K 是词条数量，D 是每个词条的维度。图像不是只有一个全局离散变量，而通常是二维 latent 网格；语音是一维、视频是三维时空网格。每个网格位置都做一次最近邻查表。</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>阶段</th><th>输入</th><th>输出</th><th>训练目的</th></tr></thead><tbody>
+    <tr><td>编码器</td><td>原始图像/音频/视频</td><td>连续 z_e，形状 [B,D,…]</td><td>提供可量化的内容表示</td></tr>
+    <tr><td>向量量化</td><td>z_e 与码本 e</td><td>离散索引 + 对应 embedding z_q</td><td>形成离散 latent 网格</td></tr>
+    <tr><td>解码器</td><td>z_q</td><td>重建观测或输出分布参数</td><td>让离散码保留可重建信息</td></tr>
+    <tr><td>第二阶段先验</td><td>离散索引序列</td><td>p(z) 或条件分布</td><td>学会生成合理 latent，再由 decoder 出图</td></tr>
+  </tbody></table></div>
+  <div class="table-scroll diagram-frame"><svg class="figure-svg" viewBox="0 0 1080 390" role="img" aria-label="VQ-VAE 的编码器、最近邻码本、解码器与离散先验数据流">
+  <rect x="24" y="42" width="174" height="78" rx="12" fill="#eef5ff" stroke="#257de0"/>
+  <text x="111" y="73" text-anchor="middle" class="svg-title">输入观测 x</text><text x="111" y="98" text-anchor="middle" class="svg-small">图像 / 语音 / 视频</text>
+  <path d="M198 81 H250" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="254" y="42" width="174" height="78" rx="12" fill="#fff5ed" stroke="#f47230"/>
+  <text x="341" y="73" text-anchor="middle" class="svg-title">编码器</text><text x="341" y="98" text-anchor="middle" class="svg-small">连续 z_e [B,D,…]</text>
+  <path d="M428 81 H480" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="484" y="24" width="218" height="114" rx="12" fill="#fffaf0" stroke="#d28e05"/>
+  <text x="593" y="56" text-anchor="middle" class="svg-title">码本 e：K×D</text><text x="593" y="82" text-anchor="middle" class="svg-small">argmin ||z_e−e_j||</text><text x="593" y="108" text-anchor="middle" class="svg-small">索引 + z_q</text>
+  <path d="M702 81 H754" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="758" y="42" width="174" height="78" rx="12" fill="#eefaf6" stroke="#00a887"/>
+  <text x="845" y="73" text-anchor="middle" class="svg-title">解码器</text><text x="845" y="98" text-anchor="middle" class="svg-small">重建观测 x̂</text>
+  <rect x="308" y="188" width="465" height="64" rx="12" fill="#f7f8fa" stroke="#aab4c0"/>
+  <text x="540" y="214" text-anchor="middle" class="svg-title">重建损失 + 码本损失 + β 承诺损失</text><text x="540" y="237" text-anchor="middle" class="svg-small">前向量化；反向 straight-through</text>
+  <path d="M593 138 V188" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="88" y="292" width="250" height="74" rx="12" fill="#fffaf0" stroke="#d28e05"/>
+  <text x="213" y="322" text-anchor="middle" class="svg-title">固定第一阶段表示</text><text x="213" y="347" text-anchor="middle" class="svg-small">离散索引网格</text>
+  <path d="M338 329 H412" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="416" y="292" width="245" height="74" rx="12" fill="#fff5ed" stroke="#f47230"/>
+  <text x="538" y="322" text-anchor="middle" class="svg-title">PixelCNN / WaveNet 先验</text><text x="538" y="347" text-anchor="middle" class="svg-small">学习 p(z) 并采样</text>
+  <path d="M661 329 H735" stroke="#788493" fill="none" stroke-width="1.6"/>
+  <rect x="739" y="292" width="250" height="74" rx="12" fill="#eefaf6" stroke="#00a887"/>
+  <text x="864" y="322" text-anchor="middle" class="svg-title">码本查询 + 解码</text><text x="864" y="347" text-anchor="middle" class="svg-small">生成新观测</text>
+</svg></div>
+  <p class="figure-caption"><strong>图 1：VQ-VAE 的训练与生成链路。</strong><span>第一阶段学习离散表示；第二阶段在固定编码器/码本上学习先验，再经解码器生成观测。</span></p>
+</section>
+
+<section class="doc-block" id="probabilistic-view">
+  <h2>3. 概率视角：为什么 KL 变成常数</h2>
+  <p>论文把后验写成确定性的 categorical 分布：对选中的最近码本项概率为 1，其余为 0。它不是从高斯后验采样，而是 argmin 最近邻查找。</p>
+  <div class="math-scroll"><div class="math">q(z=k|x)=1 当 k=argmin<sub>j</sub>||z<sub>e</sub>(x)−e<sub>j</sub>||，否则为 0<span class="equation-number">(2)</span></div></div>
+  <p>如果在第一阶段把 latent 先验设为 K 类均匀分布，那么 posterior 与 uniform prior 的 KL 为常数 log K，不随 encoder 参数变化，因此训练时可以忽略。这与连续 VAE 里通过 KL 调整 μ、σ 的行为不同。</p>
+  <p>但“第一阶段使用均匀先验”不代表最终生成只能随机选码。论文在表示学习结束后，再用 PixelCNN/WaveNet 等模型学习离散 latent 的真实分布；真正的生成质量来自第二阶段先验与第一阶段 decoder 的组合。</p>
+</section>
+
+<section class="doc-block" id="gradient">
+  <h2>4. 最难点：argmin 没有普通梯度，训练为何仍能进行</h2>
+  <p>最近邻查找包含 argmin。输入稍微变化时，被选索引通常不变，变化到边界时又突然切换，所以普通梯度要么为零、要么不定义。不能直接把 <code>argmin</code> 放进网络就期待自动微分学会编码器。</p>
+  <p>VQ-VAE 使用 straight-through 估计：<strong>前向用真正量化值，反向把 decoder 输入处的梯度原样复制给 encoder 输出。</strong>PyTorch 教学代码中可写成：</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码：straight-through 量化</span><pre><code># z_e 与 z_q 同形，最后一维是 D。
+distances = ((z_e.unsqueeze(-2) - codebook)**2).sum(-1)
+indices = distances.argmin(dim=-1)
 z_q = codebook[indices]
-z_st = z_e + (z_q-z_e).detach()   # 前向量化，反向把梯度传给 encoder
-loss = reconstruction(x, decoder(z_st))      + codebook_weight * F.mse_loss(z_q, z_e.detach())      + commitment * F.mse_loss(z_q.detach(), z_e)
-# 先训练 tokenizer，再在离散索引上训练先验。</code></pre></div></section><section class="doc-block" id="training"><h2>5. 训练流程与推理步骤</h2><ol><li>准备与原任务一致的数据、条件和预处理，固定坐标/时间/帧序约定。</li><li>按论文选择训练阶段、损失、条件 dropout 与可训练参数。</li><li>用小 batch 验证前向 shape、loss 有限性和梯度是否进入新增模块。</li><li>推理从正确先验/初始状态开始，按对应采样器更新，不把训练捷径直接搬到推理。</li><li>分别评估质量、控制或效率指标，记录采样步数、上下文长度、batch 和硬件。</li></ol></section><div class="code-block"><span class="code-label">训练/推理诊断 · 教学检查代码（非官方源码）</span><pre><code># 每个实现都应先通过这类基础诊断，再讨论模型效果。
-with torch.autograd.set_detect_anomaly(True):
-    output = model(sample_input,condition)
-    loss = objective(output,target)
-    assert torch.isfinite(loss)
-    loss.backward()
-for name,param in model.named_parameters():
-    if param.requires_grad:
-        assert param.grad is not None, f&quot;no gradient: {name}&quot;
-# 采样时确认：time direction、guidance、mask、dtype、设备与 reduction。</code></pre></div></section><section class="doc-block" id="limitations"><h2>6. 局限与易混淆点</h2><p>本页的教学代码不能替代完整官方训练配置，尤其是数据治理、分布式训练、权重、EMA、数值稳定性和评估协议。论文声明的效果来自其特定数据与实验条件，不应当作本地实测。</p><p>如果原文没有公开完整实现，应该将“论文机制”与“可复现源码”分开描述；若有后续版本，也要核对原始论文与当前代码仓库是否仍相同。</p></section><section class="doc-block" id="reproduce"><h2>7. 实现与复现清单</h2><ul class="checklist"><li>写清输入输出、张量维度、概率分布/目标和时间索引。</li><li>对核心数学操作写独立单元测试，不依赖生成结果“看起来正常”。</li><li>检查冻结/训练参数列表、条件 dropout 与空条件语义。</li><li>分离质量、控制精度和推理成本指标。</li><li>保留原文、代码版本、数据预处理和训练超参数。</li></ul></section><section class="doc-block doc-sources" id="sources"><h2>8. 原文与核对范围</h2><ul><li><a href="https://arxiv.org/abs/1711.00937">论文原文与版本记录</a></li><li><a href="https://arxiv.org/html/1711.00937">论文 HTML 全文</a>：公式、结构与实验细节。</li></ul><p>本页为基于论文的阅读笔记，教学代码不隶属于论文作者。当前页面未声称核验完整官方训练源码，后续可继续扩展为逐文件源码导读。</p></section><section class="doc-block"><h2>返回分类</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">生成模型与基础架构</a></div></section></main><script>document.addEventListener('DOMContentLoaded',()=>{const nav=document.querySelector('.toc-rail'),ts=[...document.querySelectorAll('section[id]')].filter(x=>x.querySelector('h2'));if(nav){const title=document.createElement('div');title.className='toc-title';title.textContent='代表论文深度精读';const links=ts.map(t=>{let a=document.createElement('a');a.href='#'+t.id;a.textContent=t.querySelector('h2').textContent;a.dataset.target=t.id;return a});nav.replaceChildren(title,...links);const obs=new IntersectionObserver(es=>{let v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)links.forEach(a=>a.classList.toggle('active',a.dataset.target===v.target.id))},{rootMargin:'-12% 0px -68% 0px'});ts.forEach(t=>obs.observe(t))}document.querySelectorAll('.code-block').forEach(b=>{let c=b.querySelector('code'),btn=document.createElement('button');btn.textContent='复制';btn.className='copy-code';b.appendChild(btn);btn.onclick=async()=>{try{await navigator.clipboard.writeText(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='请手动复制'}setTimeout(()=>btn.textContent='复制',1600);}});});</script></body></html>
+z_st = z_e + (z_q - z_e).detach()
+
+# 前向：z_st 的数值严格等于 z_q。
+# 反向：dL/dz_e 接收 z_q 处的梯度，而不是 detach 后的零梯度。</code></pre></div>
+  <p><code>z_e + (z_q-z_e).detach()</code> 的数值确实是 z_q；反向时 <code>z_e</code> 项保留梯度，<code>detach</code> 项不保留。因此它让 encoder 学到“把连续输出移动到哪个码附近会降低重建损失”，下一次前向时索引就可能改变。</p>
+  <p>这是一种有偏但低方差的实用估计，不是 argmin 的真实导数，也不是说量化操作变得连续可微。Gumbel/Concrete 等连续松弛是另一条路线，不应与这里的 straight-through 混为一谈。</p>
+</section>
+
+<section class="doc-block" id="loss">
+  <h2>5. 三项损失分别训练谁</h2>
+  <p>论文的总目标可概括为：</p>
+  <div class="math-scroll"><div class="math">L = log p(x|z<sub>q</sub>(x)) + ||sg[z<sub>e</sub>(x)]−e||² + β||z<sub>e</sub>(x)−sg[e]||²<span class="equation-number">(3)</span></div></div>
+  <p>这里 sg 是 stop-gradient。以最小化实现时，第一项常写为负对数似然或重建误差；关键是三条梯度路径：</p>
+  <div class="table-frame table-scroll"><table class="doc-data-table"><thead><tr><th>项</th><th>训练对象</th><th>作用</th></tr></thead><tbody>
+    <tr><td>重建项</td><td>encoder + decoder</td><td>保留观测信息；经 straight-through 回传到 encoder</td></tr>
+    <tr><td>码本项 ||sg[z_e]−e||²</td><td>码本 e</td><td>把码本向量拉近 encoder 输出</td></tr>
+    <tr><td>承诺项 β||z_e−sg[e]||²</td><td>encoder</td><td>防止输出任意漂移/膨胀，鼓励靠近所选码</td></tr>
+  </tbody></table></div>
+  <p>原论文使用 β=0.25，并报告 0.1–2.0 范围内较稳健；但 loss 尺度变化时不能机械照搬。若把 detach 放错位置，码本和 encoder 的训练对象就会反过来。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码：三项损失与梯度归属</span><pre><code>reconstruction = decoder(z_st)
+recon_loss = F.mse_loss(reconstruction, target)
+codebook_loss = F.mse_loss(z_q, z_e.detach())
+commitment_loss = F.mse_loss(z_q.detach(), z_e)
+loss = recon_loss + codebook_loss + beta * commitment_loss
+
+# recon_loss：更新 decoder，并经 z_st 更新 encoder。
+# codebook_loss：只更新码本 e。
+# commitment_loss：只更新 encoder。</code></pre></div>
+</section>
+
+<section class="doc-block" id="network-shapes">
+  <h2>6. 网络结构与张量：把公式落到图像上</h2>
+  <p>论文的连续/离散对比实验使用卷积 encoder、残差块和转置卷积 decoder。以输入 [B,3,32,32] 为例，若两次 stride=2 下采样，空间尺寸变成 8×8；再经残差块得到 [B,D,8,8]。量化时将它展平成 [B·8·8,D]，对每行查一次码本，再恢复网格。</p>
+  <p>在 ImageNet 128×128 实验中，论文使用 32×32 个离散 latent、K=512；CIFAR 的对比模型采用卷积/残差结构，Adam lr=2e−4、batch 128、250K steps。音频实验则用类似 WaveNet 的膨胀卷积，并可附加 speaker embedding。</p>
+  <p>这些配置属于不同任务，不应混为“VQ-VAE 唯一标准结构”。真正实现时，D 是码本通道，不是图片 RGB 通道；latent 的 H/W 取决于下采样倍率，码本 K 决定离散词表大小。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码：一个图像 VQ-VAE 模块</span><pre><code>class ImageVQVAE(nn.Module):
+    def __init__(self, K=512, D=64, beta=.25):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(3,64,4,2,1), nn.ReLU(),
+            nn.Conv2d(64,D,4,2,1), nn.ReLU())
+        self.codebook = nn.Parameter(torch.randn(K,D)*.02)
+        self.beta = beta
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(D,64,4,2,1), nn.ReLU(),
+            nn.ConvTranspose2d(64,3,4,2,1), nn.Sigmoid())
+
+    def forward(self,x):
+        z = self.encoder(x)                     # [B,D,H',W']
+        z = z.permute(0,2,3,1)                  # [B,H',W',D]
+        d = ((z[...,None,:]-self.codebook)**2).sum(-1)
+        indices = d.argmin(-1)
+        zq = self.codebook[indices]
+        zst = z+(zq-z).detach()
+        reconstruction = self.decoder(zst.permute(0,3,1,2))
+        loss = F.mse_loss(reconstruction,x) \
+             + F.mse_loss(zq,z.detach()) \
+             + self.beta*F.mse_loss(zq.detach(),z)
+        return reconstruction,indices,loss
+# 教学网络未复现论文训练规模、残差细节与评估。'''</code></pre></div>
+  <p>上述全量 pairwise 张量适合讲解，但高分辨率时 <code>[B,H,W,K,D]</code> 可能很大；工程实现应使用 <code>cdist</code> 或展开内积降低临时内存，而不是先构造巨大差值张量。</p>
+</section>
+
+<section class="doc-block" id="ema">
+  <h2>7. 附录 EMA：码本也可以不靠梯度下降更新</h2>
+  <p>论文附录提出另一种字典更新：若第 i 个码在当前 batch 被 nᵢ 个 encoder 输出选择，理想均值是这些 z_e 的平均。mini-batch 下用指数滑动平均近似：</p>
+  <div class="math-scroll"><div class="math">Nᵢᵗ = γNᵢᵗ⁻¹+(1−γ)nᵢᵗ，&nbsp;&nbsp; mᵢᵗ=γmᵢᵗ⁻¹+(1−γ)Σz<sub>e</sub>，&nbsp;&nbsp; eᵢᵗ=mᵢᵗ/Nᵢᵗ<span class="equation-number">(4)</span></div></div>
+  <p>γ 可取 0.99。Nᵢ 是平滑使用次数，mᵢ 是平滑向量总和。这样码本通过统计量更新，而不是通过码本 MSE 的 optimizer 梯度；但 encoder 仍需重建与承诺损失。</p>
+  <div class="code-block"><span class="code-label">教学实现 · 非官方源码：EMA 字典更新</span><pre><code># 对当前 batch 的每个码聚合使用次数和 z_e 总和。
+counts = torch.bincount(indices.flatten(),minlength=K).float()
+sums = torch.zeros(K,D).to(z_e)
+sums.index_add_(0,indices.flatten(),z_e.detach().reshape(-1,D))
+ema_count = gamma*ema_count+(1-gamma)*counts
+ema_sum = gamma*ema_sum+(1-gamma)*sums
+codebook.data = ema_sum/ema_count.clamp_min(1e-6)[:,None]
+# 真实实现要处理未使用码、分布式同步、初始化与数值稳定。'''</code></pre></div>
+  <p>EMA 更新是论文附录的可选方案，论文正文说明其实验未使用该路径。不要把它与 VAE 权重 EMA 或扩散模型评估时的 EMA 混为一谈。</p>
+</section>
+
+<section class="doc-block" id="prior-generation">
+  <h2>8. 第二阶段：怎样从“能重建”变成“能生成新内容”</h2>
+  <p>第一阶段结束后，固定 encoder、码本与 decoder，把训练样本映射成离散索引网格，再用 PixelCNN/WaveNet 等自回归模型学习 p(z)。生成时先采样索引，再取对应码本向量并解码。</p>
+  <div class="math-scroll"><div class="math">p(z<sub>1:N</sub>)=∏<sub>i</sub>p(z<sub>i</sub>|z<sub>&lt;i</sub>)，&nbsp;&nbsp; z<sub>i</sub>∈{1,…,K}<span class="equation-number">(5)</span></div></div>
+  <p>对图像，PixelCNN 使用 mask 保证当前位置只依赖已生成位置；对语音，WaveNet 处理离散时间序列。第二阶段损失通常是索引交叉熵，而不是像素 MSE。</p>
+  <div class="code-block"><span class="code-label">教学伪代码 · 非官方源码：训练离散先验与生成</span><pre><code># 阶段 1 已完成并冻结。
+with torch.no_grad():
+    indices = encode_to_indices(images)       # [B,H',W']
+logits = pixelcnn(indices)                    # [B,K,H',W']
+loss = F.cross_entropy(logits,indices)
+
+# 生成：逐位置采样，再查询固定码本。
+generated = torch.zeros(B,H',W',dtype=torch.long)
+for position in raster_order(H',W'):
+    logits = pixelcnn(generated)
+    generated.view(-1)[position] = sample_categorical(logits_at(position))
+z = codebook[generated]
+images = decoder(z)
+# 教学伪代码省略了 mask、缓存与高效并行实现。'''</code></pre></div>
+  <p>因此“VQ-VAE 直接从噪声解码”是不完整的：噪声/索引要先经过学习到的先验。只用均匀随机索引通常不会得到有意义图像。</p>
+</section>
+
+<section class="doc-block" id="implementation-evidence">
+  <h2>9. 相关实现证据：哪些可以参考，哪些不能冒充原论文</h2>
+  <p>本文没有核验到原论文的完整官方训练仓库。为了理解后续工程实现，我另外读取了 CompVis 的 VQGAN/taming-transformers 中 <a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/vqvae/quantize.py">quantize.py</a>。它是后续相关项目的实现，<strong>不是本论文的原始官方代码</strong>。</p>
+  <p>该实现把 [B,C,H,W] 展平为 [BHW,C]，通过 <code>||z||²+||e||²−2ze</code> 计算距离，使用 argmin 选码，并以 <code>z + (z_q-z).detach()</code> 保留 straight-through 梯度。其码本/承诺损失与 perplexity 计算可用于工程对照，但还包括后续 remap、Gumbel、EMA 变体等，不应混入原论文结构。</p>
+  <p>原论文任务也不只是图片：VCTK 语音、DeepMind Lab 视频、动作条件潜空间预测都在实验范围内。本文只分析共同算法骨架，不把其中一个任务的网络配置推广到所有任务。</p>
+</section>
+
+<section class="doc-block" id="limitations">
+  <h2>10. 局限、常见误解与计算成本</h2>
+  <ul>
+    <li><strong>码本坍缩：</strong>少数码长期被使用，其余闲置。应监测码本利用率、perplexity、每个码的计数，而不是只看重建 loss。</li>
+    <li><strong>量化信息瓶颈：</strong>码本过小或 latent 网格过粗会丢失细节；增加 K 又提高检索和先验学习难度。</li>
+    <li><strong>两阶段误差：</strong>表示学习不好时，后续先验无法恢复未编码的信息；先验采样错误也会被 decoder 放大。</li>
+    <li><strong>训练/生成不相同：</strong>第一阶段均匀 latent 先验只服务于表示学习；第二阶段才真正学习生成先验。</li>
+    <li><strong>离散不等于免费加速：</strong>距离检索、PixelCNN 串行采样、码本存储与训练吞吐量都需要计入。</li>
+  </ul>
+  <p>论文报告了与连续 VAE 接近的 CIFAR bits/dim 等结果，但本文没有运行任何模型训练或性能测试，不把这些论文数字写成本地实测。</p>
+</section>
+
+<section class="doc-block" id="reproduction">
+  <h2>11. 从零实现时的检查清单</h2>
+  <ul class="checklist">
+    <li>固定码本 K、embedding D、输入尺寸与 latent 空间分辨率。</li>
+    <li>确认最近邻距离、索引形状与码本查询顺序一致。</li>
+    <li>验证 straight-through 前向等于 z_q、反向能进入 encoder。</li>
+    <li>分别打印重建、码本与承诺损失，检查 detach 的对象。</li>
+    <li>记录每个码使用频率，检查码本坍缩。</li>
+    <li>EMA 路径检查未使用码、零除、分布式聚合与设备一致性。</li>
+    <li>第二阶段固定第一阶段模块，训练索引交叉熵；生成必须经过先验与 decoder。</li>
+    <li>分别报告重建质量、采样质量、码本利用率和采样成本。</li>
+  </ul>
+</section>
+
+<section class="doc-block" id="worked-example">
+  <h2>附录 A：一个具体输入怎样走完训练与生成</h2>
+  <p>设 batch 中有 128 张 32×32 图像，编码器输出 D=64、latent 网格 8×8，码本有 K=512 项。一次前向产生 128×8×8=8192 个连续编码向量，每个向量都与 512 个码比较距离，选出一个索引；8192 个索引组成离散 latent 网格，再恢复为 embedding 输入解码器。训练时，像素重建误差和承诺项更新编码器，码本项或 EMA 统计更新码本，解码器接收真正的量化向量。</p>
+  <p>第二阶段把每张训练图变成 8×8 的整数索引，PixelCNN 逐位置预测下一索引的 512 类概率。生成新图时，不输入真实图片：先由先验采样 64 个索引，再查询码本、解码为 32×32 图像。原论文的 ImageNet 任务使用更大的 128×128 图像与 32×32 latent，这里缩小尺寸只是为了帮助读者手算张量。</p>
+  <p>码本使用情况可用 perplexity 辅助观察：若每个位置使用码的概率为 pₖ，熵 H=−Σpₖlogpₖ，perplexity=exp(H)。全部质量集中在一个码时接近 1；均匀使用 K 个码时接近 K。它不能证明表示语义正确，但比单看 loss 更容易发现码本闲置。</p>
+</section>
+
+<section class="doc-block doc-sources" id="sources">
+  <h2>12. 原文与实现来源</h2>
+  <ul class="source-links">
+    <li><a href="https://arxiv.org/abs/1711.00937">Neural Discrete Representation Learning</a>，arXiv:1711.00937v2，重点为 §3.1–3.3、§4 与附录 A.1。</li>
+    <li><a href="https://arxiv.org/html/1711.00937">论文 HTML 全文</a>：离散后验、损失、先验与 EMA 公式。</li>
+    <li><a href="https://github.com/CompVis/taming-transformers/blob/master/taming/modules/vqvae/quantize.py">后续相关 CompVis/taming-transformers 的量化实现</a>，仅用于实现对照，不是原论文官方源码。</li>
+  </ul>
+  <p>本文基于原论文与相关源码进行静态阅读；没有运行模型训练、生成或性能复现。所有新写代码均为教学实现，不隶属于论文作者。</p>
+</section>
+<section class="doc-block no-toc"><h2>继续阅读</h2><div class="paper-nav"><a href="../index.html">论文精读首页</a><a href="../categories/generative-foundations.html">所属分类</a><a href="index.html">基础论文精读索引</a></div></section></main>
+<script>(()=>{const nav=document.querySelector('.toc-rail');const ts=[...document.querySelectorAll('section[id]')].filter(x=>!x.classList.contains('no-toc')&&x.querySelector('h2'));const title=document.createElement('div');title.className='toc-title';title.textContent=document.body.dataset.toc||'论文深度精读';const links=ts.map(t=>{const a=document.createElement('a');a.href='#'+t.id;a.dataset.target=t.id;a.textContent=t.querySelector('h2').textContent.trim();return a});if(nav)nav.replaceChildren(title,...links);const active=id=>links.forEach(a=>a.classList.toggle('active',a.dataset.target===id));if(ts[0])active(ts[0].id);if('IntersectionObserver'in window){const o=new IntersectionObserver(es=>{const v=es.filter(e=>e.isIntersecting).sort((a,b)=>Math.abs(a.boundingClientRect.top)-Math.abs(b.boundingClientRect.top))[0];if(v)active(v.target.id)},{rootMargin:'-12% 0px -68% 0px',threshold:.01});ts.forEach(t=>o.observe(t))}const fallback=t=>{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove()};document.querySelectorAll('.code-block').forEach(b=>{const c=b.querySelector('pre code');if(!c)return;const btn=document.createElement('button');btn.type='button';btn.className='copy-code';btn.textContent='复制';b.appendChild(btn);btn.addEventListener('click',async()=>{try{if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(c.innerText);else fallback(c.innerText);btn.textContent='已复制'}catch(_){try{fallback(c.innerText);btn.textContent='已复制'}catch(_){btn.textContent='复制失败'}}setTimeout(()=>btn.textContent='复制',1600)})});})();</script>
+</body></html>
